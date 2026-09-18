@@ -69,8 +69,7 @@ model 真正吃的是固定 N 点。
 
 基本使用
 --------
-    PYTHONPATH=src python scripts/audit_visual_sampling_coverage.py \
-        --legacy-repo ../3D_tactile \
+    PYTHONPATH=src python scripts/spatial/diagnostics/audit_visual_sampling_coverage.py \
         --dataset data/press_0828_17 \
         --episode 0 \
         --frames 0,50,100,213 \
@@ -90,7 +89,6 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-import sys
 
 import numpy as np
 
@@ -99,6 +97,7 @@ from openpi.spatial.config import make_baseline_config
 from openpi.spatial.geometry import build_camera_cache
 from openpi.spatial.geometry import build_visual_geometry
 from openpi.spatial.geometry import depth_to_base_roi
+from openpi.spatial_dataset.source import RawSpatialDataset
 
 
 # =============================================================================
@@ -110,11 +109,6 @@ def parse_args() -> argparse.Namespace:
         description="Audit spatial coverage of fixed-N visual sampling."
     )
 
-    parser.add_argument(
-        "--legacy-repo",
-        type=Path,
-        default=Path("../3D_tactile"),
-    )
 
     parser.add_argument(
         "--dataset",
@@ -162,8 +156,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_frames(
     *,
-    legacy_repo: Path,
-    dataset_relative: Path,
+    dataset_root: Path,
     episode: int,
     frames: list[int],
     camera_roles: tuple[str, ...],
@@ -175,37 +168,15 @@ def load_frames(
     ],
 ]:
     """
-    读取多帧 depth / RGB。
+    从当前仓库数据集读取多帧 depth / RGB。
 
-    这里只负责旧 dataset adapter。
+    这是 QA 输入 adapter，不包含任何 spatial preprocessing。
+
+    每个 camera video 对这一批 selected frames 只顺序 decode 一次。
     """
-    legacy_src = (
-        legacy_repo
-        / "pointcloud_delivery"
-        / "src"
-    ).resolve()
-
-    sys.path.insert(
-        0,
-        str(
-            legacy_src
-        ),
-    )
-
-    try:
-        from dataset import Dataset
-        from dataset import video_frames
-    finally:
-        sys.path.pop(
-            0
-        )
-
-    dataset = Dataset(
-        (
-            legacy_repo
-            / dataset_relative
-        ).resolve(),
-        episode,
+    dataset = RawSpatialDataset(
+        dataset_root,
+        episode=episode,
     )
 
     rows = {
@@ -214,8 +185,9 @@ def load_frames(
                 "frame_index"
             ]
         ): row
-        for row in dataset.rows(
-            frames
+        for row in dataset.iter_rows(
+            selected=frames,
+            depth_roles=camera_roles,
         )
     }
 
@@ -233,6 +205,14 @@ def load_frames(
             f"Dataset missing frames: {missing}"
         )
 
+    rgb_frames_by_role = {
+        role: dataset.load_video_frames(
+            role,
+            selected=frames,
+        )
+        for role in camera_roles
+    }
+
     output = {}
 
     for frame in frames:
@@ -240,53 +220,26 @@ def load_frames(
             frame
         ]
 
-        depth_by_role = {}
-        rgb_by_role = {}
-
-        for role in camera_roles:
-            depth_by_role[
-                role
-            ] = np.asarray(
+        depth_by_role = {
+            role: np.asarray(
                 row[
                     f"observation.depths.cam_{role}"
                 ]
             )
+            for role in camera_roles
+        }
 
-            decoded = video_frames(
-                dataset.video(
+        rgb_by_role = {
+            role: np.asarray(
+                rgb_frames_by_role[
                     role
-                ),
-                [frame],
-            )
-
-            images = (
-                decoded[0]
-                if isinstance(
-                    decoded,
-                    tuple,
-                )
-                else decoded
-            )
-
-            rgb = (
-                images[
+                ][
                     frame
-                ]
-                if isinstance(
-                    images,
-                    dict,
-                )
-                else images[
-                    0
-                ]
-            )
-
-            rgb_by_role[
-                role
-            ] = np.asarray(
-                rgb,
+                ],
                 dtype=np.uint8,
             )
+            for role in camera_roles
+        }
 
         output[
             frame
@@ -379,9 +332,12 @@ def independent_voxel_representatives(
     这和正式设计 contract 一致，但实现独立于 geometry.py，
     因此可以对 candidate count 做 parity。
     """
+    # 正式 geometry pipeline 的 dense xyz 使用 float32。
+    # voxel audit 必须保持同样的数值精度，否则极少数恰好靠近
+    # voxel 边界的点可能因为 float64 重算而落入相邻 voxel。
     xyz = np.asarray(
         xyz_m,
-        dtype=np.float64,
+        dtype=np.float32,
     )
 
     origin = np.array(
@@ -390,7 +346,11 @@ def independent_voxel_representatives(
             roi.y_min_m,
             roi.z_min_m,
         ],
-        dtype=np.float64,
+        dtype=np.float32,
+    )
+
+    voxel_size = np.float32(
+        voxel_size_m
     )
 
     voxel = np.floor(
@@ -401,9 +361,7 @@ def independent_voxel_representatives(
                 :
             ]
         )
-        / float(
-            voxel_size_m
-        )
+        / voxel_size
     ).astype(
         np.int64,
     )
@@ -591,14 +549,20 @@ def main() -> None:
         "."
     ).resolve()
 
-    legacy_repo = (
-        args.legacy_repo
-        if args.legacy_repo.is_absolute()
+
+    dataset_root = (
+        args.dataset
+        if args.dataset.is_absolute()
         else (
             repo_root
-            / args.legacy_repo
+            / args.dataset
         )
-    ).resolve()
+    ).expanduser().resolve()
+
+    if not dataset_root.is_dir():
+        raise FileNotFoundError(
+            dataset_root
+        )
 
     camera_roles = tuple(
         role.strip()
@@ -659,8 +623,7 @@ def main() -> None:
     )
 
     frame_data = load_frames(
-        legacy_repo=legacy_repo,
-        dataset_relative=args.dataset,
+        dataset_root=dataset_root,
         episode=args.episode,
         frames=frames,
         camera_roles=camera_roles,

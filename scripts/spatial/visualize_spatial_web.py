@@ -67,8 +67,7 @@ Final 4096 则直接调用：
 ----
 双相机：
 
-    PYTHONPATH=src python scripts/visualize_spatial_web.py \
-        --legacy-repo ../3D_tactile \
+    PYTHONPATH=src python scripts/spatial/visualize_spatial_web.py \
         --dataset data/press_0828_17 \
         --episode 0 \
         --frame 213 \
@@ -100,7 +99,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-import sys
 import webbrowser
 
 import numpy as np
@@ -110,6 +108,7 @@ from openpi.spatial.geometry import build_camera_cache
 from openpi.spatial.geometry import colorize_from_source_cameras
 from openpi.spatial.geometry import depth_to_base_roi
 from openpi.spatial.preprocess import SpatialPreprocessor
+from openpi.spatial_dataset.source import RawSpatialDataset
 
 
 # =============================================================================
@@ -121,11 +120,6 @@ def parse_args() -> argparse.Namespace:
         description="Export interactive HTML for dense + final spatial observation QA."
     )
 
-    parser.add_argument(
-        "--legacy-repo",
-        type=Path,
-        default=Path("../3D_tactile"),
-    )
 
     parser.add_argument(
         "--dataset",
@@ -213,56 +207,42 @@ def parse_args() -> argparse.Namespace:
 
 def load_real_frame(
     *,
-    legacy_repo: Path,
-    dataset_relative: Path,
+    dataset_root: Path,
     episode: int,
     frame: int,
     camera_roles: tuple[str, ...],
 ) -> tuple[
+    float,
     np.ndarray,
     dict[str, np.ndarray],
     dict[str, np.ndarray],
 ]:
     """
-    只负责旧 dataset -> raw arrays。
+    从当前仓库数据集读取一帧 raw arrays。
+
+    这里只负责：
+        dataset -> timestamp / state / depth / RGB
 
     正式 spatial preprocessing 不放在 adapter 中。
     """
-    legacy_src = (
-        legacy_repo
-        / "pointcloud_delivery"
-        / "src"
-    ).resolve()
-
-    sys.path.insert(
-        0,
-        str(
-            legacy_src
-        ),
-    )
-
-    try:
-        from dataset import Dataset
-        from dataset import video_frames
-    finally:
-        sys.path.pop(
-            0
-        )
-
-    dataset_path = (
-        legacy_repo
-        / dataset_relative
-    ).resolve()
-
-    dataset = Dataset(
-        dataset_path,
-        episode,
+    dataset = RawSpatialDataset(
+        dataset_root,
+        episode=episode,
     )
 
     row = next(
-        dataset.rows(
-            [frame]
+        dataset.iter_rows(
+            selected=[
+                frame
+            ],
+            depth_roles=camera_roles,
         )
+    )
+
+    timestamp_s = float(
+        row[
+            "timestamp"
+        ]
     )
 
     state = np.asarray(
@@ -274,67 +254,32 @@ def load_real_frame(
     depth_by_role: dict[
         str,
         np.ndarray,
-    ] = {}
+    ] = {
+        role: np.asarray(
+            row[
+                f"observation.depths.cam_{role}"
+            ]
+        )
+        for role in camera_roles
+    }
 
     rgb_by_role: dict[
         str,
         np.ndarray,
-    ] = {}
-
-    for role in camera_roles:
-        depth_key = (
-            f"observation.depths.cam_{role}"
-        )
-
-        if depth_key not in row:
-            raise KeyError(
-                f"Dataset row missing {depth_key!r}"
-            )
-
-        depth_by_role[
-            role
-        ] = np.asarray(
-            row[
-                depth_key
-            ]
-        )
-
-        decoded = video_frames(
-            dataset.video(
-                role
-            ),
-            [frame],
-        )
-
-        images = (
-            decoded[0]
-            if isinstance(
-                decoded,
-                tuple,
-            )
-            else decoded
-        )
-
-        if isinstance(
-            images,
-            dict,
-        ):
-            rgb = images[
+    ] = {
+        role: dataset.load_video_frames(
+            role,
+            selected=[
                 frame
-            ]
-        else:
-            rgb = images[
-                0
-            ]
-
-        rgb_by_role[
-            role
-        ] = np.asarray(
-            rgb,
-            dtype=np.uint8,
-        )
+            ],
+        )[
+            frame
+        ]
+        for role in camera_roles
+    }
 
     return (
+        timestamp_s,
         state,
         depth_by_role,
         rgb_by_role,
@@ -751,14 +696,20 @@ def main() -> None:
         "."
     ).resolve()
 
-    legacy_repo = (
-        args.legacy_repo
-        if args.legacy_repo.is_absolute()
+
+    dataset_root = (
+        args.dataset
+        if args.dataset.is_absolute()
         else (
             repo_root
-            / args.legacy_repo
+            / args.dataset
         )
-    ).resolve()
+    ).expanduser().resolve()
+
+    if not dataset_root.is_dir():
+        raise FileNotFoundError(
+            dataset_root
+        )
 
     camera_roles = tuple(
         role.strip()
@@ -774,12 +725,12 @@ def main() -> None:
         )
 
     (
+        timestamp_s,
         state,
         depth_by_role,
         rgb_by_role,
     ) = load_real_frame(
-        legacy_repo=legacy_repo,
-        dataset_relative=args.dataset,
+        dataset_root=dataset_root,
         episode=args.episode,
         frame=args.frame,
         camera_roles=camera_roles,
@@ -805,7 +756,7 @@ def main() -> None:
     observation = (
         preprocessor.preprocess(
             frame_index=args.frame,
-            timestamp_s=0.0,
+            timestamp_s=timestamp_s,
             state=state,
             depth_by_role=depth_by_role,
             rgb_by_role=rgb_by_role,

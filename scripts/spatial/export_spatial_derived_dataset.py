@@ -1,145 +1,197 @@
 """
-OpenPI 3D + tactile：离线派生空间数据集导出器
+OpenPI 3D + tactile：数据集内置 Spatial Derived Modality 导出器
 （export_spatial_derived_dataset.py）
 
 作用
 ----
-把旧采集数据中的：
+将当前仓库中的原始机器人数据集：
 
-    RGB-D + observation.state + timestamp
+    data/<dataset>/
+    ├── data/
+    ├── images/
+    ├── meta/
+    └── videos/
 
-通过已经验收完成的：
+通过唯一的 canonical：
 
-    SpatialPreprocessor
+    openpi.spatial.SpatialPreprocessor
 
-离线转换成固定 schema 的 derived spatial dataset。
+离线导出为同一数据集中的 derived spatial modality：
 
-这是下一阶段的第一份正式数据工程文件。
+    data/<dataset>/
+    └── spatial/
+        └── v1/
+            ├── manifest.json
+            ├── static/
+            │   ├── finger_id.npy
+            │   └── taxel_id.npy
+            └── episodes/
+                ├── episode_000000/
+                │   ├── manifest.json
+                │   ├── shard_000000/
+                │   ├── shard_000001/
+                │   └── ...
+                └── ...
 
-核心原则
+核心边界
 --------
-1. 不复制 preprocessing 逻辑。
-   本脚本只负责：
-       读旧数据
-       -> 调 SpatialPreprocessor.preprocess()
-       -> 写磁盘
+本脚本只负责：
 
-2. offline / online preprocessing 仍然共用：
-       src/openpi/spatial/preprocess.py
+    RawSpatialDataset
+        ↓
+    SpatialPreprocessor
+        ↓
+    NPY shards
 
-3. 输出使用简单、透明、可 mmap 的 NumPy shard 格式，
-   暂时不绑定某个训练框架或 LeRobot writer。
+它不重新实现：
+    - depth -> 3D
+    - calibration
+    - FK
+    - tactile geometry
+    - voxelization
+    - sampling
+    - RGB association
 
-4. 每个 shard 目录独立、固定 shape；
-   后续 OpenPI dataset adapter 只需要读取这些 .npy，
-   不再重新跑 RGB-D / FK / tactile geometry。
+因此 offline derived-data 生成和未来 online deployment
+仍然共享同一个 SpatialPreprocessor。
 
-输出 schema
------------
-根目录：
+原始数据与 derived data 的身份
+------------------------------
+原来的：
 
-    manifest.json
-    static/
-        finger_id.npy          [600] int8
-        taxel_id.npy           [600] int16
+    data/
+    images/
+    meta/
+    videos/
 
-    shard_000000/
-        frame_index.npy        [B] int64
-        timestamp_s.npy        [B] float64
+是 source of truth。
 
-        visual_xyz_m.npy       [B,Nv,3] float32
-        visual_rgb.npy         [B,Nv,3] uint8
-        visual_rgb_valid.npy   [B,Nv] bool
+新增的：
 
-        tactile_xyz_m.npy      [B,600,3] float32
-        tactile_force_base.npy [B,600,3] float32
-        tactile_force_norm.npy [B,600] float32
+    spatial/v1/
 
-    shard_000001/
-        ...
+是可删除、可重新生成的 derived modality。
 
-为什么 finger_id / taxel_id 只存一次
--------------------------------
-它们在所有 frame 中都是固定拓扑：
+本脚本：
+    - 不修改原始 data/
+    - 不修改 images/
+    - 不修改 videos/
+    - 不修改 meta/info.json
+    - 不把 spatial 伪装成 LeRobot 原生 feature
 
-    finger_id:
-        0..4，每根 120 个
+未来模型侧 reader 显式读取：
 
-    taxel_id:
-        每根 1..120
+    <dataset>/spatial/v1
 
-所以没有必要每一帧重复写 600 个 id。
-导出时仍会逐帧检查它们是否与 static contract 一致。
+即可。
 
-manifest.json 记录
-------------------
-- derived schema version
-- source dataset / episode
-- camera roles
-- visual num_points
-- voxel size / sampler
-- units / coordinate frame
-- shard 列表
-- calibration / URDF / mapping / tactile geometry 的 SHA256
-- 完整 SpatialPreprocessConfig
-- 总 frame 数
+V1 输出 schema
+--------------
+每个 frame：
 
-这样以后看到一个 derived dataset，可以知道它到底由哪套静态资产生成。
+    visual_xyz_m         [Nv,3] float32
+    visual_rgb           [Nv,3] uint8
+    visual_rgb_valid     [Nv] bool
 
-为什么用 shard + .npy
----------------------
-优点：
-    - 无额外依赖
-    - 文件格式透明
-    - np.load(..., mmap_mode="r") 可直接 mmap
-    - 单个 shard 损坏不会污染整套数据
-    - 后续可以非常容易适配 PyTorch / JAX / OpenPI
+    tactile_xyz_m        [600,3] float32
+    tactile_force_base   [600,3] float32
+    tactile_force_norm   [600] float32
 
-当前先不做：
-    - zarr
-    - HDF5 并行 writer
-    - parquet 嵌套 tensor
-    - 自定义数据库
+静态 topology：
 
-这些等真正出现第二种存储需求再做。
+    finger_id            [600] int8
+    taxel_id             [600] int16
+
+默认：
+
+    Nv = 4096
+    coordinate frame = base_link
+    xyz unit = m
+    force unit = dataset_native
+
+流式设计
+--------
+对于一个 episode：
+
+    parquet rows
+        ───────────────►
+
+    front video
+        ───────────────►
+
+    left video
+        ───────────────►
+
+三条流按 frame_index 对齐后立即 preprocess。
+
+因此：
+    - parquet 只顺序扫描一次
+    - 每个 camera video 只顺序 decode 一次
+    - 不需要把整段 episode RGB 常驻内存
+    - shard_size 只控制 derived output buffer 大小
+
+这比“每个 shard 重新调用视频抽帧器”更适合全量导出。
+
+版本原则
+--------
+如果未来改变：
+
+    - visual point count
+    - voxel size
+    - sampler
+    - camera roles
+    - calibration
+    - tactile geometry
+    - force semantics
+
+不要覆盖已经冻结的 v1。
+
+应使用：
+
+    spatial/v2/
+    spatial/v3/
 
 基本使用
 --------
-先只导出 4 帧做 smoke test：
+1. 四帧 smoke test：
 
-    PYTHONPATH=src python scripts/export_spatial_derived_dataset.py \
-        --legacy-repo ../3D_tactile \
+    PYTHONPATH=src python scripts/spatial/export_spatial_derived_dataset.py \
         --dataset data/press_0828_17 \
-        --episode 0 \
+        --episodes 0 \
         --frames 0,50,100,213 \
+        --version v1_test \
         --cameras front,left \
         --num-points 4096 \
-        --shard-size 4 \
-        --output output/derived_spatial/press_0828_17_ep0_test
+        --shard-size 4
 
-确认后全量：
+默认输出：
 
-    PYTHONPATH=src python scripts/export_spatial_derived_dataset.py \
-        --legacy-repo ../3D_tactile \
+    data/press_0828_17/spatial/v1_test/
+
+2. 正式全量：
+
+    PYTHONPATH=src python scripts/spatial/export_spatial_derived_dataset.py \
         --dataset data/press_0828_17 \
-        --episode 0 \
+        --episodes all \
         --frames all \
+        --version v1 \
         --cameras front,left \
         --num-points 4096 \
-        --shard-size 128 \
-        --output output/derived_spatial/press_0828_17_ep0
+        --shard-size 128
 
-如果输出目录已存在：
-    默认拒绝覆盖。
+3. 如果 dataset 参数省略：
 
-显式覆盖：
-    --overwrite
+    --dataset data/press_0828_17
+
+是当前默认值。
 
 注意
 ----
-- timestamp 直接读取 ds.states()["timestamp"]，不猜 FPS。
-- video decode / disk IO 是 exporter 成本，不属于 SpatialPreprocessor latency。
-- 当前 baseline 仍为 4096 visual；8192 保留为后续 encoder ablation 候选。
+- 多 episode 导出时，--frames 必须为 all。
+- timestamp 直接来自 source parquet，不通过 FPS 推断。
+- RGB frame_index 当前按 episode 内视频 decode ordinal 对齐。
+- exporter 会检查 parquet frame 与每一路 RGB frame 严格一致。
+- version root 已存在时默认拒绝覆盖。
 """
 
 from __future__ import annotations
@@ -150,10 +202,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
-import sys
+import subprocess
 import time
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 
@@ -161,6 +214,8 @@ from openpi.spatial.config import make_baseline_config
 from openpi.spatial.preprocess import DEFAULT_T16_TRANSFORMED_PATH
 from openpi.spatial.preprocess import DEFAULT_T30_RIGHT_TRANSFORMED_PATH
 from openpi.spatial.preprocess import SpatialPreprocessor
+from openpi.spatial_dataset.source import RawSpatialDataset
+from openpi.spatial_dataset.source import VideoFrame
 
 
 # =============================================================================
@@ -169,40 +224,57 @@ from openpi.spatial.preprocess import SpatialPreprocessor
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Export canonical SpatialObservation into mmap-friendly NPY shards."
-    )
-
-    parser.add_argument(
-        "--legacy-repo",
-        type=Path,
-        default=Path("../3D_tactile"),
+        description=(
+            "Export canonical spatial derived data "
+            "inside the source dataset."
+        )
     )
 
     parser.add_argument(
         "--dataset",
         type=Path,
-        required=True,
-        help="相对于 legacy repo 的 dataset 路径。",
+        default=Path(
+            "data/press_0828_17"
+        ),
+        help=(
+            "数据集根目录。相对路径以当前 OpenPI repo 为基准。"
+        ),
     )
 
     parser.add_argument(
-        "--episode",
-        type=int,
-        default=0,
+        "--episodes",
+        type=str,
+        default="all",
+        help=(
+            '使用 "all" 或逗号分隔 episode ids，'
+            "例如 0,1,2。"
+        ),
     )
 
     parser.add_argument(
         "--frames",
         type=str,
         default="all",
-        help='使用 "all" 或逗号分隔 frame ids，例如 0,50,100,213。',
+        help=(
+            '使用 "all" 或逗号分隔 frame ids。'
+            "显式 frame list 只允许单 episode。"
+        ),
     )
 
     parser.add_argument(
         "--frame-stride",
         type=int,
         default=1,
-        help='仅对 --frames all 生效；1 表示全部 frame。',
+        help=(
+            "仅对 --frames all 生效；1 表示全部 frame。"
+        ),
+    )
+
+    parser.add_argument(
+        "--version",
+        type=str,
+        default="v1",
+        help="derived modality 版本，例如 v1 / v1_test / v2。",
     )
 
     parser.add_argument(
@@ -226,188 +298,319 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        required=True,
+        default=None,
+        help=(
+            "特殊情况下覆盖输出路径。"
+            "标准用法无需填写，默认 <dataset>/spatial/<version>/。"
+        ),
     )
 
     parser.add_argument(
         "--overwrite",
         action="store_true",
+        help=(
+            "显式删除并重建已存在的 version root。"
+            "正式版本通常应改 version，而不是覆盖。"
+        ),
     )
 
     return parser.parse_args()
 
 
 # =============================================================================
-# 2. Legacy Dataset adapter
+# 2. 路径与参数
 # =============================================================================
 
-def import_legacy_dataset(
-    legacy_repo: Path,
-):
+def resolve_dataset_root(
+    *,
+    repo_root: Path,
+    dataset_arg: Path,
+) -> Path:
     """
-    动态导入旧 Dataset / video_frames。
-
-    旧 repo dependency 只停留在 scripts/ exporter，
-    不进入 src/openpi/spatial core。
+    dataset 相对路径统一相对于当前 OpenPI repo。
     """
-    legacy_src = (
-        legacy_repo
-        / "pointcloud_delivery"
-        / "src"
-    ).resolve()
-
-    if not legacy_src.is_dir():
-        raise FileNotFoundError(
-            f"Legacy src not found: {legacy_src}"
+    if dataset_arg.is_absolute():
+        root = dataset_arg
+    else:
+        root = (
+            repo_root
+            / dataset_arg
         )
 
-    sys.path.insert(
-        0,
-        str(
-            legacy_src
-        ),
+    root = (
+        root
+        .expanduser()
+        .resolve()
     )
 
-    try:
-        from dataset import Dataset
-        from dataset import video_frames
-    finally:
-        sys.path.pop(
-            0
+    if not root.is_dir():
+        raise FileNotFoundError(
+            root
+        )
+
+    required = (
+        root / "data",
+        root / "meta",
+        root / "videos",
+    )
+
+    missing = [
+        path
+        for path in required
+        if not path.exists()
+    ]
+
+    if missing:
+        raise ValueError(
+            "Dataset root does not match expected layout. "
+            f"Missing: {missing}"
+        )
+
+    return root
+
+
+def validate_version_name(
+    value: str,
+) -> str:
+    version = value.strip()
+
+    if not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._-]*",
+        version,
+    ):
+        raise ValueError(
+            "--version must match "
+            "[A-Za-z0-9][A-Za-z0-9._-]*"
+        )
+
+    if version in (
+        ".",
+        "..",
+    ):
+        raise ValueError(
+            "Invalid --version"
+        )
+
+    return version
+
+
+def resolve_output_root(
+    *,
+    repo_root: Path,
+    dataset_root: Path,
+    version: str,
+    output_arg: Path | None,
+) -> Path:
+    if output_arg is None:
+        return (
+            dataset_root
+            / "spatial"
+            / version
+        ).resolve()
+
+    if output_arg.is_absolute():
+        return (
+            output_arg
+            .expanduser()
+            .resolve()
         )
 
     return (
-        Dataset,
-        video_frames,
-    )
+        repo_root
+        / output_arg
+    ).resolve()
 
 
-def normalize_video_frames(
-    decoded,
+def prepare_output_root(
     *,
-    frames: list[int],
-) -> dict[
-    int,
-    np.ndarray,
-]:
+    output_root: Path,
+    overwrite: bool,
+) -> None:
     """
-    兼容旧 video_frames 的两种返回形式：
-
-        images
-        (images, video_info)
-
-    images 又可能是：
-        frame-indexed mapping
-        sequence
-
-    统一成：
-        frame_id -> RGB ndarray
+    默认不覆盖已有 derived version。
     """
-    images = (
-        decoded[
-            0
-        ]
-        if isinstance(
-            decoded,
-            tuple,
+    if output_root.exists():
+        if not overwrite:
+            raise FileExistsError(
+                "Spatial derived version already exists:\n"
+                f"  {output_root}\n"
+                "Use a new --version, remove a test version, "
+                "or explicitly pass --overwrite."
+            )
+
+        shutil.rmtree(
+            output_root
         )
-        else decoded
+
+    output_root.mkdir(
+        parents=True,
+        exist_ok=False,
     )
 
-    if isinstance(
-        images,
-        dict,
-    ):
-        output = {
-            int(
-                frame
-            ): np.asarray(
-                image,
-                dtype=np.uint8,
-            )
-            for frame, image in images.items()
-        }
-    else:
-        if len(
-            images
-        ) != len(
-            frames
-        ):
-            raise RuntimeError(
-                "Decoded RGB sequence length does not match requested frames: "
-                f"{len(images)} vs {len(frames)}"
-            )
 
-        output = {
-            int(
-                frame
-            ): np.asarray(
-                images[
-                    index
-                ],
-                dtype=np.uint8,
-            )
-            for index, frame in enumerate(
-                frames
-            )
-        }
+def parse_camera_roles(
+    text: str,
+) -> tuple[str, ...]:
+    roles = tuple(
+        token.strip()
+        for token in text.split(
+            ","
+        )
+        if token.strip()
+    )
+
+    if not roles:
+        raise ValueError(
+            "--cameras cannot be empty"
+        )
+
+    if len(
+        roles
+    ) != len(
+        set(
+            roles
+        )
+    ):
+        raise ValueError(
+            "--cameras contains duplicates"
+        )
+
+    return roles
+
+
+def select_episode_ids(
+    *,
+    text: str,
+    available: tuple[int, ...],
+) -> list[int]:
+    if text.strip().lower() == "all":
+        return list(
+            available
+        )
+
+    selected = [
+        int(
+            token.strip()
+        )
+        for token in text.split(
+            ","
+        )
+        if token.strip()
+    ]
+
+    if not selected:
+        raise ValueError(
+            "--episodes resolved to empty list"
+        )
+
+    if len(
+        selected
+    ) != len(
+        set(
+            selected
+        )
+    ):
+        raise ValueError(
+            "--episodes contains duplicates"
+        )
 
     missing = sorted(
         set(
-            frames
+            selected
         )
         - set(
-            output
+            available
         )
     )
 
     if missing:
         raise KeyError(
-            f"Decoded video missing frames: {missing}"
+            "Requested episodes do not exist: "
+            f"{missing}"
         )
 
-    return output
+    return sorted(
+        selected
+    )
+
+
+def select_frame_ids(
+    *,
+    text: str,
+    available: list[int],
+    stride: int,
+) -> list[int]:
+    if stride <= 0:
+        raise ValueError(
+            "--frame-stride must be > 0"
+        )
+
+    if text.strip().lower() == "all":
+        return list(
+            available[
+                ::stride
+            ]
+        )
+
+    selected = [
+        int(
+            token.strip()
+        )
+        for token in text.split(
+            ","
+        )
+        if token.strip()
+    ]
+
+    if not selected:
+        raise ValueError(
+            "--frames resolved to empty list"
+        )
+
+    if len(
+        selected
+    ) != len(
+        set(
+            selected
+        )
+    ):
+        raise ValueError(
+            "--frames contains duplicates"
+        )
+
+    missing = sorted(
+        set(
+            selected
+        )
+        - set(
+            available
+        )
+    )
+
+    if missing:
+        raise KeyError(
+            "Requested frames do not exist in episode: "
+            f"{missing}"
+        )
+
+    return sorted(
+        selected
+    )
 
 
 # =============================================================================
-# 3. State / timestamp index
+# 3. Source state helpers
 # =============================================================================
 
 def build_state_index(
-    dataset,
-) -> dict[
-    int,
-    dict[str, Any],
-]:
+    dataset: RawSpatialDataset,
+) -> dict[int, dict[str, Any]]:
     """
-    一次性读取 ds.states()。
+    建立 lightweight frame -> state/timestamp 索引。
 
-    当前 legacy dataset 已提供：
-        frame_index
-        timestamp
-        observation.state
-
-    因此 timestamp 使用真实记录值，不通过 frame/FPS 猜测。
+    不包含 depth / RGB。
     """
     document = dataset.states()
-
-    required = (
-        "frame_index",
-        "timestamp",
-        "observation.state",
-    )
-
-    missing_fields = [
-        field
-        for field in required
-        if field not in document
-    ]
-
-    if missing_fields:
-        raise KeyError(
-            "Legacy states table missing fields: "
-            f"{missing_fields}"
-        )
 
     frame_ids = np.asarray(
         document[
@@ -440,21 +643,21 @@ def build_state_index(
         )
     ):
         raise ValueError(
-            "states() columns have inconsistent lengths"
+            "Source state columns have inconsistent lengths"
         )
 
-    index = {}
+    output = {}
 
-    for row_index, frame_id_raw in enumerate(
+    for row_index, frame_raw in enumerate(
         frame_ids
     ):
         frame_id = int(
-            frame_id_raw
+            frame_raw
         )
 
-        if frame_id in index:
+        if frame_id in output:
             raise ValueError(
-                f"Duplicate frame_index in states(): {frame_id}"
+                f"Duplicate frame_index: {frame_id}"
             )
 
         timestamp = float(
@@ -463,334 +666,312 @@ def build_state_index(
             ]
         )
 
-        if not np.isfinite(
-            timestamp
-        ):
-            raise ValueError(
-                f"Frame {frame_id}: non-finite timestamp {timestamp}"
-            )
-
         state = np.asarray(
             states[
                 row_index
             ]
         )
 
-        if state.ndim != 1:
+        if not np.isfinite(
+            timestamp
+        ):
             raise ValueError(
-                f"Frame {frame_id}: state must be 1-D, got {state.shape}"
+                f"Frame {frame_id}: non-finite timestamp"
             )
 
-        index[
+        if state.ndim != 1:
+            raise ValueError(
+                f"Frame {frame_id}: state must be 1-D, "
+                f"got {state.shape}"
+            )
+
+        output[
             frame_id
         ] = {
             "timestamp_s": timestamp,
             "state": state,
         }
 
-    return index
-
-
-def select_frames(
-    *,
-    text: str,
-    available_frames: list[int],
-    stride: int,
-) -> list[int]:
-    """
-    frame 选择：
-        all
-        或显式逗号列表
-    """
-    if stride <= 0:
-        raise ValueError(
-            "--frame-stride must be > 0"
-        )
-
-    if text.strip().lower() == "all":
-        return available_frames[
-            ::stride
-        ]
-
-    frames = [
-        int(
-            token.strip()
-        )
-        for token in text.split(
-            ","
-        )
-        if token.strip()
-    ]
-
-    if not frames:
-        raise ValueError(
-            "--frames resolved to empty list"
-        )
-
-    if len(
-        set(
-            frames
-        )
-    ) != len(
-        frames
-    ):
-        raise ValueError(
-            "--frames contains duplicate frame ids"
-        )
-
-    available = set(
-        available_frames
-    )
-
-    missing = sorted(
-        set(
-            frames
-        )
-        - available
-    )
-
-    if missing:
-        raise KeyError(
-            f"Requested frames not in states(): {missing}"
-        )
-
-    return sorted(
-        frames
-    )
-
-
-# =============================================================================
-# 4. Shard raw input loader
-# =============================================================================
-
-def load_raw_shard(
-    *,
-    dataset,
-    video_frames,
-    frame_ids: list[int],
-    camera_roles: tuple[str, ...],
-    state_index: dict[int, dict[str, Any]],
-) -> dict[
-    int,
-    dict[str, Any],
-]:
-    """
-    一次读取一个 shard 所需的：
-        state
-        timestamp
-        depth
-        RGB
-
-    这样不会把整个 episode 的视频都常驻内存。
-    """
-    rows = {
-        int(
-            row[
-                "frame_index"
-            ]
-        ): row
-        for row in dataset.rows(
-            frame_ids
-        )
-    }
-
-    missing_rows = sorted(
-        set(
-            frame_ids
-        )
-        - set(
-            rows
-        )
-    )
-
-    if missing_rows:
-        raise KeyError(
-            f"Dataset rows missing frames: {missing_rows}"
-        )
-
-    rgb_by_role = {}
-
-    for role in camera_roles:
-        decoded = video_frames(
-            dataset.video(
-                role
-            ),
-            frame_ids,
-        )
-
-        rgb_by_role[
-            role
-        ] = normalize_video_frames(
-            decoded,
-            frames=frame_ids,
-        )
-
-    output = {}
-
-    for frame_id in frame_ids:
-        row = rows[
-            frame_id
-        ]
-
-        depth = {}
-
-        for role in camera_roles:
-            key = (
-                f"observation.depths.cam_{role}"
-            )
-
-            if key not in row:
-                raise KeyError(
-                    f"Frame {frame_id}: missing depth key {key!r}"
-                )
-
-            depth[
-                role
-            ] = np.asarray(
-                row[
-                    key
-                ]
-            )
-
-        output[
-            frame_id
-        ] = {
-            "timestamp_s": state_index[
-                frame_id
-            ][
-                "timestamp_s"
-            ],
-            "state": state_index[
-                frame_id
-            ][
-                "state"
-            ],
-            "depth_by_role": depth,
-            "rgb_by_role": {
-                role: rgb_by_role[
-                    role
-                ][
-                    frame_id
-                ]
-                for role in camera_roles
-            },
-        }
-
     return output
 
 
 # =============================================================================
-# 5. Derived shard builder
+# 4. 同步 parquet / RGB streams
 # =============================================================================
 
-def build_derived_shard(
+def synchronized_raw_frames(
     *,
-    preprocessor: SpatialPreprocessor,
+    dataset: RawSpatialDataset,
     frame_ids: list[int],
-    raw_frames: dict[int, dict[str, Any]],
-    static_ids: dict[str, np.ndarray] | None,
-) -> tuple[
-    dict[str, np.ndarray],
-    dict[str, np.ndarray],
+    camera_roles: tuple[str, ...],
+    state_index: dict[int, dict[str, Any]],
+) -> Iterator[
+    tuple[
+        int,
+        dict[str, Any],
+    ]
 ]:
     """
-    对一个 shard 的每帧调用 canonical SpatialPreprocessor。
+    一个 episode 内同步三类输入：
 
-    static_ids:
-        第一 shard 为 None；
-        第一次 observation 会建立 finger_id / taxel_id contract。
+        parquet depth row
+        RGB stream(s)
+        state/timestamp index
 
-    返回：
-        shard arrays
-        static ids
+    每一路 RGB video 只创建一个 iterator，
+    因此整个 selected frame set 只顺序 decode 一次。
+
+    输出：
+
+        frame_id,
+        {
+            timestamp_s,
+            state,
+            depth_by_role,
+            rgb_by_role,
+        }
     """
-    observations = []
+    selected_set = set(
+        frame_ids
+    )
 
-    for frame_id in frame_ids:
-        raw = raw_frames[
+    unknown_rgb = sorted(
+        set(
+            camera_roles
+        )
+        - set(
+            dataset.camera_roles
+        )
+    )
+
+    unknown_depth = sorted(
+        set(
+            camera_roles
+        )
+        - set(
+            dataset.depth_roles
+        )
+    )
+
+    if unknown_rgb:
+        raise KeyError(
+            "Requested cameras missing RGB streams: "
+            f"{unknown_rgb}"
+        )
+
+    if unknown_depth:
+        raise KeyError(
+            "Requested cameras missing depth streams: "
+            f"{unknown_depth}"
+        )
+
+    row_iterator = dataset.iter_rows(
+        selected=selected_set,
+        depth_roles=camera_roles,
+    )
+
+    video_iterators: dict[
+        str,
+        Iterator[VideoFrame],
+    ] = {
+        role: iter(
+            dataset.iter_video_frames(
+                role,
+                selected=selected_set,
+            )
+        )
+        for role in camera_roles
+    }
+
+    produced = []
+
+    for row in row_iterator:
+        frame_id = int(
+            row[
+                "frame_index"
+            ]
+        )
+
+        if frame_id not in state_index:
+            raise KeyError(
+                f"Frame {frame_id}: missing state/timestamp index"
+            )
+
+        rgb_by_role = {}
+
+        for role in camera_roles:
+            try:
+                video_frame = next(
+                    video_iterators[
+                        role
+                    ]
+                )
+            except StopIteration as exc:
+                raise RuntimeError(
+                    f"RGB stream {role!r} ended before "
+                    f"parquet frame {frame_id}"
+                ) from exc
+
+            if (
+                video_frame.frame_index
+                != frame_id
+            ):
+                raise RuntimeError(
+                    "Parquet / RGB frame misalignment: "
+                    f"parquet={frame_id}, "
+                    f"camera={role}, "
+                    f"rgb={video_frame.frame_index}"
+                )
+
+            rgb_by_role[
+                role
+            ] = video_frame.rgb
+
+        depth_by_role = {
+            role: np.asarray(
+                row[
+                    f"observation.depths.cam_{role}"
+                ]
+            )
+            for role in camera_roles
+        }
+
+        produced.append(
             frame_id
-        ]
+        )
 
-        observation = (
-            preprocessor.preprocess(
-                frame_index=frame_id,
-                timestamp_s=float(
-                    raw[
+        yield (
+            frame_id,
+            {
+                "timestamp_s": (
+                    state_index[
+                        frame_id
+                    ][
                         "timestamp_s"
                     ]
                 ),
-                state=raw[
-                    "state"
-                ],
-                depth_by_role=raw[
-                    "depth_by_role"
-                ],
-                rgb_by_role=raw[
-                    "rgb_by_role"
-                ],
+                "state": (
+                    state_index[
+                        frame_id
+                    ][
+                        "state"
+                    ]
+                ),
+                "depth_by_role": (
+                    depth_by_role
+                ),
+                "rgb_by_role": (
+                    rgb_by_role
+                ),
+            },
+        )
+
+    if produced != frame_ids:
+        raise RuntimeError(
+            "Source stream did not yield the selected frames "
+            "in the expected order.\n"
+            f"expected={frame_ids}\n"
+            f"actual={produced}"
+        )
+
+    # 所有 selected frames 都处理完后，
+    # 每一路 video iterator 也必须正好耗尽。
+    for role, iterator in video_iterators.items():
+        try:
+            extra = next(
+                iterator
             )
+        except StopIteration:
+            continue
+
+        raise RuntimeError(
+            f"RGB stream {role!r} yielded unexpected extra "
+            f"selected frame {extra.frame_index}"
         )
 
-        observations.append(
-            observation
-        )
 
-        if static_ids is None:
-            static_ids = {
-                "finger_id": np.asarray(
-                    observation.finger_id,
-                    dtype=np.int8,
-                ).copy(),
-                "taxel_id": np.asarray(
-                    observation.taxel_id,
-                    dtype=np.int16,
-                ).copy(),
-            }
-        else:
-            if not np.array_equal(
-                observation.finger_id,
-                static_ids[
-                    "finger_id"
-                ],
-            ):
-                raise RuntimeError(
-                    f"Frame {frame_id}: finger_id violates static topology contract"
-                )
+# =============================================================================
+# 5. Observation buffer -> NPY arrays
+# =============================================================================
 
-            if not np.array_equal(
-                observation.taxel_id,
-                static_ids[
-                    "taxel_id"
-                ],
-            ):
-                raise RuntimeError(
-                    f"Frame {frame_id}: taxel_id violates static topology contract"
-                )
+def append_observation(
+    *,
+    observations: list[Any],
+    observation: Any,
+    static_ids: dict[str, np.ndarray] | None,
+) -> dict[str, np.ndarray]:
+    """
+    将一个 SpatialObservation 放入当前 shard buffer，
+    同时冻结 / 检查 tactile topology。
+    """
+    current_ids = {
+        "finger_id": np.asarray(
+            observation.finger_id,
+            dtype=np.int8,
+        ),
+        "taxel_id": np.asarray(
+            observation.taxel_id,
+            dtype=np.int16,
+        ),
+    }
 
     if static_ids is None:
-        raise RuntimeError(
-            "Cannot build empty derived shard"
+        static_ids = {
+            name: array.copy()
+            for name, array
+            in current_ids.items()
+        }
+
+    else:
+        for name, array in current_ids.items():
+            if not np.array_equal(
+                array,
+                static_ids[
+                    name
+                ],
+            ):
+                raise RuntimeError(
+                    f"Frame {observation.frame_index}: "
+                    f"{name} violates static topology contract"
+                )
+
+    observations.append(
+        observation
+    )
+
+    return static_ids
+
+
+def observations_to_arrays(
+    observations: list[Any],
+) -> dict[str, np.ndarray]:
+    """
+    将一个 shard buffer 转成固定 shape arrays。
+    """
+    if not observations:
+        raise ValueError(
+            "Cannot serialize empty observation buffer"
         )
 
-    arrays = {
+    return {
         "frame_index": np.asarray(
             [
-                observation.frame_index
-                for observation in observations
+                item.frame_index
+                for item in observations
             ],
             dtype=np.int64,
         ),
         "timestamp_s": np.asarray(
             [
-                observation.timestamp_s
-                for observation in observations
+                item.timestamp_s
+                for item in observations
             ],
             dtype=np.float64,
         ),
         "visual_xyz_m": np.stack(
             [
-                observation.visual_xyz_m
-                for observation in observations
+                item.visual_xyz_m
+                for item in observations
             ],
             axis=0,
         ).astype(
@@ -799,8 +980,8 @@ def build_derived_shard(
         ),
         "visual_rgb": np.stack(
             [
-                observation.visual_rgb
-                for observation in observations
+                item.visual_rgb
+                for item in observations
             ],
             axis=0,
         ).astype(
@@ -809,8 +990,8 @@ def build_derived_shard(
         ),
         "visual_rgb_valid": np.stack(
             [
-                observation.visual_rgb_valid
-                for observation in observations
+                item.visual_rgb_valid
+                for item in observations
             ],
             axis=0,
         ).astype(
@@ -819,8 +1000,8 @@ def build_derived_shard(
         ),
         "tactile_xyz_m": np.stack(
             [
-                observation.tactile_xyz_m
-                for observation in observations
+                item.tactile_xyz_m
+                for item in observations
             ],
             axis=0,
         ).astype(
@@ -829,8 +1010,8 @@ def build_derived_shard(
         ),
         "tactile_force_base": np.stack(
             [
-                observation.tactile_force_base
-                for observation in observations
+                item.tactile_force_base
+                for item in observations
             ],
             axis=0,
         ).astype(
@@ -839,8 +1020,8 @@ def build_derived_shard(
         ),
         "tactile_force_norm": np.stack(
             [
-                observation.tactile_force_norm
-                for observation in observations
+                item.tactile_force_norm
+                for item in observations
             ],
             axis=0,
         ).astype(
@@ -849,11 +1030,6 @@ def build_derived_shard(
         ),
     }
 
-    return (
-        arrays,
-        static_ids,
-    )
-
 
 # =============================================================================
 # 6. Atomic shard writer
@@ -861,29 +1037,27 @@ def build_derived_shard(
 
 def write_shard_atomic(
     *,
-    output_root: Path,
+    episode_root: Path,
     shard_index: int,
     arrays: dict[str, np.ndarray],
 ) -> dict[str, Any]:
     """
-    先写临时目录，再 rename 成正式 shard。
+    临时目录写完后再 rename。
 
-    如果进程中途退出，不会留下“看起来完整但只写了一半”的正式 shard。
+    因此正式 shard 不会出现半写状态。
     """
     shard_name = (
         f"shard_{shard_index:06d}"
     )
 
     final_dir = (
-        output_root
+        episode_root
         / shard_name
     )
 
-    temporary_dir = (
-        output_root
-        / (
-            f".{shard_name}.tmp"
-        )
+    temp_dir = (
+        episode_root
+        / f".{shard_name}.tmp"
     )
 
     if final_dir.exists():
@@ -891,22 +1065,22 @@ def write_shard_atomic(
             final_dir
         )
 
-    if temporary_dir.exists():
+    if temp_dir.exists():
         shutil.rmtree(
-            temporary_dir
+            temp_dir
         )
 
-    temporary_dir.mkdir(
+    temp_dir.mkdir(
         parents=True,
         exist_ok=False,
     )
 
-    file_manifest = {}
+    files = {}
 
     try:
         for field_name, array in arrays.items():
             path = (
-                temporary_dir
+                temp_dir
                 / f"{field_name}.npy"
             )
 
@@ -916,7 +1090,7 @@ def write_shard_atomic(
                 allow_pickle=False,
             )
 
-            file_manifest[
+            files[
                 field_name
             ] = {
                 "file": (
@@ -926,7 +1100,8 @@ def write_shard_atomic(
                     int(
                         value
                     )
-                    for value in array.shape
+                    for value
+                    in array.shape
                 ],
                 "dtype": str(
                     array.dtype
@@ -937,25 +1112,26 @@ def write_shard_atomic(
             }
 
         os.replace(
-            temporary_dir,
+            temp_dir,
             final_dir,
         )
 
     except Exception:
-        if temporary_dir.exists():
+        if temp_dir.exists():
             shutil.rmtree(
-                temporary_dir
+                temp_dir
             )
+
         raise
 
     return {
         "name": shard_name,
         "count": int(
-            len(
-                arrays[
-                    "frame_index"
-                ]
-            )
+            arrays[
+                "frame_index"
+            ].shape[
+                0
+            ]
         ),
         "first_frame": int(
             arrays[
@@ -971,12 +1147,12 @@ def write_shard_atomic(
                 -1
             ]
         ),
-        "files": file_manifest,
+        "files": files,
     }
 
 
 # =============================================================================
-# 7. Static topology writer
+# 7. Static topology
 # =============================================================================
 
 def write_static_ids(
@@ -984,22 +1160,22 @@ def write_static_ids(
     output_root: Path,
     static_ids: dict[str, np.ndarray],
 ) -> dict[str, Any]:
-    static_dir = (
+    static_root = (
         output_root
         / "static"
     )
 
-    static_dir.mkdir(
+    static_root.mkdir(
         parents=True,
         exist_ok=True,
     )
 
     result = {}
 
-    for field_name, array in static_ids.items():
+    for name, array in static_ids.items():
         path = (
-            static_dir
-            / f"{field_name}.npy"
+            static_root
+            / f"{name}.npy"
         )
 
         np.save(
@@ -1009,16 +1185,17 @@ def write_static_ids(
         )
 
         result[
-            field_name
+            name
         ] = {
             "file": (
-                f"static/{field_name}.npy"
+                f"static/{name}.npy"
             ),
             "shape": [
                 int(
                     value
                 )
-                for value in array.shape
+                for value
+                in array.shape
             ],
             "dtype": str(
                 array.dtype
@@ -1032,7 +1209,7 @@ def write_static_ids(
 
 
 # =============================================================================
-# 8. Provenance helpers
+# 8. Provenance
 # =============================================================================
 
 def sha256_file(
@@ -1040,9 +1217,7 @@ def sha256_file(
 ) -> str:
     digest = hashlib.sha256()
 
-    with Path(
-        path
-    ).open(
+    with path.open(
         "rb"
     ) as file:
         while True:
@@ -1064,9 +1239,6 @@ def sha256_file(
 def jsonable(
     value: Any,
 ) -> Any:
-    """
-    dataclass config -> JSON-safe tree。
-    """
     if isinstance(
         value,
         Path,
@@ -1085,7 +1257,8 @@ def jsonable(
             ): jsonable(
                 item
             )
-            for key, item in value.items()
+            for key, item
+            in value.items()
         }
 
     if isinstance(
@@ -1114,10 +1287,10 @@ def jsonable(
 def build_asset_provenance(
     *,
     repo_root: Path,
-    config,
+    config: Any,
 ) -> dict[str, Any]:
     """
-    对真正影响 canonical preprocessing 的静态资产做 SHA256。
+    记录真正影响 numerical spatial output 的静态资产。
     """
     relative_assets = {
         "camera_internal_config": (
@@ -1180,122 +1353,118 @@ def build_asset_provenance(
     return result
 
 
+def build_source_meta_provenance(
+    dataset_root: Path,
+) -> dict[str, Any]:
+    """
+    只 hash source metadata，不 hash 大视频。
+    """
+    names = (
+        "info.json",
+        "episodes.jsonl",
+        "episodes_stats.jsonl",
+        "tasks.jsonl",
+    )
+
+    result = {}
+
+    for name in names:
+        path = (
+            dataset_root
+            / "meta"
+            / name
+        )
+
+        if not path.is_file():
+            continue
+
+        result[
+            name
+        ] = {
+            "sha256": sha256_file(
+                path
+            ),
+            "bytes": int(
+                path.stat().st_size
+            ),
+        }
+
+    return result
+
+
+def git_provenance(
+    repo_root: Path,
+) -> dict[str, Any]:
+    """
+    记录生成 derived data 时使用的代码版本。
+    """
+    try:
+        commit = subprocess.check_output(
+            [
+                "git",
+                "rev-parse",
+                "HEAD",
+            ],
+            cwd=repo_root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+
+        status = subprocess.check_output(
+            [
+                "git",
+                "status",
+                "--porcelain",
+            ],
+            cwd=repo_root,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+
+        return {
+            "commit": commit,
+            "dirty": bool(
+                status.strip()
+            ),
+        }
+
+    except Exception:
+        return {
+            "commit": None,
+            "dirty": None,
+        }
+
+
 # =============================================================================
-# 9. Output-root safety
+# 9. Episode export
 # =============================================================================
 
-def prepare_output_root(
+def export_episode(
     *,
+    dataset_root: Path,
+    episode_id: int,
     output_root: Path,
-    overwrite: bool,
-) -> None:
+    preprocessor: SpatialPreprocessor,
+    camera_roles: tuple[str, ...],
+    frames_arg: str,
+    frame_stride: int,
+    shard_size: int,
+    static_ids: dict[str, np.ndarray] | None,
+) -> tuple[
+    dict[str, Any],
+    dict[str, np.ndarray],
+]:
     """
-    默认绝不覆盖已有 derived dataset。
+    单 episode streaming export。
+
+    一个 episode 内：
+        parquet 一次
+        每 camera video 一次
+        observations 按 shard_size 缓冲后落盘
     """
-    if output_root.exists():
-        if not overwrite:
-            raise FileExistsError(
-                "Output already exists. "
-                "Use --overwrite only if you explicitly want to replace it: "
-                f"{output_root}"
-            )
-
-        shutil.rmtree(
-            output_root
-        )
-
-    output_root.mkdir(
-        parents=True,
-        exist_ok=False,
-    )
-
-
-# =============================================================================
-# 10. Main
-# =============================================================================
-
-def main() -> None:
-    args = parse_args()
-
-    start_wall = time.time()
-
-    repo_root = Path(
-        "."
-    ).resolve()
-
-    legacy_repo = (
-        args.legacy_repo
-        if args.legacy_repo.is_absolute()
-        else (
-            repo_root
-            / args.legacy_repo
-        )
-    ).resolve()
-
-    dataset_path = (
-        args.dataset
-        if args.dataset.is_absolute()
-        else (
-            legacy_repo
-            / args.dataset
-        )
-    ).resolve()
-
-    output_root = (
-        args.output
-        if args.output.is_absolute()
-        else (
-            repo_root
-            / args.output
-        )
-    ).expanduser().resolve()
-
-    if not dataset_path.exists():
-        raise FileNotFoundError(
-            dataset_path
-        )
-
-    if args.shard_size <= 0:
-        raise ValueError(
-            "--shard-size must be > 0"
-        )
-
-    if args.num_points <= 0:
-        raise ValueError(
-            "--num-points must be > 0"
-        )
-
-    camera_roles = tuple(
-        token.strip()
-        for token in args.cameras.split(
-            ","
-        )
-        if token.strip()
-    )
-
-    if not camera_roles:
-        raise ValueError(
-            "--cameras cannot be empty"
-        )
-
-    prepare_output_root(
-        output_root=output_root,
-        overwrite=args.overwrite,
-    )
-
-    Dataset, video_frames = (
-        import_legacy_dataset(
-            legacy_repo
-        )
-    )
-
-    dataset = Dataset(
-        dataset_path,
-        args.episode,
-    )
-
-    print(
-        "[1/5] Reading states / timestamps..."
+    dataset = RawSpatialDataset(
+        dataset_root,
+        episode=episode_id,
     )
 
     state_index = build_state_index(
@@ -1306,194 +1475,156 @@ def main() -> None:
         state_index
     )
 
-    selected_frames = select_frames(
-        text=args.frames,
-        available_frames=available_frames,
-        stride=args.frame_stride,
+    selected_frames = select_frame_ids(
+        text=frames_arg,
+        available=available_frames,
+        stride=frame_stride,
     )
 
     if not selected_frames:
         raise RuntimeError(
-            "No frames selected"
+            f"Episode {episode_id}: no frames selected"
         )
 
-    print(
-        "source frames:",
-        len(
-            available_frames
-        ),
+    episode_name = (
+        f"episode_{episode_id:06d}"
     )
 
-    print(
-        "selected frames:",
-        len(
-            selected_frames
-        ),
-        "first=",
-        selected_frames[
-            0
-        ],
-        "last=",
-        selected_frames[
-            -1
-        ],
+    episode_root = (
+        output_root
+        / "episodes"
+        / episode_name
     )
 
-    # -------------------------------------------------------------------------
-    # 10.1 Canonical preprocessor
-    # -------------------------------------------------------------------------
-    print(
-        "[2/5] Initializing canonical SpatialPreprocessor..."
-    )
-
-    config = (
-        make_baseline_config()
-        .with_camera_roles(
-            *camera_roles
+    if episode_root.exists():
+        raise FileExistsError(
+            episode_root
         )
-        .with_visual_sampling(
-            num_points=args.num_points,
-        )
+
+    episode_root.mkdir(
+        parents=True,
+        exist_ok=False,
     )
 
-    preprocessor = (
-        SpatialPreprocessor.from_repo_root(
-            repo_root=repo_root,
-            config=config,
-        )
-    )
-
-    # -------------------------------------------------------------------------
-    # 10.2 Provenance
-    # -------------------------------------------------------------------------
-    asset_provenance = (
-        build_asset_provenance(
-            repo_root=repo_root,
-            config=config,
-        )
-    )
-
-    # -------------------------------------------------------------------------
-    # 10.3 Sharded export
-    # -------------------------------------------------------------------------
-    print(
-        "[3/5] Exporting spatial shards..."
-    )
+    start_wall = time.perf_counter()
 
     shard_entries = []
-    static_ids = None
+    observation_buffer = []
+    shard_index = 0
+    processed_count = 0
 
-    total = len(
-        selected_frames
-    )
-
-    for shard_index, start in enumerate(
-        range(
-            0,
-            total,
-            args.shard_size,
-        )
-    ):
-        shard_frames = selected_frames[
-            start:
-            start
-            + args.shard_size
-        ]
-
-        shard_start_time = time.perf_counter()
-
-        raw_frames = load_raw_shard(
+    try:
+        raw_stream = synchronized_raw_frames(
             dataset=dataset,
-            video_frames=video_frames,
-            frame_ids=shard_frames,
+            frame_ids=selected_frames,
             camera_roles=camera_roles,
             state_index=state_index,
         )
 
-        arrays, static_ids = (
-            build_derived_shard(
-                preprocessor=preprocessor,
-                frame_ids=shard_frames,
-                raw_frames=raw_frames,
+        for frame_id, raw in raw_stream:
+            observation = preprocessor.preprocess(
+                frame_index=frame_id,
+                timestamp_s=float(
+                    raw[
+                        "timestamp_s"
+                    ]
+                ),
+                state=raw[
+                    "state"
+                ],
+                depth_by_role=raw[
+                    "depth_by_role"
+                ],
+                rgb_by_role=raw[
+                    "rgb_by_role"
+                ],
+            )
+
+            static_ids = append_observation(
+                observations=observation_buffer,
+                observation=observation,
                 static_ids=static_ids,
             )
-        )
 
-        entry = write_shard_atomic(
-            output_root=output_root,
-            shard_index=shard_index,
-            arrays=arrays,
-        )
+            processed_count += 1
+
+            if (
+                len(
+                    observation_buffer
+                )
+                >= shard_size
+            ):
+                arrays = observations_to_arrays(
+                    observation_buffer
+                )
+
+                entry = write_shard_atomic(
+                    episode_root=episode_root,
+                    shard_index=shard_index,
+                    arrays=arrays,
+                )
+
+                shard_entries.append(
+                    entry
+                )
+
+                print(
+                    f"    shard {shard_index:06d}: "
+                    f"{entry['count']} frames | "
+                    f"progress "
+                    f"{processed_count}/"
+                    f"{len(selected_frames)}"
+                )
+
+                observation_buffer.clear()
+                shard_index += 1
+
+        # 最后不足一个 shard 的尾部。
+        if observation_buffer:
+            arrays = observations_to_arrays(
+                observation_buffer
+            )
+
+            entry = write_shard_atomic(
+                episode_root=episode_root,
+                shard_index=shard_index,
+                arrays=arrays,
+            )
+
+            shard_entries.append(
+                entry
+            )
+
+            print(
+                f"    shard {shard_index:06d}: "
+                f"{entry['count']} frames | "
+                f"progress "
+                f"{processed_count}/"
+                f"{len(selected_frames)}"
+            )
+
+            observation_buffer.clear()
+
+        if (
+            processed_count
+            != len(
+                selected_frames
+            )
+        ):
+            raise RuntimeError(
+                f"Episode {episode_id}: processed "
+                f"{processed_count} frames, expected "
+                f"{len(selected_frames)}"
+            )
 
         elapsed = (
             time.perf_counter()
-            - shard_start_time
+            - start_wall
         )
 
-        entry[
-            "wall_seconds"
-        ] = float(
-            elapsed
-        )
-
-        shard_entries.append(
-            entry
-        )
-
-        processed = min(
-            start
-            + len(
-                shard_frames
-            ),
-            total,
-        )
-
-        print(
-            f"  shard {shard_index:06d}: "
-            f"{len(shard_frames)} frames | "
-            f"{elapsed:.2f}s | "
-            f"progress {processed}/{total}"
-        )
-
-    if static_ids is None:
-        raise RuntimeError(
-            "No observations were exported"
-        )
-
-    # -------------------------------------------------------------------------
-    # 10.4 Static topology
-    # -------------------------------------------------------------------------
-    print(
-        "[4/5] Writing static tactile topology..."
-    )
-
-    static_manifest = (
-        write_static_ids(
-            output_root=output_root,
-            static_ids=static_ids,
-        )
-    )
-
-    # -------------------------------------------------------------------------
-    # 10.5 Final manifest
-    # -------------------------------------------------------------------------
-    total_wall = (
-        time.time()
-        - start_wall
-    )
-
-    manifest = {
-        "derived_schema_version": 1,
-        "status": "complete",
-        "source": {
-            "legacy_repo": str(
-                legacy_repo
-            ),
-            "dataset": str(
-                dataset_path
-            ),
-            "episode": int(
-                args.episode
+        episode_manifest = {
+            "episode_index": int(
+                episode_id
             ),
             "source_frame_count": int(
                 len(
@@ -1515,102 +1646,458 @@ def main() -> None:
                     -1
                 ]
             ),
-        },
-        "spatial_contract": {
-            "coordinate_frame": "base_link",
-            "xyz_unit": "m",
-            "force_unit": "dataset_native",
-            "visual_points_per_frame": int(
-                args.num_points
+            "first_timestamp_s": float(
+                state_index[
+                    selected_frames[
+                        0
+                    ]
+                ][
+                    "timestamp_s"
+                ]
             ),
-            "tactile_points_per_frame": 600,
-            "camera_roles": list(
-                camera_roles
+            "last_timestamp_s": float(
+                state_index[
+                    selected_frames[
+                        -1
+                    ]
+                ][
+                    "timestamp_s"
+                ]
             ),
-        },
-        "storage": {
-            "format": "npy_shards_v1",
-            "shard_size": int(
-                args.shard_size
-            ),
-            "static": static_manifest,
             "shards": shard_entries,
-        },
-        "preprocess_config": jsonable(
-            asdict(
-                config
+            "wall_seconds": float(
+                elapsed
+            ),
+        }
+
+        with (
+            episode_root
+            / "manifest.json"
+        ).open(
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(
+                episode_manifest,
+                file,
+                ensure_ascii=False,
+                indent=2,
             )
-        ),
-        "asset_provenance": (
-            asset_provenance
-        ),
-        "runtime": {
-            "total_wall_seconds": float(
-                total_wall
-            ),
-            "average_wall_ms_per_frame_including_io_decode_write": float(
-                total_wall
-                / len(
-                    selected_frames
-                )
-                * 1000.0
-            ),
-        },
-    }
 
-    manifest_path = (
-        output_root
-        / "manifest.json"
-    )
-
-    with manifest_path.open(
-        "w",
-        encoding="utf-8",
-    ) as file:
-        json.dump(
-            manifest,
-            file,
-            ensure_ascii=False,
-            indent=2,
+        return (
+            {
+                "episode_index": int(
+                    episode_id
+                ),
+                "path": (
+                    f"episodes/{episode_name}"
+                ),
+                "selected_frame_count": int(
+                    len(
+                        selected_frames
+                    )
+                ),
+                "source_frame_count": int(
+                    len(
+                        available_frames
+                    )
+                ),
+                "wall_seconds": float(
+                    elapsed
+                ),
+            },
+            static_ids,
         )
 
-    print(
-        "[5/5] COMPLETE"
+    except Exception:
+        # 当前 episode 如果失败，不留下半成品目录。
+        if episode_root.exists():
+            shutil.rmtree(
+                episode_root
+            )
+
+        raise
+
+
+# =============================================================================
+# 10. Main
+# =============================================================================
+
+def main() -> None:
+    args = parse_args()
+
+    total_start = time.perf_counter()
+
+    repo_root = Path(
+        "."
+    ).resolve()
+
+    dataset_root = resolve_dataset_root(
+        repo_root=repo_root,
+        dataset_arg=args.dataset,
+    )
+
+    version = validate_version_name(
+        args.version
+    )
+
+    output_root = resolve_output_root(
+        repo_root=repo_root,
+        dataset_root=dataset_root,
+        version=version,
+        output_arg=args.output,
+    )
+
+    if args.shard_size <= 0:
+        raise ValueError(
+            "--shard-size must be > 0"
+        )
+
+    if args.num_points <= 0:
+        raise ValueError(
+            "--num-points must be > 0"
+        )
+
+    if args.frame_stride <= 0:
+        raise ValueError(
+            "--frame-stride must be > 0"
+        )
+
+    camera_roles = parse_camera_roles(
+        args.cameras
+    )
+
+    available_episodes = (
+        RawSpatialDataset.discover_episode_ids(
+            dataset_root
+        )
+    )
+
+    selected_episodes = select_episode_ids(
+        text=args.episodes,
+        available=available_episodes,
+    )
+
+    if (
+        len(
+            selected_episodes
+        )
+        > 1
+        and args.frames.strip().lower()
+        != "all"
+    ):
+        raise ValueError(
+            "Explicit --frames is only allowed for "
+            "a single episode. "
+            "Use --frames all for multi-episode export."
+        )
+
+    # -------------------------------------------------------------------------
+    # 10.1 在正式创建 output 之前，先检查第一 episode camera contract。
+    # -------------------------------------------------------------------------
+    probe = RawSpatialDataset(
+        dataset_root,
+        episode=selected_episodes[
+            0
+        ],
+    )
+
+    missing_rgb = sorted(
+        set(
+            camera_roles
+        )
+        - set(
+            probe.camera_roles
+        )
+    )
+
+    missing_depth = sorted(
+        set(
+            camera_roles
+        )
+        - set(
+            probe.depth_roles
+        )
+    )
+
+    if missing_rgb:
+        raise KeyError(
+            f"Missing RGB cameras: {missing_rgb}"
+        )
+
+    if missing_depth:
+        raise KeyError(
+            f"Missing depth cameras: {missing_depth}"
+        )
+
+    # -------------------------------------------------------------------------
+    # 10.2 创建 spatial version root
+    # -------------------------------------------------------------------------
+    prepare_output_root(
+        output_root=output_root,
+        overwrite=args.overwrite,
     )
 
     print(
-        "output:",
+        "dataset:",
+        dataset_root,
+    )
+    print(
+        "spatial output:",
         output_root,
     )
-
     print(
-        "manifest:",
-        manifest_path,
-    )
-
-    print(
-        "frames:",
+        "available episodes:",
         len(
-            selected_frames
+            available_episodes
         ),
     )
-
     print(
-        "shards:",
-        len(
-            shard_entries
-        ),
+        "selected episodes:",
+        selected_episodes,
+    )
+    print(
+        "camera roles:",
+        camera_roles,
+    )
+    print(
+        "visual N:",
+        args.num_points,
     )
 
-    print(
-        "wall time [s]:",
-        f"{total_wall:.2f}",
+    # -------------------------------------------------------------------------
+    # 10.3 唯一 canonical SpatialPreprocessor
+    # -------------------------------------------------------------------------
+    config = (
+        make_baseline_config()
+        .with_camera_roles(
+            *camera_roles
+        )
+        .with_visual_sampling(
+            num_points=args.num_points,
+        )
     )
 
-    print(
-        "wall ms/frame incl IO+decode+write:",
-        f"{manifest['runtime']['average_wall_ms_per_frame_including_io_decode_write']:.2f}",
+    preprocessor = (
+        SpatialPreprocessor.from_repo_root(
+            repo_root=repo_root,
+            config=config,
+        )
     )
+
+    # -------------------------------------------------------------------------
+    # 10.4 Provenance
+    # -------------------------------------------------------------------------
+    asset_provenance = build_asset_provenance(
+        repo_root=repo_root,
+        config=config,
+    )
+
+    source_meta = build_source_meta_provenance(
+        dataset_root
+    )
+
+    git_info = git_provenance(
+        repo_root
+    )
+
+    # -------------------------------------------------------------------------
+    # 10.5 Episode export
+    # -------------------------------------------------------------------------
+    static_ids = None
+    episode_entries = []
+
+    try:
+        for ordinal, episode_id in enumerate(
+            selected_episodes,
+            start=1,
+        ):
+            print(
+                f"\n[{ordinal}/{len(selected_episodes)}] "
+                f"episode {episode_id}"
+            )
+
+            entry, static_ids = export_episode(
+                dataset_root=dataset_root,
+                episode_id=episode_id,
+                output_root=output_root,
+                preprocessor=preprocessor,
+                camera_roles=camera_roles,
+                frames_arg=args.frames,
+                frame_stride=args.frame_stride,
+                shard_size=args.shard_size,
+                static_ids=static_ids,
+            )
+
+            episode_entries.append(
+                entry
+            )
+
+        if static_ids is None:
+            raise RuntimeError(
+                "No spatial observations were exported"
+            )
+
+        # ---------------------------------------------------------------------
+        # 10.6 Static tactile topology
+        # ---------------------------------------------------------------------
+        static_manifest = write_static_ids(
+            output_root=output_root,
+            static_ids=static_ids,
+        )
+
+        # ---------------------------------------------------------------------
+        # 10.7 Dataset-level manifest
+        # ---------------------------------------------------------------------
+        total_wall = (
+            time.perf_counter()
+            - total_start
+        )
+
+        total_selected_frames = int(
+            sum(
+                entry[
+                    "selected_frame_count"
+                ]
+                for entry in episode_entries
+            )
+        )
+
+        manifest = {
+            "derived_schema_version": 1,
+            "spatial_version": version,
+            "status": "complete",
+            "source_dataset": {
+                "name": dataset_root.name,
+                "available_episode_count": int(
+                    len(
+                        available_episodes
+                    )
+                ),
+                "selected_episode_count": int(
+                    len(
+                        selected_episodes
+                    )
+                ),
+                "selected_episodes": [
+                    int(
+                        value
+                    )
+                    for value in selected_episodes
+                ],
+                "source_meta_sha256": source_meta,
+            },
+            "spatial_contract": {
+                "coordinate_frame": "base_link",
+                "xyz_unit": "m",
+                "force_unit": "dataset_native",
+                "visual_points_per_frame": int(
+                    args.num_points
+                ),
+                "tactile_points_per_frame": 600,
+                "camera_roles": list(
+                    camera_roles
+                ),
+            },
+            "storage": {
+                "format": "npy_shards_v1",
+                "shard_size": int(
+                    args.shard_size
+                ),
+                "static": static_manifest,
+                "episodes": episode_entries,
+            },
+            "preprocess_config": jsonable(
+                asdict(
+                    config
+                )
+            ),
+            "asset_provenance": asset_provenance,
+            "generator": {
+                "openpi_repo_git": git_info,
+                "source_reader": (
+                    "openpi.spatial_dataset.source."
+                    "RawSpatialDataset"
+                ),
+            },
+            "runtime": {
+                "total_selected_frames": (
+                    total_selected_frames
+                ),
+                "total_wall_seconds": float(
+                    total_wall
+                ),
+                "average_wall_ms_per_frame_including_io_decode_write": (
+                    float(
+                        total_wall
+                        / total_selected_frames
+                        * 1000.0
+                    )
+                    if total_selected_frames
+                    else None
+                ),
+            },
+        }
+
+        manifest_path = (
+            output_root
+            / "manifest.json"
+        )
+
+        with manifest_path.open(
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(
+                manifest,
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        print(
+            "\n===== COMPLETE ====="
+        )
+        print(
+            "dataset:",
+            dataset_root,
+        )
+        print(
+            "spatial version:",
+            version,
+        )
+        print(
+            "output:",
+            output_root,
+        )
+        print(
+            "episodes:",
+            len(
+                episode_entries
+            ),
+        )
+        print(
+            "frames:",
+            total_selected_frames,
+        )
+        print(
+            "wall seconds:",
+            f"{total_wall:.2f}",
+        )
+        print(
+            "manifest:",
+            manifest_path,
+        )
+
+    except Exception:
+        # 本次 version root 是 exporter 独占创建的。
+        # 任意失败都整体删除，避免 incomplete version 被误当正式数据。
+        if output_root.exists():
+            shutil.rmtree(
+                output_root
+            )
+
+        raise
 
 
 if __name__ == "__main__":

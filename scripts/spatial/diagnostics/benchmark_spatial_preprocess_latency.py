@@ -78,8 +78,7 @@ Benchmark 方法
 
 基本使用
 --------
-    PYTHONPATH=src python scripts/benchmark_spatial_preprocess_latency.py \
-        --legacy-repo ../3D_tactile \
+    PYTHONPATH=src python scripts/spatial/diagnostics/benchmark_spatial_preprocess_latency.py \
         --dataset data/press_0828_17 \
         --episode 0 \
         --frames 0,50,100,213 \
@@ -103,13 +102,13 @@ import argparse
 import gc
 import json
 from pathlib import Path
-import sys
 import time
 
 import numpy as np
 
 from openpi.spatial.config import make_baseline_config
 from openpi.spatial.preprocess import SpatialPreprocessor
+from openpi.spatial_dataset.source import RawSpatialDataset
 
 
 # =============================================================================
@@ -121,11 +120,6 @@ def parse_args() -> argparse.Namespace:
         description="Benchmark canonical spatial preprocessing latency."
     )
 
-    parser.add_argument(
-        "--legacy-repo",
-        type=Path,
-        default=Path("../3D_tactile"),
-    )
 
     parser.add_argument(
         "--dataset",
@@ -184,8 +178,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_frames(
     *,
-    legacy_repo: Path,
-    dataset_relative: Path,
+    dataset_root: Path,
     episode: int,
     frames: list[int],
     camera_roles: tuple[str, ...],
@@ -205,35 +198,13 @@ def load_frames(
             }
         }
 
-    Dataset / video decode 不进入 latency 计时。
+    dataset / video decode 不进入 latency 计时。
+
+    每个 camera video 对这一批 selected frames 只顺序 decode 一次。
     """
-    legacy_src = (
-        legacy_repo
-        / "pointcloud_delivery"
-        / "src"
-    ).resolve()
-
-    sys.path.insert(
-        0,
-        str(
-            legacy_src
-        ),
-    )
-
-    try:
-        from dataset import Dataset
-        from dataset import video_frames
-    finally:
-        sys.path.pop(
-            0
-        )
-
-    dataset = Dataset(
-        (
-            legacy_repo
-            / dataset_relative
-        ).resolve(),
-        episode,
+    dataset = RawSpatialDataset(
+        dataset_root,
+        episode=episode,
     )
 
     rows = {
@@ -242,8 +213,9 @@ def load_frames(
                 "frame_index"
             ]
         ): row
-        for row in dataset.rows(
-            frames
+        for row in dataset.iter_rows(
+            selected=frames,
+            depth_roles=camera_roles,
         )
     }
 
@@ -261,6 +233,14 @@ def load_frames(
             f"Dataset missing frames: {missing}"
         )
 
+    rgb_frames_by_role = {
+        role: dataset.load_video_frames(
+            role,
+            selected=frames,
+        )
+        for role in camera_roles
+    }
+
     output = {}
 
     for frame in frames:
@@ -274,53 +254,26 @@ def load_frames(
             ]
         )
 
-        depth_by_role = {}
-        rgb_by_role = {}
-
-        for role in camera_roles:
-            depth_by_role[
-                role
-            ] = np.asarray(
+        depth_by_role = {
+            role: np.asarray(
                 row[
                     f"observation.depths.cam_{role}"
                 ]
             )
+            for role in camera_roles
+        }
 
-            decoded = video_frames(
-                dataset.video(
+        rgb_by_role = {
+            role: np.asarray(
+                rgb_frames_by_role[
                     role
-                ),
-                [frame],
-            )
-
-            images = (
-                decoded[0]
-                if isinstance(
-                    decoded,
-                    tuple,
-                )
-                else decoded
-            )
-
-            rgb = (
-                images[
+                ][
                     frame
-                ]
-                if isinstance(
-                    images,
-                    dict,
-                )
-                else images[
-                    0
-                ]
-            )
-
-            rgb_by_role[
-                role
-            ] = np.asarray(
-                rgb,
+                ],
                 dtype=np.uint8,
             )
+            for role in camera_roles
+        }
 
         output[
             frame
@@ -690,14 +643,20 @@ def main() -> None:
         "."
     ).resolve()
 
-    legacy_repo = (
-        args.legacy_repo
-        if args.legacy_repo.is_absolute()
+
+    dataset_root = (
+        args.dataset
+        if args.dataset.is_absolute()
         else (
             repo_root
-            / args.legacy_repo
+            / args.dataset
         )
-    ).resolve()
+    ).expanduser().resolve()
+
+    if not dataset_root.is_dir():
+        raise FileNotFoundError(
+            dataset_root
+        )
 
     frames = [
         int(
@@ -760,8 +719,7 @@ def main() -> None:
     )
 
     loaded_frames = load_frames(
-        legacy_repo=legacy_repo,
-        dataset_relative=args.dataset,
+        dataset_root=dataset_root,
         episode=args.episode,
         frames=frames,
         camera_roles=camera_roles,
