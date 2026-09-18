@@ -16,16 +16,20 @@ import tyro
 import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
 import openpi.models.pi0_fast as pi0_fast
+import openpi.models.spatial_pi0_config as spatial_pi0_config
 import openpi.models.tokenizer as _tokenizer
+import openpi.models.spatial_encoders.conditioning as spatial_conditioning
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.xhand_policy as xhand_policy
 import openpi.shared.download as _download
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
 import openpi.training.misc.polaris_config as polaris_config
 import openpi.training.misc.roboarena_config as roboarena_config
 import openpi.training.optimizer as _optimizer
+import openpi.training.spatial_weight_loaders as spatial_weight_loaders
 import openpi.training.weight_loaders as weight_loaders
 import openpi.transforms as _transforms
 
@@ -62,6 +66,23 @@ class AssetsConfig:
 
 
 @dataclasses.dataclass(frozen=True)
+class SpatialDataConfig:
+    """可选的 derived spatial sidecar 配置。
+
+    ``dataset_root`` 指向包含以下目录的数据集根目录::
+
+        spatial/<version>/
+
+    读取基础 LeRobot sample 后，spatial sidecar 使用
+    ``episode_index`` + ``frame_index`` 做精确 join。
+    """
+
+    dataset_root: str
+    version: str = "v1"
+    copy_arrays: bool = True
+
+
+@dataclasses.dataclass(frozen=True)
 class DataConfig:
     # LeRobot repo id. If None, fake data will be created.
     repo_id: str | None = None
@@ -69,6 +90,9 @@ class DataConfig:
     asset_id: str | None = None
     # Contains precomputed normalization stats. If None, normalization will not be performed.
     norm_stats: dict[str, _transforms.NormStats] | None = None
+
+    # 可选 derived spatial sidecar；None 时保持 upstream OpenPI 行为不变。
+    spatial: SpatialDataConfig | None = None
 
     # Used to adopt the inputs from a dataset specific format to a common format
     # which is expected by the data transforms.
@@ -169,6 +193,8 @@ class DataConfigFactory(abc.ABC):
     repo_id: str = tyro.MISSING
     # Determines how the assets will be loaded.
     assets: AssetsConfig = dataclasses.field(default_factory=AssetsConfig)
+    # 可选 derived spatial sidecar 配置。
+    spatial: SpatialDataConfig | None = None
     # Base config that will be updated by the factory.
     base_config: tyro.conf.Suppress[DataConfig | None] = None
 
@@ -179,11 +205,14 @@ class DataConfigFactory(abc.ABC):
     def create_base_config(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
         repo_id = self.repo_id if self.repo_id is not tyro.MISSING else None
         asset_id = self.assets.asset_id or repo_id
+        base_config = self.base_config or DataConfig()
+        spatial = self.spatial if self.spatial is not None else base_config.spatial
         return dataclasses.replace(
-            self.base_config or DataConfig(),
+            base_config,
             repo_id=repo_id,
             asset_id=asset_id,
             norm_stats=self._load_norm_stats(epath.Path(self.assets.assets_dir or assets_dirs), asset_id),
+            spatial=spatial,
             use_quantile_norm=model_config.model_type != ModelType.PI0,
         )
 
@@ -275,6 +304,174 @@ class LeRobotAlohaDataConfig(DataConfigFactory):
             data_transforms=data_transforms,
             model_transforms=model_transforms,
             action_sequence_keys=self.action_sequence_keys,
+        )
+
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotXHandDataConfig(DataConfigFactory):
+    """
+    UR7e + XHand LeRobot v2.1 data config。
+
+    当前数据 contract：
+
+        RGB:
+            cam_front / cam_left / cam_right
+
+        raw state:
+            1972
+
+        model proprio state:
+            18
+            = 6 arm positions + 12 hand positions
+
+        dataset action:
+            18 absolute joint target positions
+
+        spatial:
+            可选 spatial/v1 sidecar
+
+    ``XHandInputs`` 负责从 1972-D state 中提取 18-D proprio。
+
+    action_dim 不在这里改成 18：
+    π0 base model 仍保持 32-D action architecture，
+    ModelTransformFactory 最后通过 PadStatesAndActions
+    将 18-D state/action 补到 32-D。
+    """
+
+    # FactileLDM / 当前数据均使用 LeRobot 的 task 文本作为 prompt。
+    prompt_from_task: bool = True
+
+    # Action representation 是训练假设，因此做成 config。
+    #
+    # 当前 baseline 使用原始 absolute joint targets：
+    #     arm 6-D  absolute
+    #     hand 12-D absolute
+    #
+    # 如需所有 18-D 都使用 absolute：
+    #     use_delta_arm_actions=False
+    #
+    # 如需 hand 也转 delta：
+    #     delta_hand_actions=True
+    # 当前数据集的 18-D action 全部是绝对关节目标位姿。
+    # baseline 不做 DeltaActions。
+    #
+    # 下面两个开关仅保留给未来明确的 action-representation 消融，
+    # 不代表数据本身是 delta action。
+    use_delta_arm_actions: bool = False
+    delta_hand_actions: bool = False
+
+    # 当前 LeRobot 数据中的 action sequence key。
+    action_sequence_keys: Sequence[str] = (
+        "action",
+    )
+
+    @override
+    def create(
+        self,
+        assets_dirs: pathlib.Path,
+        model_config: _model.BaseModelConfig,
+    ) -> DataConfig:
+        repack_transform = _transforms.Group(
+            inputs=[
+                _transforms.RepackTransform(
+                    {
+                        "images": {
+                            "cam_front": (
+                                "observation.images.cam_front"
+                            ),
+                            "cam_left": (
+                                "observation.images.cam_left"
+                            ),
+                            "cam_right": (
+                                "observation.images.cam_right"
+                            ),
+                        },
+                        "state": (
+                            "observation.state"
+                        ),
+                        "actions": (
+                            "action"
+                        ),
+                        "prompt": (
+                            "prompt"
+                        ),
+                    }
+                )
+            ]
+        )
+
+        data_transforms = _transforms.Group(
+            inputs=[
+                xhand_policy.XHandInputs(
+                    model_type=(
+                        model_config.model_type
+                    )
+                )
+            ],
+            outputs=[
+                xhand_policy.XHandOutputs()
+            ],
+        )
+
+        if self.use_delta_arm_actions:
+            if self.delta_hand_actions:
+                # 18-D arm + hand 全部使用 delta。
+                delta_action_mask = (
+                    [True]
+                    * xhand_policy.ROBOT_ACTION_DIM
+                )
+            else:
+                # 6-D UR arm delta；
+                # 12-D XHand target position 保持 absolute。
+                delta_action_mask = (
+                    _transforms.make_bool_mask(
+                        6,
+                        -12,
+                    )
+                )
+
+            data_transforms = (
+                data_transforms.push(
+                    inputs=[
+                        _transforms.DeltaActions(
+                            delta_action_mask
+                        )
+                    ],
+                    outputs=[
+                        _transforms.AbsoluteActions(
+                            delta_action_mask
+                        )
+                    ],
+                )
+            )
+
+        model_transforms = (
+            ModelTransformFactory()(
+                model_config
+            )
+        )
+
+        return dataclasses.replace(
+            self.create_base_config(
+                assets_dirs,
+                model_config,
+            ),
+            repack_transforms=(
+                repack_transform
+            ),
+            data_transforms=(
+                data_transforms
+            ),
+            model_transforms=(
+                model_transforms
+            ),
+            action_sequence_keys=(
+                self.action_sequence_keys
+            ),
+            prompt_from_task=(
+                self.prompt_from_task
+            ),
         )
 
 
@@ -824,6 +1021,133 @@ _CONFIGS = [
         weight_loader=weight_loaders.CheckpointWeightLoader("gs://openpi-assets/checkpoints/pi05_base/params"),
         num_train_steps=20_000,
         batch_size=64,
+    ),
+    #
+    # UR7e + XHand configs.
+    #
+    # 当前数据：
+    #     data/press_0828_17
+    #
+    # 当前 spatial sidecar：
+    #     data/press_0828_17/spatial/v1
+    #
+    # 训练前需要先分别为这些 config 计算 norm stats。
+    #
+    TrainConfig(
+        name="pi0_xhand_full_finetune",
+        model=pi0_config.Pi0Config(),
+        data=LeRobotXHandDataConfig(
+            repo_id="data/press_0828_17",
+            assets=AssetsConfig(
+                asset_id="press_0828_17",
+            ),
+        ),
+        weight_loader=(
+            weight_loaders.CheckpointWeightLoader(
+                "checkpoints/pi0_base/params"
+            )
+        ),
+        batch_size=4,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=10_000,
+    ),
+    TrainConfig(
+        name="pi0_xhand_spatial_joint_pointnet_prefix",
+        model=spatial_pi0_config.JointPointNetPi0Config(
+            conditioning=(
+                spatial_conditioning.SpatialConditioningConfig(
+                    target="prefix"
+                )
+            ),
+        ),
+        data=LeRobotXHandDataConfig(
+            repo_id="data/press_0828_17",
+            assets=AssetsConfig(
+                asset_id="press_0828_17",
+            ),
+            spatial=SpatialDataConfig(
+                dataset_root=(
+                    "data/press_0828_17"
+                ),
+                version="v1",
+            ),
+        ),
+        weight_loader=(
+            spatial_weight_loaders.SpatialCheckpointWeightLoader(
+                "checkpoints/pi0_base/params"
+            )
+        ),
+        batch_size=4,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=10_000,
+    ),
+    TrainConfig(
+        name="pi0_xhand_spatial_joint_pointnet_suffix",
+        model=spatial_pi0_config.JointPointNetPi0Config(
+            conditioning=(
+                spatial_conditioning.SpatialConditioningConfig(
+                    target="suffix"
+                )
+            ),
+        ),
+        data=LeRobotXHandDataConfig(
+            repo_id="data/press_0828_17",
+            assets=AssetsConfig(
+                asset_id="press_0828_17",
+            ),
+            spatial=SpatialDataConfig(
+                dataset_root=(
+                    "data/press_0828_17"
+                ),
+                version="v1",
+            ),
+        ),
+        weight_loader=(
+            spatial_weight_loaders.SpatialCheckpointWeightLoader(
+                "checkpoints/pi0_base/params"
+            )
+        ),
+        batch_size=4,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=10_000,
+    ),
+    TrainConfig(
+        name="pi0_xhand_spatial_joint_pointnet_both",
+        model=spatial_pi0_config.JointPointNetPi0Config(
+            conditioning=(
+                spatial_conditioning.SpatialConditioningConfig(
+                    target="both"
+                )
+            ),
+        ),
+        data=LeRobotXHandDataConfig(
+            repo_id="data/press_0828_17",
+            assets=AssetsConfig(
+                asset_id="press_0828_17",
+            ),
+            spatial=SpatialDataConfig(
+                dataset_root=(
+                    "data/press_0828_17"
+                ),
+                version="v1",
+            ),
+        ),
+        weight_loader=(
+            spatial_weight_loaders.SpatialCheckpointWeightLoader(
+                "checkpoints/pi0_base/params"
+            )
+        ),
+        batch_size=4,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=10_000,
     ),
     #
     # Fine-tuning DROID configs.

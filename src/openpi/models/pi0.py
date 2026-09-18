@@ -9,6 +9,10 @@ from typing_extensions import override
 
 from openpi.models import model as _model
 from openpi.models import pi0_config
+from openpi.models import spatial_pi0_config
+from openpi.models.spatial_encoders.conditioning import SpatialConditionedTokens
+from openpi.models.spatial_encoders.router import SpatialConditioningRouter
+from openpi.models.spatial_encoders.types import SpatialEncoderInput
 import openpi.models.gemma as _gemma
 import openpi.models.siglip as _siglip
 from openpi.shared import array_typing as at
@@ -89,6 +93,64 @@ class Pi0(_model.BaseModel):
         )
         img.lazy_init(next(iter(config.fake_obs().images.values())), train=False, rngs=rngs)
         self.PaliGemma = nnx.Dict(llm=llm, img=img)
+
+        # ------------------------------------------------------------------
+        # Optional spatial conditioning branch.
+        #
+        # 普通 Pi0Config：
+        #     spatial_router = None
+        #
+        # SpatialPi0Config：
+        #     encoder 由 config 创建；
+        #     router 决定 PREFIX / SUFFIX / BOTH；
+        #     encoder 本身不知道 token 最后被放到哪里。
+        # ------------------------------------------------------------------
+        self.spatial_router = None
+        self.spatial_use_visual = False
+        self.spatial_use_tactile = False
+
+        if isinstance(
+            config,
+            spatial_pi0_config.SpatialPi0Config,
+        ):
+            if config.conditioning.enabled:
+                spatial_encoder = (
+                    config.create_spatial_encoder(
+                        rngs=rngs
+                    )
+                )
+
+                self.spatial_router = (
+                    SpatialConditioningRouter(
+                        encoder=spatial_encoder,
+                        encoder_token_dim=(
+                            config.spatial_encoder_token_dim
+                        ),
+                        conditioning=(
+                            config.conditioning
+                        ),
+                        prefix_dim=(
+                            paligemma_config.width
+                            if config.conditioning.use_prefix
+                            else None
+                        ),
+                        suffix_dim=(
+                            action_expert_config.width
+                            if config.conditioning.use_suffix
+                            else None
+                        ),
+                        rngs=rngs,
+                    )
+                )
+
+                self.spatial_use_visual = bool(
+                    config.use_visual
+                )
+
+                self.spatial_use_tactile = bool(
+                    config.use_tactile
+                )
+
         self.action_in_proj = nnx.Linear(config.action_dim, action_expert_config.width, rngs=rngs)
         if config.pi05:
             self.time_mlp_in = nnx.Linear(action_expert_config.width, action_expert_config.width, rngs=rngs)
@@ -104,7 +166,9 @@ class Pi0(_model.BaseModel):
 
     @at.typecheck
     def embed_prefix(
-        self, obs: _model.Observation
+        self,
+        obs: _model.Observation,
+        spatial_conditioned: SpatialConditionedTokens | None = None,
     ) -> tuple[at.Float[at.Array, "b s emb"], at.Bool[at.Array, "b s"], at.Bool[at.Array, " s"]]:
         input_mask = []
         ar_mask = []
@@ -124,6 +188,63 @@ class Pi0(_model.BaseModel):
             # image tokens attend to each other
             ar_mask += [False] * image_tokens.shape[1]
 
+        # add optional spatial prefix tokens
+        #
+        # Prefix baseline 顺序：
+        #
+        #     image -> spatial -> language
+        #
+        # spatial token 与 image / language 同属 full-attention prefix block。
+        if (
+            spatial_conditioned is not None
+            and spatial_conditioned.has_prefix
+        ):
+            spatial_tokens = (
+                spatial_conditioned.prefix_tokens
+            )
+
+            spatial_mask = (
+                spatial_conditioned.prefix_mask
+            )
+
+            if (
+                spatial_tokens is None
+                or spatial_mask is None
+            ):
+                raise RuntimeError(
+                    "Spatial prefix routing is inconsistent."
+                )
+
+            if spatial_tokens.shape[1] <= 0:
+                raise ValueError(
+                    "Spatial prefix must contain at least one token."
+                )
+
+            # PaliGemma image embedding 决定 prefix dtype。
+            # Spatial encoder 可以内部使用 float32，
+            # 进入 VLM 前统一 cast，避免 concatenate 意外升精度。
+            if tokens:
+                spatial_tokens = (
+                    spatial_tokens.astype(
+                        tokens[0].dtype
+                    )
+                )
+
+            tokens.append(
+                spatial_tokens
+            )
+
+            input_mask.append(
+                spatial_mask.astype(
+                    jnp.bool_
+                )
+            )
+
+            ar_mask += (
+                [False]
+                * spatial_tokens.shape[1]
+            )
+
         # add language (aka tokenized inputs)
         if obs.tokenized_prompt is not None:
             tokenized_inputs = self.PaliGemma.llm(obs.tokenized_prompt, method="embed")
@@ -138,7 +259,11 @@ class Pi0(_model.BaseModel):
 
     @at.typecheck
     def embed_suffix(
-        self, obs: _model.Observation, noisy_actions: _model.Actions, timestep: at.Float[at.Array, " b"]
+        self,
+        obs: _model.Observation,
+        noisy_actions: _model.Actions,
+        timestep: at.Float[at.Array, " b"],
+        spatial_conditioned: SpatialConditionedTokens | None = None,
     ) -> tuple[
         at.Float[at.Array, "b s emb"],
         at.Bool[at.Array, "b s"],
@@ -148,15 +273,91 @@ class Pi0(_model.BaseModel):
         input_mask = []
         ar_mask = []
         tokens = []
+
+        # 先计算 action projection，既用于后面的 action tokens，
+        # 也提供 action-expert suffix 的 dtype reference。
+        action_tokens = self.action_in_proj(
+            noisy_actions
+        )
+
         if not self.pi05:
             # add a single state token
             state_token = self.state_proj(obs.state)[:, None, :]
             tokens.append(state_token)
             input_mask.append(jnp.ones((obs.state.shape[0], 1), dtype=jnp.bool_))
-            # image/language inputs do not attend to state or actions
+            # 开启 action-expert observation block。
             ar_mask += [True]
 
-        action_tokens = self.action_in_proj(noisy_actions)
+        # add optional spatial suffix tokens
+        #
+        # Pi0：
+        #     state + spatial 属于同一个双向 observation block。
+        #
+        # Pi0.5：
+        #     没有 continuous state token，因此 spatial 自己开启
+        #     一个 observation block。
+        #
+        # noisy action tokens 始终在后面再开启新的 block。
+        if (
+            spatial_conditioned is not None
+            and spatial_conditioned.has_suffix
+        ):
+            spatial_tokens = (
+                spatial_conditioned.suffix_tokens
+            )
+
+            spatial_mask = (
+                spatial_conditioned.suffix_mask
+            )
+
+            if (
+                spatial_tokens is None
+                or spatial_mask is None
+            ):
+                raise RuntimeError(
+                    "Spatial suffix routing is inconsistent."
+                )
+
+            if spatial_tokens.shape[1] <= 0:
+                raise ValueError(
+                    "Spatial suffix must contain at least one token."
+                )
+
+            spatial_tokens = (
+                spatial_tokens.astype(
+                    action_tokens.dtype
+                )
+            )
+
+            tokens.append(
+                spatial_tokens
+            )
+
+            input_mask.append(
+                spatial_mask.astype(
+                    jnp.bool_
+                )
+            )
+
+            if self.pi05:
+                # Pi0.5 没有 state token，spatial 自己形成一个新 block。
+                ar_mask += (
+                    [True]
+                    + (
+                        [False]
+                        * (
+                            spatial_tokens.shape[1]
+                            - 1
+                        )
+                    )
+                )
+            else:
+                # Pi0 中 spatial 与 state 共享 observation block。
+                ar_mask += (
+                    [False]
+                    * spatial_tokens.shape[1]
+                )
+
         # embed timestep using sine-cosine positional encoding with sensitivity in the range [0, 1]
         time_emb = posemb_sincos(timestep, self.action_in_proj.out_features, min_period=4e-3, max_period=4.0)
         if self.pi05:
@@ -185,6 +386,49 @@ class Pi0(_model.BaseModel):
         ar_mask = jnp.array(ar_mask)
         return tokens, input_mask, ar_mask, adarms_cond
 
+    def _encode_spatial_conditioning(
+        self,
+        obs: _model.Observation,
+    ) -> SpatialConditionedTokens | None:
+        """Spatial encoder 每个 observation 只执行一次。
+
+        这里同时负责 visual-only / tactile-only ablation：
+        derived data 可以一直保留完整 modality，
+        具体模型 config 决定哪一支真正进入 encoder。
+        """
+        if self.spatial_router is None:
+            if obs.spatial is not None:
+                raise ValueError(
+                    "Observation contains spatial input, "
+                    "but this Pi0 was created without enabled "
+                    "spatial conditioning."
+                )
+
+            return None
+
+        if obs.spatial is None:
+            raise ValueError(
+                "This Pi0 was created with spatial conditioning, "
+                "but Observation.spatial is None."
+            )
+
+        spatial = SpatialEncoderInput(
+            visual=(
+                obs.spatial.visual
+                if self.spatial_use_visual
+                else None
+            ),
+            tactile=(
+                obs.spatial.tactile
+                if self.spatial_use_tactile
+                else None
+            ),
+        )
+
+        return self.spatial_router(
+            spatial
+        )
+
     @override
     def compute_loss(
         self, rng: at.KeyArrayLike, observation: _model.Observation, actions: _model.Actions, *, train: bool = False
@@ -199,9 +443,25 @@ class Pi0(_model.BaseModel):
         x_t = time_expanded * noise + (1 - time_expanded) * actions
         u_t = noise - actions
 
+        # Spatial encoder 只执行一次；PREFIX / SUFFIX / BOTH
+        # 都复用同一个 encoded spatial representation。
+        spatial_conditioned = (
+            self._encode_spatial_conditioning(
+                observation
+            )
+        )
+
         # one big forward pass of prefix + suffix at once
-        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
-        suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(observation, x_t, time)
+        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(
+            observation,
+            spatial_conditioned,
+        )
+        suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(
+            observation,
+            x_t,
+            time,
+            spatial_conditioned,
+        )
         input_mask = jnp.concatenate([prefix_mask, suffix_mask], axis=1)
         ar_mask = jnp.concatenate([prefix_ar_mask, suffix_ar_mask], axis=0)
         attn_mask = make_attn_mask(input_mask, ar_mask)
@@ -230,8 +490,21 @@ class Pi0(_model.BaseModel):
         if noise is None:
             noise = jax.random.normal(rng, (batch_size, self.action_horizon, self.action_dim))
 
+        # Spatial encoder 在 denoise loop 外只执行一次。
+        #
+        # SUFFIX / BOTH 模式下，每个 denoise step 复用同一组
+        # spatial suffix tokens，不重复运行 PointNet / PointNet++。
+        spatial_conditioned = (
+            self._encode_spatial_conditioning(
+                observation
+            )
+        )
+
         # first fill KV cache with a forward pass of the prefix
-        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(observation)
+        prefix_tokens, prefix_mask, prefix_ar_mask = self.embed_prefix(
+            observation,
+            spatial_conditioned,
+        )
         prefix_attn_mask = make_attn_mask(prefix_mask, prefix_ar_mask)
         positions = jnp.cumsum(prefix_mask, axis=1) - 1
         _, kv_cache = self.PaliGemma.llm([prefix_tokens, None], mask=prefix_attn_mask, positions=positions)
@@ -239,7 +512,13 @@ class Pi0(_model.BaseModel):
         def step(carry):
             x_t, time = carry
             suffix_tokens, suffix_mask, suffix_ar_mask, adarms_cond = self.embed_suffix(
-                observation, x_t, jnp.broadcast_to(time, batch_size)
+                observation,
+                x_t,
+                jnp.broadcast_to(
+                    time,
+                    batch_size,
+                ),
+                spatial_conditioned,
             )
             # `suffix_attn_mask` is shape (b, suffix_len, suffix_len) indicating how the suffix tokens can attend to each
             # other

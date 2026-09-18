@@ -18,6 +18,7 @@ import safetensors
 import torch
 
 from openpi.models_pytorch import pi0_pytorch
+import openpi.models.spatial_encoders.types as _spatial_types
 from openpi.shared import image_tools
 import openpi.shared.array_typing as at
 
@@ -69,6 +70,24 @@ IMAGE_RESOLUTION = (224, 224)
 #     "token_ar_mask": int32[*b, l],  # Optional, autoregressive mask for FAST model
 #     "token_loss_mask": bool[*b, l],  # Optional, loss mask for FAST model
 #
+#     # 可选 derived spatial sidecar；shape contract 不绑定具体 encoder。
+#     "spatial": {
+#         "visual": {
+#             "xyz_m": float32[*b, nv, 3],
+#             "rgb": (uint8|float32)[*b, nv, 3],
+#             "rgb_valid": bool[*b, nv],
+#             "point_mask": bool[*b, nv],
+#         },
+#         "tactile": {
+#             "xyz_m": float32[*b, nt, 3],
+#             "force": float32[*b, nt, 3],
+#             "force_norm": float32[*b, nt],
+#             "finger_id": int32[*b, nt],
+#             "taxel_id": int32[*b, nt],
+#             "point_mask": bool[*b, nt],
+#         },
+#     },
+#
 #      # Actions data.
 #      "actions": float32[*b ah ad]
 # }
@@ -94,6 +113,9 @@ class Observation(Generic[ArrayT]):
     # Low-dimensional robot state.
     state: at.Float[ArrayT, "*b s"]
 
+    # 可选、与具体 encoder 无关的 spatial sidecar。
+    spatial: _spatial_types.SpatialEncoderInput[ArrayT] | None = None
+
     # Tokenized prompt.
     tokenized_prompt: at.Int[ArrayT, "*b l"] | None = None
     # Tokenized prompt mask.
@@ -118,10 +140,42 @@ class Observation(Generic[ArrayT]):
                 data["image"][key] = data["image"][key].astype(np.float32) / 255.0 * 2.0 - 1.0
             elif hasattr(data["image"][key], "dtype") and data["image"][key].dtype == torch.uint8:
                 data["image"][key] = data["image"][key].to(torch.float32).permute(0, 3, 1, 2) / 255.0 * 2.0 - 1.0
+        spatial_data = data.get("spatial")
+        spatial = None
+        if spatial_data is not None:
+            visual_data = spatial_data.get("visual")
+            tactile_data = spatial_data.get("tactile")
+
+            visual = None
+            if visual_data is not None:
+                visual = _spatial_types.VisualSpatialInput(
+                    xyz_m=visual_data["xyz_m"],
+                    rgb=visual_data["rgb"],
+                    rgb_valid=visual_data["rgb_valid"],
+                    point_mask=visual_data["point_mask"],
+                )
+
+            tactile = None
+            if tactile_data is not None:
+                tactile = _spatial_types.TactileSpatialInput(
+                    xyz_m=tactile_data["xyz_m"],
+                    force=tactile_data["force"],
+                    force_norm=tactile_data["force_norm"],
+                    finger_id=tactile_data["finger_id"],
+                    taxel_id=tactile_data["taxel_id"],
+                    point_mask=tactile_data["point_mask"],
+                )
+
+            spatial = _spatial_types.SpatialEncoderInput(
+                visual=visual,
+                tactile=tactile,
+            )
+
         return cls(
             images=data["image"],
             image_masks=data["image_mask"],
             state=data["state"],
+            spatial=spatial,
             tokenized_prompt=data.get("tokenized_prompt"),
             tokenized_prompt_mask=data.get("tokenized_prompt_mask"),
             token_ar_mask=data.get("token_ar_mask"),
@@ -201,6 +255,7 @@ def preprocess_observation(
         images=out_images,
         image_masks=out_masks,
         state=observation.state,
+        spatial=observation.spatial,
         tokenized_prompt=observation.tokenized_prompt,
         tokenized_prompt_mask=observation.tokenized_prompt_mask,
         token_ar_mask=observation.token_ar_mask,

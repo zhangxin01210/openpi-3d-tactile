@@ -12,6 +12,8 @@ import numpy as np
 import torch
 
 import openpi.models.model as _model
+from openpi.spatial_dataset.adapter import SpatialAugmentedDataset
+from openpi.spatial_dataset.derived import SpatialDerivedDataset
 import openpi.training.config as _config
 from openpi.training.droid_rlds_dataset import DroidRldsDataset
 import openpi.transforms as _transforms
@@ -51,12 +53,43 @@ class DataLoader(Protocol[T_co]):
 
 
 class TransformedDataset(Dataset[T_co]):
-    def __init__(self, dataset: Dataset, transforms: Sequence[_transforms.DataTransformFn]):
+    def __init__(
+        self,
+        dataset: Dataset,
+        transforms: Sequence[_transforms.DataTransformFn],
+        *,
+        preserve_keys: Sequence[str] = (),
+    ):
         self._dataset = dataset
         self._transform = _transforms.compose(transforms)
+        self._preserve_keys = tuple(preserve_keys)
 
     def __getitem__(self, index: SupportsIndex) -> T_co:
-        return self._transform(self._dataset[index])
+        item = self._dataset[index]
+
+        if not self._preserve_keys:
+            return self._transform(item)
+
+        # spatial sidecar 有意绕开原有 OpenPI 的 repack / normalization /
+        # model transforms。原有 transform 面向 image/state/action，且可能
+        # 丢弃未知 key，因此这里显式保存并在 transform 后恢复。
+        working = dict(item)
+        preserved = {}
+
+        for key in self._preserve_keys:
+            if key not in working:
+                raise KeyError(f"需要保留的 key 不存在： {key!r} in dataset item.")
+            preserved[key] = working.pop(key)
+
+        transformed = self._transform(working)
+        output = dict(transformed)
+
+        for key, value in preserved.items():
+            if key in output:
+                raise KeyError(f"transform 输出意外包含保留 key： {key!r}.")
+            output[key] = value
+
+        return typing.cast(T_co, output)
 
     def __len__(self) -> int:
         return len(self._dataset)
@@ -148,6 +181,17 @@ def create_torch_dataset(
     if data_config.prompt_from_task:
         dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
 
+    if data_config.spatial is not None:
+        spatial_dataset = SpatialDerivedDataset(
+            data_config.spatial.dataset_root,
+            version=data_config.spatial.version,
+        )
+        dataset = SpatialAugmentedDataset(
+            dataset,
+            spatial_dataset,
+            copy_arrays=data_config.spatial.copy_arrays,
+        )
+
     return dataset
 
 
@@ -188,6 +232,7 @@ def transform_dataset(dataset: Dataset, data_config: _config.DataConfig, *, skip
             _transforms.Normalize(norm_stats, use_quantiles=data_config.use_quantile_norm),
             *data_config.model_transforms.inputs,
         ],
+        preserve_keys=("spatial",) if data_config.spatial is not None else (),
     )
 
 
@@ -243,6 +288,8 @@ def create_data_loader(
     logging.info(f"data_config: {data_config}")
 
     if data_config.rlds_data_dir is not None:
+        if data_config.spatial is not None:
+            raise NotImplementedError("Spatial sidecar 目前只支持 LeRobot dataset。")
         return create_rlds_data_loader(
             data_config,
             action_horizon=config.model.action_horizon,
