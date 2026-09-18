@@ -1,0 +1,21 @@
+# Re-calibrated T_base_color only (length: m, rotation: quaternion xyzw).
+# Intrinsics, depth_scale and T_color_depth are NOT stored here; they keep
+# coming from pointcloud_handoff/config/cameras_0903.json.
+# Transform convention T_A_B: p_base = R_base_color p_color + t_base_color.
+calibration_id: external_0909
+transform_convention: T_A_B maps coordinates in B to A; p_base = T_base_color @ p_color
+target_frame: base_link
+
+front:
+  T_base_color:
+    from_frame: front_color_optical
+    to_frame: base_link
+    translation_m: [0.616674, 0.884961, 0.784854]
+    quaternion_xyzw: [-0.145715, -0.877912, 0.448991, 0.080278]
+
+left:
+  T_base_color:
+    from_frame: left_color_optical
+    to_frame: base_link
+    translation_m: [-0.084373, 0.510763, 0.633648]
+    quaternion_xyzw: [-0.512067, 0.717639, -0.359671, 0.305646]

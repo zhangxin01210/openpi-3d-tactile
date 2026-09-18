@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "calibration_id": "external_0903",
+  "length_unit": "m",
+  "target_frame": "base_link",
+  "transform_convention": "T_A_B maps coordinates in B to A; column-vector p_A=T_A_B @ p_B_h",
+  "source": "evidence/camera_query_7.txt",
+  "calibration_status": "user_confirmed_current_after_camera_move; geometric_accuracy_to_validate",
+  "cameras": {
+    "front": {
+      "serial": "347622074420",
+      "reported_device_model": "D435I",
+      "dataset_rgb_key": "observation.images.cam_front",
+      "dataset_depth_key": "observation.depths.cam_front",
+      "color_intrinsics": {
+        "width": 640,
+        "height": 480,
+        "fx": 606.449951171875,
+        "fy": 606.171142578125,
+        "cx": 323.8404541015625,
+        "cy": 234.1532440185547,
+        "model": "distortion.inverse_brown_conrady",
+        "coeffs": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "depth_intrinsics": {
+        "width": 640,
+        "height": 480,
+        "fx": 387.7893371582031,
+        "fy": 387.7893371582031,
+        "cx": 321.7603454589844,
+        "cy": 241.91043090820312,
+        "model": "distortion.brown_conrady",
+        "coeffs": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "depth_scale_m_per_unit": 0.0010000000474974513,
+      "depth_storage_dtype": "uint16",
+      "depth_alignment": {
+        "working_mode": "raw_depth_optical",
+        "evidence_status": "strong_inference_from_capture_code_and_report; verify_local_dataset",
+        "note": "No rs.align found in inspected capture path; equal image sizes do not imply aligned depth."
+      },
+      "T_color_depth": {
+        "from_frame": "front_depth_optical",
+        "to_frame": "front_color_optical",
+        "rotation_matrix_rows": [
+          [
+            0.999976634979248,
+            0.003140633925795555,
+            -0.006075950805097818
+          ],
+          [
+            -0.00312922359444201,
+            0.9999933242797852,
+            0.0018865619786083698
+          ],
+          [
+            0.006081835366785526,
+            -0.0018675047904253006,
+            0.9999797344207764
+          ]
+        ],
+        "translation_m": [
+          0.01491712685674429,
+          0.000589810311794281,
+          8.590703509980813e-05
+        ]
+      },
+      "T_base_color": {
+        "from_frame": "front_color_optical",
+        "to_frame": "base_link",
+        "translation_m": [
+          0.6283084128129911,
+          0.8683926678556529,
+          0.7831789873773212
+        ],
+        "quaternion_xyzw": [
+          -0.15522525867681203,
+          -0.8794966848578589,
+          0.44270681231144743,
+          0.08000861657215297
+        ]
+      },
+      "original_calib_path": "/home/amax/external_calibration_front_0903.calib",
+      "original_tracking_base_frame": "camera_color_optical_frame",
+      "offline_frame_alias_note": "front/left prefixes disambiguate the same original ROS frame name; they add no physical transform."
+    },
+    "left": {
+      "serial": "347622075196",
+      "reported_device_model": "D435I",
+      "dataset_rgb_key": "observation.images.cam_left",
+      "dataset_depth_key": "observation.depths.cam_left",
+      "color_intrinsics": {
+        "width": 640,
+        "height": 480,
+        "fx": 607.6844482421875,
+        "fy": 607.2891235351562,
+        "cx": 328.4449462890625,
+        "cy": 248.81956481933594,
+        "model": "distortion.inverse_brown_conrady",
+        "coeffs": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "depth_intrinsics": {
+        "width": 640,
+        "height": 480,
+        "fx": 389.5453186035156,
+        "fy": 389.5453186035156,
+        "cx": 326.08770751953125,
+        "cy": 237.9357452392578,
+        "model": "distortion.brown_conrady",
+        "coeffs": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "depth_scale_m_per_unit": 0.0010000000474974513,
+      "depth_storage_dtype": "uint16",
+      "depth_alignment": {
+        "working_mode": "raw_depth_optical",
+        "evidence_status": "strong_inference_from_capture_code_and_report; verify_local_dataset",
+        "note": "No rs.align found in inspected capture path; equal image sizes do not imply aligned depth."
+      },
+      "T_color_depth": {
+        "from_frame": "left_depth_optical",
+        "to_frame": "left_color_optical",
+        "rotation_matrix_rows": [
+          [
+            0.9999919533729553,
+            6.226632103789598e-05,
+            -0.004007765091955662
+          ],
+          [
+            -4.039779378217645e-05,
+            0.9999850988388062,
+            0.005456389393657446
+          ],
+          [
+            0.004008044954389334,
+            -0.005456183571368456,
+            0.9999771118164062
+          ]
+        ],
+        "translation_m": [
+          0.01502519752830267,
+          5.222163599682972e-05,
+          0.00015567854279652238
+        ]
+      },
+      "T_base_color": {
+        "from_frame": "left_color_optical",
+        "to_frame": "base_link",
+        "translation_m": [
+          -0.08527090340184479,
+          0.5182037571409527,
+          0.6274463554969547
+        ],
+        "quaternion_xyzw": [
+          -0.5066388357325423,
+          0.7199052332907304,
+          -0.3626354341940711,
+          0.3058579524469988
+        ]
+      },
+      "original_calib_path": "/home/amax/external_calibration_left_0903.calib",
+      "original_tracking_base_frame": "camera_color_optical_frame",
+      "offline_frame_alias_note": "front/left prefixes disambiguate the same original ROS frame name; they add no physical transform."
+    }
+  }
+}
