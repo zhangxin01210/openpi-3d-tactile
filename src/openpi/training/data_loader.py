@@ -7,7 +7,8 @@ from typing import Literal, Protocol, SupportsIndex, TypeVar
 
 import jax
 import jax.numpy as jnp
-import lerobot.common.datasets.lerobot_dataset as lerobot_dataset
+# import lerobot.common.datasets.lerobot_dataset as lerobot_dataset
+import lerobot.datasets.lerobot_dataset as lerobot_dataset
 import numpy as np
 import torch
 
@@ -19,6 +20,30 @@ from openpi.training.droid_rlds_dataset import DroidRldsDataset
 import openpi.transforms as _transforms
 
 T_co = TypeVar("T_co", covariant=True)
+
+
+def _lerobot_tasks_to_dict(tasks) -> dict[int, str]:
+    if isinstance(tasks, dict):
+        return tasks
+
+    import pandas as pd
+
+    if not isinstance(tasks, pd.DataFrame):
+        return dict(tasks)
+
+    if "task" in tasks.columns:
+        return dict(zip(tasks["task_index"], tasks["task"]))
+
+    if "task_index" in tasks.columns:
+        return {
+            int(row["task_index"]): str(index)
+            for index, row in tasks.iterrows()
+        }
+
+    raise ValueError(
+        "Unsupported LeRobot tasks table; expected columns "
+        f"'task_index' and either 'task' or task text in the index, got {list(tasks.columns)!r}."
+    )
 
 
 class Dataset(Protocol[T_co]):
@@ -169,18 +194,21 @@ def create_torch_dataset(
         raise ValueError("Repo ID is not set. Cannot create dataset.")
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
-
     dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+    # Some datasets can have tiny timestamp drift around frame decode boundaries.
+    # Allow overriding tolerance via env to avoid hard failures in dataloader workers.
+    tolerance_s = float(os.environ.get("OPENPI_LEROBOT_TOLERANCE_S", "0.0005"))
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
+        tolerance_s=tolerance_s,
     )
 
     if data_config.prompt_from_task:
-        dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(dataset_meta.tasks)])
-
+        tasks = _lerobot_tasks_to_dict(dataset_meta.tasks)
+        dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(tasks)])
     if data_config.spatial is not None:
         spatial_dataset = SpatialDerivedDataset(
             data_config.spatial.dataset_root,
@@ -191,7 +219,6 @@ def create_torch_dataset(
             spatial_dataset,
             copy_arrays=data_config.spatial.copy_arrays,
         )
-
     return dataset
 
 

@@ -691,27 +691,25 @@ class JointPointNetEncoder(
             *config.hidden_dims,
         )
 
-        self.point_layers = nnx.List(
-            [
-                nnx.Linear(
-                    dimensions[
-                        index
-                    ],
-                    dimensions[
-                        index
-                        + 1
-                    ],
-                    rngs=rngs,
+        self.point_layers = [
+            nnx.Linear(
+                dimensions[
+                    index
+                ],
+                dimensions[
+                    index
+                    + 1
+                ],
+                rngs=rngs,
+            )
+            for index
+            in range(
+                len(
+                    dimensions
                 )
-                for index
-                in range(
-                    len(
-                        dimensions
-                    )
-                    - 1
-                )
-            ]
-        )
+                - 1
+            )
+        ]
 
         pooled_dim = (
             config.hidden_dims[

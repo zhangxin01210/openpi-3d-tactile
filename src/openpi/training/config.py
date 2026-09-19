@@ -1063,20 +1063,20 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="data/press_0828_17",
+            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
             assets=AssetsConfig(
-                asset_id="press_0828_17",
+                asset_id="/home/sai/openpi_chem/pretrained/pi0_base/assets",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "data/press_0828_17"
+                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "checkpoints/pi0_base/params"
+                "/home/sai/openpi_chem/pretrained/pi0_base/params"
             )
         ),
         batch_size=4,
@@ -1095,20 +1095,20 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="data/press_0828_17",
+            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
             assets=AssetsConfig(
-                asset_id="press_0828_17",
+                asset_id="/home/sai/openpi_chem/pretrained/pi0_base/assets",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "data/press_0828_17"
+                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "checkpoints/pi0_base/params"
+                "/home/sai/openpi_chem/pretrained/pi0_base/params"
             )
         ),
         batch_size=4,
@@ -1127,20 +1127,20 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="data/press_0828_17",
+            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
             assets=AssetsConfig(
-                asset_id="press_0828_17",
+                asset_id="/home/sai/openpi_chem/pretrained/pi0_base/assets",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "data/press_0828_17"
+                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "checkpoints/pi0_base/params"
+                "/home/sai/openpi_chem/pretrained/pi0_base/params"
             )
         ),
         batch_size=4,
