@@ -24,6 +24,7 @@ import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
 import openpi.policies.xhand_policy as xhand_policy
 import openpi.shared.download as _download
+import openpi.shared.nnx_utils as nnx_utils
 import openpi.shared.normalize as _normalize
 import openpi.training.droid_rlds_dataset as droid_rlds_dataset
 import openpi.training.misc.polaris_config as polaris_config
@@ -1065,7 +1066,8 @@ _CONFIGS = [
         data=LeRobotXHandDataConfig(
             repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
             assets=AssetsConfig(
-                asset_id="/home/sai/openpi_chem/pretrained/pi0_base/assets",
+                assets_dir="./assets/xhand",
+                asset_id="press_0828_17_v3_v30",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
@@ -1077,6 +1079,11 @@ _CONFIGS = [
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
                 "/home/sai/openpi_chem/pretrained/pi0_base/params"
+            )
+        ),
+        freeze_filter=nnx.Not(
+            nnx_utils.PathRegex(
+                "spatial_router/.*"
             )
         ),
         batch_size=4,
@@ -1097,7 +1104,8 @@ _CONFIGS = [
         data=LeRobotXHandDataConfig(
             repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
             assets=AssetsConfig(
-                asset_id="/home/sai/openpi_chem/pretrained/pi0_base/assets",
+                assets_dir="./assets/xhand",
+                asset_id="press_0828_17_v3_v30",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
@@ -1109,6 +1117,11 @@ _CONFIGS = [
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
                 "/home/sai/openpi_chem/pretrained/pi0_base/params"
+            )
+        ),
+        freeze_filter=nnx.Not(
+            nnx_utils.PathRegex(
+                "spatial_router/.*"
             )
         ),
         batch_size=4,
@@ -1129,7 +1142,8 @@ _CONFIGS = [
         data=LeRobotXHandDataConfig(
             repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
             assets=AssetsConfig(
-                asset_id="/home/sai/openpi_chem/pretrained/pi0_base/assets",
+                assets_dir="./assets/xhand",
+                asset_id="press_0828_17_v3_v30",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
@@ -1141,6 +1155,11 @@ _CONFIGS = [
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
                 "/home/sai/openpi_chem/pretrained/pi0_base/params"
+            )
+        ),
+        freeze_filter=nnx.Not(
+            nnx_utils.PathRegex(
+                "spatial_router/.*"
             )
         ),
         batch_size=4,

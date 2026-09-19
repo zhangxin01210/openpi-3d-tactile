@@ -153,9 +153,32 @@ import openpi.shared.array_typing as at
 import openpi.shared.download as download
 
 
+def _flatten_params(params: at.Params):
+    return flax.traverse_util.flatten_dict(
+        params,
+    )
+
+
+def _path_to_str(path) -> str:
+    if isinstance(path, tuple):
+        return "/".join(str(part) for part in path)
+    return str(path)
+
+
 # =============================================================================
 # 1. Loader
 # =============================================================================
+
+@dataclasses.dataclass(
+    frozen=True
+)
+class SpatialCheckpointAudit:
+    loaded: tuple[str, ...]
+    allowed_missing: tuple[str, ...]
+    unexpected_missing: tuple[str, ...]
+    unexpected_loaded: tuple[str, ...]
+    shape_mismatches: tuple[str, ...]
+
 
 @dataclasses.dataclass(
     frozen=True
@@ -210,6 +233,25 @@ class SpatialCheckpointWeightLoader:
             ),
         )
 
+    def audit(
+        self,
+        params: at.Params,
+    ) -> SpatialCheckpointAudit:
+        loaded_params = _model.restore_params(
+            download.maybe_download(
+                self.params_path
+            ),
+            restore_type=np.ndarray,
+        )
+
+        return audit_spatial_checkpoint(
+            loaded_params=loaded_params,
+            reference_params=params,
+            allowed_missing_regexes=(
+                self.allowed_missing_regexes
+            ),
+        )
+
 
 # =============================================================================
 # 2. Merge
@@ -230,18 +272,12 @@ def _merge_spatial_checkpoint(
     reference_params：
         当前模型完整结构，是最终输出结构的唯一标准。
     """
-    flat_reference = (
-        flax.traverse_util.flatten_dict(
-            reference_params,
-            sep="/",
-        )
+    flat_reference = _flatten_params(
+        reference_params
     )
 
-    flat_loaded = (
-        flax.traverse_util.flatten_dict(
-            loaded_params,
-            sep="/",
-        )
+    flat_loaded = _flatten_params(
+        loaded_params
     )
 
     patterns = tuple(
@@ -293,7 +329,7 @@ def _merge_spatial_checkpoint(
         ):
             raise ValueError(
                 "Checkpoint parameter shape mismatch for "
-                f"{key!r}: loaded={loaded_shape}, "
+                f"{_path_to_str(key)!r}: loaded={loaded_shape}, "
                 f"current={reference_shape}"
             )
 
@@ -342,7 +378,7 @@ def _merge_spatial_checkpoint(
     for key in missing_keys:
         allowed = any(
             pattern.fullmatch(
-                key
+                _path_to_str(key)
             )
             is not None
             for pattern
@@ -364,7 +400,7 @@ def _merge_spatial_checkpoint(
 
     if unexpected_missing:
         preview = "\n".join(
-            f"  - {key}"
+            f"  - {_path_to_str(key)}"
             for key
             in unexpected_missing[
                 :30
@@ -424,5 +460,59 @@ def _merge_spatial_checkpoint(
 
     return flax.traverse_util.unflatten_dict(
         result,
-        sep="/",
+    )
+
+
+def audit_spatial_checkpoint(
+    *,
+    loaded_params: at.Params,
+    reference_params: at.Params,
+    allowed_missing_regexes: tuple[str, ...],
+) -> SpatialCheckpointAudit:
+    flat_reference = _flatten_params(reference_params)
+    flat_loaded = _flatten_params(loaded_params)
+    patterns = tuple(re.compile(pattern) for pattern in allowed_missing_regexes)
+
+    loaded = []
+    shape_mismatches = []
+
+    for key, loaded_value in flat_loaded.items():
+        reference_value = flat_reference.get(key)
+        if reference_value is None:
+            continue
+
+        loaded_shape = getattr(loaded_value, "shape", None)
+        reference_shape = getattr(reference_value, "shape", None)
+        if (
+            loaded_shape is not None
+            and reference_shape is not None
+            and tuple(loaded_shape) != tuple(reference_shape)
+        ):
+            shape_mismatches.append(
+                f"{_path_to_str(key)}: loaded={tuple(loaded_shape)} current={tuple(reference_shape)}"
+            )
+            continue
+
+        loaded.append(key)
+
+    missing = sorted(set(flat_reference) - set(loaded))
+    allowed_missing = []
+    unexpected_missing = []
+
+    for key in missing:
+        path = _path_to_str(key)
+        allowed = any(pattern.fullmatch(path) is not None for pattern in patterns)
+        if allowed:
+            allowed_missing.append(path)
+        else:
+            unexpected_missing.append(path)
+
+    unexpected_loaded = sorted(_path_to_str(key) for key in set(flat_loaded) - set(flat_reference))
+
+    return SpatialCheckpointAudit(
+        loaded=tuple(sorted(_path_to_str(key) for key in loaded)),
+        allowed_missing=tuple(sorted(allowed_missing)),
+        unexpected_missing=tuple(unexpected_missing),
+        unexpected_loaded=tuple(unexpected_loaded),
+        shape_mismatches=tuple(sorted(shape_mismatches)),
     )

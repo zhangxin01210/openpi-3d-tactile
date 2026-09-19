@@ -105,6 +105,7 @@ from typing_extensions import override
 
 from openpi.models import model as _model
 from openpi.models import pi0_config
+from openpi.shared import array_typing as at
 from openpi.models.spatial_encoders.conditioning import (
     SpatialConditioningConfig,
 )
@@ -310,13 +311,14 @@ class SpatialPi0Config(
                 ),
             )
 
-        observation = dataclasses.replace(
-            observation,
-            spatial=SpatialEncoderInput(
-                visual=visual,
-                tactile=tactile,
-            ),
-        )
+        with at.disable_typechecking():
+            observation = dataclasses.replace(
+                observation,
+                spatial=SpatialEncoderInput(
+                    visual=visual,
+                    tactile=tactile,
+                ),
+            )
 
         return (
             observation,

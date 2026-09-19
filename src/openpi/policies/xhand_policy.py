@@ -448,8 +448,16 @@ class XHandOutputs(
         actions = np.asarray(
             data[
                 "actions"
-            ]
+            ],
+            dtype=np.float32,
         )
+
+        if actions.shape[-1] < ROBOT_ACTION_DIM:
+            raise ValueError(
+                "XHand model action dimension too small: "
+                f"got {actions.shape[-1]}, need at least "
+                f"{ROBOT_ACTION_DIM}."
+            )
 
         return {
             "actions": actions[
