@@ -19,6 +19,9 @@ import openpi.models.pi0_fast as pi0_fast
 import openpi.models.spatial_pi0_config as spatial_pi0_config
 import openpi.models.tokenizer as _tokenizer
 import openpi.models.spatial_encoders.conditioning as spatial_conditioning
+import openpi.models.spatial_encoders.joint_pointnet as spatial_joint_pointnet
+import openpi.models.spatial_encoders.structured_spatial_encoder as structured_spatial_encoder
+import openpi.models.spatial_encoders.transforms as spatial_encoder_transforms
 import openpi.policies.aloha_policy as aloha_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
@@ -37,6 +40,40 @@ import openpi.transforms as _transforms
 ModelType: TypeAlias = _model.ModelType
 # Work around a tyro issue with using nnx.filterlib.Filter directly.
 Filter: TypeAlias = nnx.filterlib.Filter
+
+
+# Positive P99 from the currently available press_0828_17 spatial/v1 sidecar.
+# Recompute this on the exact deployment/training root before a production run:
+#   python scripts/spatial/compute_force_stats.py <dataset>/spatial/v1
+_XHAND_SPATIAL_FORCE_SCALE = 28.49561309814453
+
+
+def _xhand_spatial_feature_transforms() -> spatial_encoder_transforms.SpatialFeatureTransforms:
+    return spatial_encoder_transforms.SpatialFeatureTransforms(
+        force=spatial_encoder_transforms.LinearScaleForceTransform(
+            scale=_XHAND_SPATIAL_FORCE_SCALE,
+        )
+    )
+
+
+def _xhand_joint_pointnet_encoder_config() -> spatial_joint_pointnet.JointPointNetEncoderConfig:
+    return spatial_joint_pointnet.JointPointNetEncoderConfig(
+        hidden_dims=(
+            32,
+            64,
+            128,
+        ),
+        token_dim=128,
+        transforms=_xhand_spatial_feature_transforms(),
+    )
+
+
+def _xhand_structured_spatial_encoder_config() -> (
+    structured_spatial_encoder.StructuredSpatialEncoderConfig
+):
+    return structured_spatial_encoder.StructuredSpatialEncoderConfig(
+        transforms=_xhand_spatial_feature_transforms(),
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1059,6 +1096,7 @@ _CONFIGS = [
         model=spatial_pi0_config.JointPointNetPi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
+            encoder=_xhand_joint_pointnet_encoder_config(),
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="prefix"
@@ -1087,6 +1125,7 @@ _CONFIGS = [
             spatial_pi0_config.JointPointNetPi0Config(
                 paligemma_variant="gemma_2b_lora",
                 action_expert_variant="gemma_300m_lora",
+                encoder=_xhand_joint_pointnet_encoder_config(),
                 conditioning=(
                     spatial_conditioning.SpatialConditioningConfig(
                         target="prefix"
@@ -1106,6 +1145,7 @@ _CONFIGS = [
         model=spatial_pi0_config.JointPointNetPi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
+            encoder=_xhand_joint_pointnet_encoder_config(),
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="suffix"
@@ -1148,6 +1188,7 @@ _CONFIGS = [
         model=spatial_pi0_config.JointPointNetPi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
+            encoder=_xhand_joint_pointnet_encoder_config(),
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="both"
@@ -1188,6 +1229,7 @@ _CONFIGS = [
         model=spatial_pi0_config.StructuredSpatialPi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
+            encoder=_xhand_structured_spatial_encoder_config(),
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="prefix"
@@ -1216,6 +1258,7 @@ _CONFIGS = [
             spatial_pi0_config.StructuredSpatialPi0Config(
                 paligemma_variant="gemma_2b_lora",
                 action_expert_variant="gemma_300m_lora",
+                encoder=_xhand_structured_spatial_encoder_config(),
                 conditioning=(
                     spatial_conditioning.SpatialConditioningConfig(
                         target="prefix"
@@ -1235,6 +1278,7 @@ _CONFIGS = [
         model=spatial_pi0_config.StructuredSpatialPi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
+            encoder=_xhand_structured_spatial_encoder_config(),
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="suffix"
@@ -1263,6 +1307,7 @@ _CONFIGS = [
             spatial_pi0_config.StructuredSpatialPi0Config(
                 paligemma_variant="gemma_2b_lora",
                 action_expert_variant="gemma_300m_lora",
+                encoder=_xhand_structured_spatial_encoder_config(),
                 conditioning=(
                     spatial_conditioning.SpatialConditioningConfig(
                         target="suffix"
@@ -1282,6 +1327,7 @@ _CONFIGS = [
         model=spatial_pi0_config.StructuredSpatialPi0Config(
             paligemma_variant="gemma_2b_lora",
             action_expert_variant="gemma_300m_lora",
+            encoder=_xhand_structured_spatial_encoder_config(),
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="both"
@@ -1310,6 +1356,7 @@ _CONFIGS = [
             spatial_pi0_config.StructuredSpatialPi0Config(
                 paligemma_variant="gemma_2b_lora",
                 action_expert_variant="gemma_300m_lora",
+                encoder=_xhand_structured_spatial_encoder_config(),
                 conditioning=(
                     spatial_conditioning.SpatialConditioningConfig(
                         target="both"

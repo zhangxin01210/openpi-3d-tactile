@@ -56,11 +56,73 @@ def _global_norm_for_prefix(flat_tree: dict[str, object], prefix: str) -> float:
     return float(optax.global_norm(leaves))
 
 
-def _first_spatial_param(flat_params: dict[str, object]) -> tuple[str, np.ndarray]:
-    for path, value in flat_params.items():
-        if path.startswith("spatial_router/"):
-            return path, np.asarray(value)
-    raise AssertionError("No spatial_router parameter found")
+def _max_delta_for_prefix(
+    before: dict[str, object],
+    after: dict[str, object],
+    *,
+    prefix: str,
+) -> tuple[str, float]:
+    best_path = None
+    best_delta = 0.0
+
+    for path, before_value in before.items():
+        if not path.startswith(prefix):
+            continue
+        if path not in after:
+            raise AssertionError(f"{path} disappeared after optimizer update")
+
+        delta = float(
+            np.max(
+                np.abs(
+                    np.asarray(after[path])
+                    - np.asarray(before_value)
+                )
+            )
+        )
+
+        if best_path is None or delta > best_delta:
+            best_path = path
+            best_delta = delta
+
+    if best_path is None:
+        raise AssertionError(f"No parameter found with prefix {prefix!r}")
+
+    return best_path, best_delta
+
+
+def _assert_lora_training_contract(
+    *,
+    flat_params: dict[str, object],
+    frozen_params: dict[str, object],
+    trainable_params: dict[str, object],
+) -> None:
+    lora_paths = sorted(path for path in flat_params if "lora" in path)
+    if not lora_paths:
+        raise AssertionError("No LoRA parameters found")
+
+    trainable_lora = sorted(path for path in trainable_params if "lora" in path)
+    if not trainable_lora:
+        raise AssertionError("No trainable LoRA parameters found")
+
+    frozen_lora = sorted(path for path in frozen_params if "lora" in path)
+    if frozen_lora:
+        print("frozen LoRA params:\n" + _summarize_paths(frozen_lora, limit=30))
+        raise AssertionError("LoRA parameters are unexpectedly frozen")
+
+    frozen_dense_llm = sorted(
+        path
+        for path in frozen_params
+        if "llm" in path and "lora" not in path
+    )
+    if not frozen_dense_llm:
+        raise AssertionError("No pretrained dense LLM parameters are frozen")
+
+    print(
+        "LoRA audit: "
+        f"lora_total={len(lora_paths)} "
+        f"lora_trainable={len(trainable_lora)} "
+        f"dense_llm_frozen={len(frozen_dense_llm)}"
+    )
 
 
 def _assert_finite(name: str, value) -> None:
@@ -222,9 +284,6 @@ def run_config(config_name: str, *, run_loss: bool) -> None:
     if train_config.model.conditioning.use_suffix and suffix_grad <= 0.0:
         raise AssertionError("suffix projection grad norm is zero")
 
-    params_before = _flatten_state(nnx.state(model, nnx.Param))
-    first_path, first_before = _first_spatial_param(params_before)
-
     tx = _optimizer.create_optimizer(
         train_config.optimizer,
         train_config.lr_schedule,
@@ -232,21 +291,33 @@ def run_config(config_name: str, *, run_loss: bool) -> None:
     )
     full_state = nnx.state(model)
     trainable_params = full_state.filter(train_config.trainable_filter)
+    trainable_flat = _flatten_state(trainable_params)
+    frozen_params = _flatten_state(full_state.filter(train_config.freeze_filter))
+    _assert_lora_training_contract(
+        flat_params=_flatten_state(nnx.state(model, nnx.Param)),
+        frozen_params=frozen_params,
+        trainable_params=trainable_flat,
+    )
+
+    params_before = _flatten_state(nnx.state(model, nnx.Param))
     opt_state = tx.init(trainable_params)
     updates, _ = tx.update(grads, opt_state, trainable_params)
     new_params = optax.apply_updates(trainable_params, updates)
     nnx.update(model, new_params)
 
     params_after = _flatten_state(nnx.state(model, nnx.Param))
-    delta = float(np.max(np.abs(np.asarray(params_after[first_path]) - first_before)))
-    print(f"optimizer_update path={first_path} max_abs_delta={delta:.6e}")
+    delta_path, delta = _max_delta_for_prefix(
+        params_before,
+        params_after,
+        prefix="spatial_router/",
+    )
+    print(f"optimizer_update path={delta_path} max_abs_delta={delta:.6e}")
     if delta <= 0.0:
-        raise AssertionError("spatial parameter did not update")
+        raise AssertionError("no spatial parameter updated")
 
-    frozen_params = _flatten_state(full_state.filter(train_config.freeze_filter))
     print(
         f"freeze audit: frozen_paths={len(frozen_params)} "
-        f"trainable_paths={len(_flatten_state(trainable_params))} "
+        f"trainable_paths={len(trainable_flat)} "
         f"spatial_trainable_paths={len(spatial_paths)}"
     )
     if any(path.startswith("spatial_router/") for path in frozen_params):
