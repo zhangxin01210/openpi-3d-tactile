@@ -75,6 +75,40 @@ def compose(transforms: Sequence[DataTransformFn]) -> DataTransformFn:
     """Compose a sequence of transforms into a single transform."""
     return CompositeTransform(transforms)
 
+@dataclasses.dataclass(frozen=True)
+class PreserveKeysTransform(DataTransformFn):
+    """Apply a transform while passing selected top-level keys through unchanged.
+
+    This wrapper is intended for fields that should not be consumed by the
+    wrapped transform stage. Preserved fields may still be transformed later
+    by dedicated transforms.
+    """
+
+    transform: DataTransformFn
+    keys: Sequence[str]
+
+    def __call__(self, data: DataDict) -> DataDict:
+        working = dict(data)
+        preserved = {}
+
+        for key in self.keys:
+            if key not in working:
+                raise KeyError(
+                    f"Preserved key {key!r} is missing from transform input."
+                )
+            preserved[key] = working.pop(key)
+
+        transformed = self.transform(working)
+        output = dict(transformed)
+
+        for key, value in preserved.items():
+            if key in output:
+                raise KeyError(
+                    f"Wrapped transform unexpectedly produced preserved key {key!r}."
+                )
+            output[key] = value
+
+        return output
 
 @dataclasses.dataclass(frozen=True)
 class RepackTransform(DataTransformFn):

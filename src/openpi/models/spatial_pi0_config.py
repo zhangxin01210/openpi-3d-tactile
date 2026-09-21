@@ -113,6 +113,10 @@ from openpi.models.spatial_encoders.joint_pointnet import (
     JointPointNetEncoder,
     JointPointNetEncoderConfig,
 )
+from openpi.models.spatial_encoders.structured_spatial_encoder import (
+    StructuredSpatialEncoder,
+    StructuredSpatialEncoderConfig,
+)
 from openpi.models.spatial_encoders.types import (
     SpatialEncoderInput,
     TactileSpatialInput,
@@ -383,6 +387,53 @@ class JointPointNetPi0Config(
         *,
         rngs: nnx.Rngs,
     ) -> JointPointNetEncoder:
+        return self.encoder.create(
+            rngs=rngs
+        )
+
+
+# =============================================================================
+# 3. Structured spatial encoder
+# =============================================================================
+
+@dataclasses.dataclass(
+    frozen=True
+)
+class StructuredSpatialPi0Config(
+    SpatialPi0Config
+):
+    """
+    Structured RGB-D + tactile encoder variant.
+
+    This keeps the same spatial conditioning interfaces as JointPointNet, but
+    produces local visual tokens and per-finger tactile tokens.  Defaults:
+
+        visual: 32 local SAT-style tokens + 1 global token
+        tactile: 5 fingers * (4 local tokens + 1 summary token)
+        total: 58 tokens, each 128-D
+    """
+
+    encoder: StructuredSpatialEncoderConfig = (
+        dataclasses.field(
+            default_factory=StructuredSpatialEncoderConfig
+        )
+    )
+
+    @property
+    @override
+    def spatial_encoder_token_dim(
+        self,
+    ) -> int:
+        return int(
+            self.encoder.token_dim
+        )
+
+    @override
+    def create_spatial_encoder(
+        self,
+        *,
+        rngs: nnx.Rngs,
+    ) -> StructuredSpatialEncoder:
         return self.encoder.create(
             rngs=rngs
         )

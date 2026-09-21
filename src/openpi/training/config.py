@@ -1057,6 +1057,8 @@ _CONFIGS = [
     TrainConfig(
         name="pi0_xhand_spatial_joint_pointnet_prefix",
         model=spatial_pi0_config.JointPointNetPi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="prefix"
@@ -1081,11 +1083,18 @@ _CONFIGS = [
                 "/home/sai/openpi_chem/pretrained/pi0_base/params"
             )
         ),
-        freeze_filter=nnx.Not(
-            nnx_utils.PathRegex(
-                "spatial_router/.*"
-            )
+        freeze_filter=(
+            spatial_pi0_config.JointPointNetPi0Config(
+                paligemma_variant="gemma_2b_lora",
+                action_expert_variant="gemma_300m_lora",
+                conditioning=(
+                    spatial_conditioning.SpatialConditioningConfig(
+                        target="prefix"
+                    )
+                ),
+            ).get_freeze_filter()
         ),
+        ema_decay=None,
         batch_size=4,
         num_workers=0,
         num_train_steps=20_000,
@@ -1095,6 +1104,8 @@ _CONFIGS = [
     TrainConfig(
         name="pi0_xhand_spatial_joint_pointnet_suffix",
         model=spatial_pi0_config.JointPointNetPi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="suffix"
@@ -1119,11 +1130,13 @@ _CONFIGS = [
                 "/home/sai/openpi_chem/pretrained/pi0_base/params"
             )
         ),
-        freeze_filter=nnx.Not(
-            nnx_utils.PathRegex(
-                "spatial_router/.*"
-            )
-        ),
+        freeze_filter=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+
+        ema_decay=None,
+        
         batch_size=4,
         num_workers=0,
         num_train_steps=20_000,
@@ -1133,6 +1146,8 @@ _CONFIGS = [
     TrainConfig(
         name="pi0_xhand_spatial_joint_pointnet_both",
         model=spatial_pi0_config.JointPointNetPi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
                     target="both"
@@ -1157,11 +1172,152 @@ _CONFIGS = [
                 "/home/sai/openpi_chem/pretrained/pi0_base/params"
             )
         ),
-        freeze_filter=nnx.Not(
-            nnx_utils.PathRegex(
-                "spatial_router/.*"
+        freeze_filter=pi0_config.Pi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+        ).get_freeze_filter(),
+        ema_decay=None,
+        batch_size=4,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=10_000,
+    ),
+    TrainConfig(
+        name="pi0_xhand_spatial_structured_prefix",
+        model=spatial_pi0_config.StructuredSpatialPi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            conditioning=(
+                spatial_conditioning.SpatialConditioningConfig(
+                    target="prefix"
+                )
+            ),
+        ),
+        data=LeRobotXHandDataConfig(
+            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            assets=AssetsConfig(
+                assets_dir="./assets/xhand",
+                asset_id="press_0828_17_v3_v30",
+            ),
+            spatial=SpatialDataConfig(
+                dataset_root=(
+                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                ),
+                version="v1",
+            ),
+        ),
+        weight_loader=(
+            spatial_weight_loaders.SpatialCheckpointWeightLoader(
+                "/home/sai/openpi_chem/pretrained/pi0_base/params"
             )
         ),
+        freeze_filter=(
+            spatial_pi0_config.StructuredSpatialPi0Config(
+                paligemma_variant="gemma_2b_lora",
+                action_expert_variant="gemma_300m_lora",
+                conditioning=(
+                    spatial_conditioning.SpatialConditioningConfig(
+                        target="prefix"
+                    )
+                ),
+            ).get_freeze_filter()
+        ),
+        ema_decay=None,
+        batch_size=4,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=10_000,
+    ),
+    TrainConfig(
+        name="pi0_xhand_spatial_structured_suffix",
+        model=spatial_pi0_config.StructuredSpatialPi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            conditioning=(
+                spatial_conditioning.SpatialConditioningConfig(
+                    target="suffix"
+                )
+            ),
+        ),
+        data=LeRobotXHandDataConfig(
+            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            assets=AssetsConfig(
+                assets_dir="./assets/xhand",
+                asset_id="press_0828_17_v3_v30",
+            ),
+            spatial=SpatialDataConfig(
+                dataset_root=(
+                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                ),
+                version="v1",
+            ),
+        ),
+        weight_loader=(
+            spatial_weight_loaders.SpatialCheckpointWeightLoader(
+                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+            )
+        ),
+        freeze_filter=(
+            spatial_pi0_config.StructuredSpatialPi0Config(
+                paligemma_variant="gemma_2b_lora",
+                action_expert_variant="gemma_300m_lora",
+                conditioning=(
+                    spatial_conditioning.SpatialConditioningConfig(
+                        target="suffix"
+                    )
+                ),
+            ).get_freeze_filter()
+        ),
+        ema_decay=None,
+        batch_size=4,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=10_000,
+    ),
+    TrainConfig(
+        name="pi0_xhand_spatial_structured_both",
+        model=spatial_pi0_config.StructuredSpatialPi0Config(
+            paligemma_variant="gemma_2b_lora",
+            action_expert_variant="gemma_300m_lora",
+            conditioning=(
+                spatial_conditioning.SpatialConditioningConfig(
+                    target="both"
+                )
+            ),
+        ),
+        data=LeRobotXHandDataConfig(
+            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            assets=AssetsConfig(
+                assets_dir="./assets/xhand",
+                asset_id="press_0828_17_v3_v30",
+            ),
+            spatial=SpatialDataConfig(
+                dataset_root=(
+                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                ),
+                version="v1",
+            ),
+        ),
+        weight_loader=(
+            spatial_weight_loaders.SpatialCheckpointWeightLoader(
+                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+            )
+        ),
+        freeze_filter=(
+            spatial_pi0_config.StructuredSpatialPi0Config(
+                paligemma_variant="gemma_2b_lora",
+                action_expert_variant="gemma_300m_lora",
+                conditioning=(
+                    spatial_conditioning.SpatialConditioningConfig(
+                        target="both"
+                    )
+                ),
+            ).get_freeze_filter()
+        ),
+        ema_decay=None,
         batch_size=4,
         num_workers=0,
         num_train_steps=20_000,
