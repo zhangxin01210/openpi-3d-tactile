@@ -2,7 +2,7 @@
 
 This script is intentionally standalone.  It is not imported by model code and
 does not affect training unless a user copies one of the reported values into a
-StructuredSpatialEncoderConfig(force_scale=...).
+SpatialFeatureTransforms(force=LinearScaleForceTransform(scale=...)) config.
 """
 
 from __future__ import annotations
@@ -28,6 +28,12 @@ def parse_args() -> argparse.Namespace:
         type=float,
         nargs="+",
         default=(50.0, 90.0, 95.0, 99.0),
+    )
+    parser.add_argument(
+        "--epsilon",
+        type=float,
+        default=1.0e-6,
+        help="Threshold used for positive force_norm distribution reporting.",
     )
     return parser.parse_args()
 
@@ -62,13 +68,22 @@ def main() -> None:
         raise RuntimeError(f"No tactile_force_norm shards found under {spatial_root}")
 
     force_norm = np.concatenate(values)
+    positive = force_norm[force_norm > args.epsilon]
     result = {
         "spatial_root": str(spatial_root),
         "count": total_values,
+        "zero_fraction": float(np.mean(force_norm <= args.epsilon)),
+        "positive_count": int(positive.size),
         "percentiles": {
             f"p{percentile:g}": float(np.percentile(force_norm, percentile))
             for percentile in args.percentiles
         },
+        "positive_percentiles": {
+            f"p{percentile:g}": float(np.percentile(positive, percentile))
+            for percentile in args.percentiles
+        }
+        if positive.size
+        else {},
         "max": float(np.max(force_norm)),
     }
 

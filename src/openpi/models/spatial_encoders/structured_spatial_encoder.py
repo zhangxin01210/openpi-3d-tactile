@@ -39,7 +39,6 @@ class StructuredSpatialEncoderConfig:
     tactile_local_tokens_per_finger: int = 4
 
     hidden_dim: int = 128
-    force_scale: float | None = None
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
 
     def __post_init__(self) -> None:
@@ -54,9 +53,6 @@ class StructuredSpatialEncoderConfig:
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be > 0")
-
-        if self.force_scale is not None and self.force_scale <= 0:
-            raise ValueError("force_scale must be None or > 0")
 
     def create(self, *, rngs: nnx.Rngs) -> "StructuredSpatialEncoder":
         return StructuredSpatialEncoder(config=self, rngs=rngs)
@@ -145,6 +141,8 @@ class StructuredSpatialEncoder(nnx.Module):
         tokens = jnp.concatenate(token_parts, axis=1)
         token_mask = jnp.concatenate(mask_parts, axis=1)
         token_xyz_m = jnp.concatenate(xyz_parts, axis=1)
+        tokens = jnp.where(token_mask[..., None], tokens, jnp.zeros_like(tokens))
+        token_xyz_m = jnp.where(token_mask[..., None], token_xyz_m, jnp.zeros_like(token_xyz_m))
         aux["total_token_count"] = jnp.sum(token_mask, axis=1, dtype=jnp.int32)
 
         return SpatialEncoderOutput(
@@ -198,9 +196,10 @@ class StructuredSpatialEncoder(nnx.Module):
             + self.visual_modality_embedding.value
         )
 
+        global_center = _masked_mean(xyz_feature, mask, axis=1)
         point_features = jnp.concatenate(
             [
-                jnp.zeros_like(xyz_feature),
+                xyz_feature - global_center[:, None, :],
                 rgb,
                 rgb_valid[..., None],
             ],
@@ -210,7 +209,11 @@ class StructuredSpatialEncoder(nnx.Module):
         global_token = _masked_mean(point_hidden, mask, axis=1)
         global_xyz = _masked_mean(xyz_raw, mask, axis=1)
         global_mask = jnp.any(mask, axis=1)
-        global_token = global_token + self.visual_modality_embedding.value
+        global_token = (
+            global_token
+            + _apply_mlp(self.visual_pos_layers, global_center)
+            + self.visual_modality_embedding.value
+        )
 
         tokens = jnp.concatenate([local_tokens, global_token[:, None, :]], axis=1)
         token_mask = jnp.concatenate([center_mask, global_mask[:, None]], axis=1)
@@ -229,13 +232,12 @@ class StructuredSpatialEncoder(nnx.Module):
     def _encode_tactile(self, tactile) -> tuple[jax.Array, jax.Array, jax.Array, dict[str, jax.Array]]:
         xyz_feature = self.config.transforms.tactile_xyz(tactile.xyz_m)
         xyz_raw = tactile.xyz_m.astype(jnp.float32)
-        force = tactile.force.astype(jnp.float32)
-        force_norm = tactile.force_norm.astype(jnp.float32)
-
-        if self.config.force_scale is not None:
-            scale = jnp.asarray(self.config.force_scale, dtype=jnp.float32)
-            force = force / scale
-            force_norm = force_norm / scale
+        force_output = self.config.transforms.force(
+            tactile.force,
+            tactile.force_norm,
+        )
+        force = jnp.asarray(force_output.force, dtype=jnp.float32)
+        force_norm = jnp.asarray(force_output.force_norm, dtype=jnp.float32)
 
         point_mask = tactile.point_mask.astype(jnp.bool_)
         finger_id = tactile.finger_id.astype(jnp.int32)

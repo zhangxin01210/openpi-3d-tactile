@@ -25,6 +25,9 @@ _CONFIG_NAMES = (
     "pi0_xhand_spatial_joint_pointnet_prefix",
     "pi0_xhand_spatial_joint_pointnet_suffix",
     "pi0_xhand_spatial_joint_pointnet_both",
+    "pi0_xhand_spatial_structured_prefix",
+    "pi0_xhand_spatial_structured_suffix",
+    "pi0_xhand_spatial_structured_both",
 )
 
 
@@ -203,17 +206,17 @@ def run_config(config_name: str, *, run_loss: bool) -> None:
         raise AssertionError(f"loss is not finite: {loss_value}")
 
     flat_grads = _flatten_state(grads)
-    joint_grad = _global_norm_for_prefix(flat_grads, "spatial_router/encoder/")
+    encoder_grad = _global_norm_for_prefix(flat_grads, "spatial_router/encoder/")
     prefix_grad = _global_norm_for_prefix(flat_grads, "spatial_router/prefix_adapter/")
     suffix_grad = _global_norm_for_prefix(flat_grads, "spatial_router/suffix_adapter/")
     print(
         f"loss={loss_value:.6f} "
-        f"joint_pointnet_grad_norm={joint_grad:.6e} "
+        f"spatial_encoder_grad_norm={encoder_grad:.6e} "
         f"prefix_grad_norm={prefix_grad:.6e} "
         f"suffix_grad_norm={suffix_grad:.6e}"
     )
-    if joint_grad <= 0.0:
-        raise AssertionError("JointPointNet grad norm is zero")
+    if encoder_grad <= 0.0:
+        raise AssertionError("spatial encoder grad norm is zero")
     if train_config.model.conditioning.use_prefix and prefix_grad <= 0.0:
         raise AssertionError("prefix projection grad norm is zero")
     if train_config.model.conditioning.use_suffix and suffix_grad <= 0.0:

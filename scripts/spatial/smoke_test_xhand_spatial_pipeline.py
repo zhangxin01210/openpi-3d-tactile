@@ -706,8 +706,12 @@ def main() -> None:
             tactile=None,
         )
 
-    conditioned = router(
+    encoded = router.encode(
         spatial_input
+    )
+
+    conditioned = router.route(
+        encoded
     )
 
     print(
@@ -722,7 +726,7 @@ def main() -> None:
 
         if conditioned.prefix_tokens.shape != (
             1,
-            1,
+            encoded.tokens.shape[1],
             64,
         ):
             raise AssertionError(
@@ -737,7 +741,7 @@ def main() -> None:
 
         if conditioned.suffix_tokens.shape != (
             1,
-            1,
+            encoded.tokens.shape[1],
             48,
         ):
             raise AssertionError(

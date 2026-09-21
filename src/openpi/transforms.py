@@ -75,6 +75,7 @@ def compose(transforms: Sequence[DataTransformFn]) -> DataTransformFn:
     """Compose a sequence of transforms into a single transform."""
     return CompositeTransform(transforms)
 
+
 @dataclasses.dataclass(frozen=True)
 class PreserveKeysTransform(DataTransformFn):
     """Apply a transform while passing selected top-level keys through unchanged.
@@ -109,6 +110,7 @@ class PreserveKeysTransform(DataTransformFn):
             output[key] = value
 
         return output
+
 
 @dataclasses.dataclass(frozen=True)
 class RepackTransform(DataTransformFn):

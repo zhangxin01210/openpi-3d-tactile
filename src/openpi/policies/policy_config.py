@@ -90,7 +90,7 @@ def create_trained_policy(
                 keys=("spatial",),
             )
         ]
-           
+
     return _policy.Policy(
         model,
         transforms=input_transforms,

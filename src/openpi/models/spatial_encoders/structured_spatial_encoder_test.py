@@ -145,6 +145,8 @@ def test_structured_spatial_encoder_uses_finger_id_not_tactile_order():
 
     assert ordered.tokens.shape == shuffled.tokens.shape
     assert ordered.aux["tactile_valid_point_count_by_finger"].shape == (2, 5)
+    np.testing.assert_allclose(ordered.tokens, shuffled.tokens, atol=1e-5, rtol=1e-5)
+    np.testing.assert_allclose(ordered.token_xyz_m, shuffled.token_xyz_m, atol=1e-5, rtol=1e-5)
     np.testing.assert_array_equal(
         ordered.aux["tactile_valid_point_count_by_finger"],
         shuffled.aux["tactile_valid_point_count_by_finger"],

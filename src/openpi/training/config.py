@@ -1136,7 +1136,7 @@ _CONFIGS = [
         ).get_freeze_filter(),
 
         ema_decay=None,
-        
+
         batch_size=4,
         num_workers=0,
         num_train_steps=20_000,
