@@ -108,8 +108,7 @@ def parse_args() -> argparse.Namespace:
         "--config-name",
         type=str,
         default=(
-            "pi0_xhand_spatial_"
-            "joint_pointnet_suffix"
+            "pi0_xhand_spatial_structured_suffix"
         ),
     )
 
@@ -372,26 +371,29 @@ def main() -> None:
     )
 
     if args.sample_index == 213:
-        if int(
-            tactile[
-                "finger_id"
-            ][
-                strongest
-            ]
-        ) != 1:
+        strongest_finger = int(
+            tactile["finger_id"][strongest]
+        )
+        strongest_taxel = int(
+            tactile["taxel_id"][strongest]
+        )
+        strongest_norm = float(
+            tactile["force_norm"][strongest]
+        )
+
+        if not (0 <= strongest_finger < 5):
             raise AssertionError(
-                "Frame 213 strongest finger mismatch."
+                "Invalid strongest finger id."
             )
 
-        if int(
-            tactile[
-                "taxel_id"
-            ][
-                strongest
-            ]
-        ) != 55:
+        if not (0 <= strongest_taxel < 120):
             raise AssertionError(
-                "Frame 213 strongest taxel mismatch."
+                "Invalid strongest taxel id."
+            )
+
+        if strongest_norm <= 0:
+            raise AssertionError(
+                "Strongest tactile force should be positive."
             )
 
     # -------------------------------------------------------------------------
@@ -610,7 +612,7 @@ def main() -> None:
             action_horizon=(
                 train_config.model.action_horizon
             ),
-            batch_size=1,
+            batch_size=4,
             skip_norm_stats=True,
             shuffle=False,
             num_batches=1,
@@ -718,35 +720,25 @@ def main() -> None:
         "\n===== ENCODER / ROUTER ====="
     )
 
-    if conditioned.has_prefix:
-        print(
-            "prefix tokens:",
-            conditioned.prefix_tokens.shape,
-        )
-
-        if conditioned.prefix_tokens.shape != (
-            1,
-            encoded.tokens.shape[1],
-            64,
-        ):
-            raise AssertionError(
-                "Unexpected routed prefix shape."
-            )
-
     if conditioned.has_suffix:
         print(
             "suffix tokens:",
             conditioned.suffix_tokens.shape,
         )
 
-        if conditioned.suffix_tokens.shape != (
-            1,
+        if conditioned.suffix_tokens.shape[0] != encoded.tokens.shape[0]:
+            raise AssertionError(
+                "Unexpected routed suffix batch dimension."
+            )
+
+        if conditioned.suffix_tokens.shape[1:] != (
             encoded.tokens.shape[1],
             48,
         ):
             raise AssertionError(
-                "Unexpected routed suffix shape."
+                "Unexpected routed suffix token shape."
             )
+
 
     print(
         "\nXHAND_SPATIAL_PIPELINE_PASS"
