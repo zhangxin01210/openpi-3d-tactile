@@ -289,9 +289,17 @@ class BaseModelConfig(abc.ABC):
         """Create a model with the given parameters."""
         model = nnx.eval_shape(self.create, jax.random.key(0))
         graphdef, state = nnx.split(model)
+        expected_params = state.to_pure_dict()
         if remove_extra_params:
-            params = ocp.transform_utils.intersect_trees(state.to_pure_dict(), params)
-        at.check_pytree_equality(expected=state.to_pure_dict(), got=params, check_shapes=True, check_dtypes=False)
+            params = ocp.transform_utils.intersect_trees(expected_params, params)
+        # Orbax restores dictionary keys as strings (and intersect_trees also stringifies them), while NNX uses
+        # integer keys for list members. Validate the canonical paths before rebuilding the model's key types.
+        # Validate first so missing or extra weights still raise a descriptive error before reconstruction.
+        flat_params = ocp.tree.to_flat_dict(params)
+        at.check_pytree_equality(
+            expected=ocp.tree.to_flat_dict(expected_params), got=flat_params, check_shapes=True, check_dtypes=False
+        )
+        params = ocp.tree.from_flat_dict(flat_params, target=expected_params)
         state.replace_by_pure_dict(params)
         return nnx.merge(graphdef, state)
 
