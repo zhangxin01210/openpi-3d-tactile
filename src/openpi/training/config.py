@@ -45,7 +45,7 @@ Filter: TypeAlias = nnx.filterlib.Filter
 # Positive P99 from the currently available press_0828_17 spatial/v1 sidecar.
 # Recompute this on the exact deployment/training root before a production run:
 #   python scripts/spatial/compute_force_stats.py <dataset>/spatial/v1
-_XHAND_SPATIAL_FORCE_SCALE = 28.49561309814453
+_XHAND_SPATIAL_FORCE_SCALE = 31.160871505737305
 
 
 def _xhand_spatial_feature_transforms() -> spatial_encoder_transforms.SpatialFeatureTransforms:
@@ -1085,7 +1085,7 @@ _CONFIGS = [
                 "checkpoints/pi0_base/params"
             )
         ),
-        batch_size=4,
+        batch_size=8,
         num_workers=0,
         num_train_steps=20_000,
         save_interval=5_000,
@@ -1104,21 +1104,21 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean",
             assets=AssetsConfig(
                 assets_dir="./assets/xhand",
-                asset_id="press_0828_17_v3_v30",
+                asset_id="press_button_4_times_clean",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+                "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"
             )
         ),
         freeze_filter=(
@@ -1134,7 +1134,7 @@ _CONFIGS = [
             ).get_freeze_filter()
         ),
         ema_decay=None,
-        batch_size=4,
+        batch_size=8,
         num_workers=0,
         num_train_steps=20_000,
         save_interval=5_000,
@@ -1153,21 +1153,21 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean",
             assets=AssetsConfig(
                 assets_dir="./assets/xhand",
-                asset_id="press_0828_17_v3_v30",
+                asset_id="press_button_4_times_clean",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+                "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"
             )
         ),
         freeze_filter=pi0_config.Pi0Config(
@@ -1177,7 +1177,7 @@ _CONFIGS = [
 
         ema_decay=None,
 
-        batch_size=4,
+        batch_size=8,
         num_workers=0,
         num_train_steps=20_000,
         save_interval=5_000,
@@ -1196,21 +1196,21 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean",
             assets=AssetsConfig(
                 assets_dir="./assets/xhand",
-                asset_id="press_0828_17_v3_v30",
+                asset_id="press_button_4_times_clean",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+                "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"
             )
         ),
         freeze_filter=pi0_config.Pi0Config(
@@ -1218,7 +1218,7 @@ _CONFIGS = [
             action_expert_variant="gemma_300m_lora",
         ).get_freeze_filter(),
         ema_decay=None,
-        batch_size=4,
+        batch_size=8,
         num_workers=0,
         num_train_steps=20_000,
         save_interval=5_000,
@@ -1237,21 +1237,21 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean",
             assets=AssetsConfig(
                 assets_dir="./assets/xhand",
-                asset_id="press_0828_17_v3_v30",
+                asset_id="press_button_4_times_clean",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+                "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"
             )
         ),
         freeze_filter=(
@@ -1276,8 +1276,8 @@ _CONFIGS = [
     TrainConfig(
         name="pi0_xhand_spatial_structured_suffix",
         model=spatial_pi0_config.StructuredSpatialPi0Config(
-            paligemma_variant="gemma_2b_lora",
-            action_expert_variant="gemma_300m_lora",
+            paligemma_variant="gemma_2b",
+            action_expert_variant="gemma_300m",
             encoder=_xhand_structured_spatial_encoder_config(),
             conditioning=(
                 spatial_conditioning.SpatialConditioningConfig(
@@ -1286,27 +1286,27 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean",
             assets=AssetsConfig(
                 assets_dir="./assets/xhand",
-                asset_id="press_0828_17_v3_v30",
+                asset_id="press_button_4_times_clean",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+                "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"
             )
         ),
         freeze_filter=(
             spatial_pi0_config.StructuredSpatialPi0Config(
-                paligemma_variant="gemma_2b_lora",
-                action_expert_variant="gemma_300m_lora",
+                paligemma_variant="gemma_2b",
+                action_expert_variant="gemma_300m",
                 encoder=_xhand_structured_spatial_encoder_config(),
                 conditioning=(
                     spatial_conditioning.SpatialConditioningConfig(
@@ -1317,10 +1317,10 @@ _CONFIGS = [
         ),
         ema_decay=None,
         batch_size=4,
-        num_workers=0,
-        num_train_steps=20_000,
-        save_interval=5_000,
-        keep_period=10_000,
+        num_workers=2,
+        num_train_steps=30_000,
+        save_interval=7_500,
+        keep_period=7_500,
     ),
     TrainConfig(
         name="pi0_xhand_spatial_structured_both",
@@ -1335,21 +1335,21 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30",
+            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean",
             assets=AssetsConfig(
                 assets_dir="./assets/xhand",
-                asset_id="press_0828_17_v3_v30",
+                asset_id="press_button_4_times_clean",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "/home/sai/zx/openpi-3d-tactile/data/press_0828_17_v3_v30"
+                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean"
                 ),
                 version="v1",
             ),
         ),
         weight_loader=(
             spatial_weight_loaders.SpatialCheckpointWeightLoader(
-                "/home/sai/openpi_chem/pretrained/pi0_base/params"
+                "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"
             )
         ),
         freeze_filter=(
@@ -1365,7 +1365,7 @@ _CONFIGS = [
             ).get_freeze_filter()
         ),
         ema_decay=None,
-        batch_size=4,
+        batch_size=8,
         num_workers=0,
         num_train_steps=20_000,
         save_interval=5_000,

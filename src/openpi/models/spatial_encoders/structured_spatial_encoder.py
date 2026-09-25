@@ -451,7 +451,11 @@ def _masked_knn_indices(
     distances = jnp.where(point_mask[:, None, :], distances, large)
     _, indices = jax.lax.top_k(-distances, k)
     neighbor_valid = _batched_take(point_mask[..., None].astype(jnp.float32), indices)[..., 0] > 0.5
-    gathered_distances = _batched_take(distances[..., None], indices)[..., 0]
+    gathered_distances = jnp.take_along_axis(
+        distances,
+        indices,
+        axis=-1,
+    )
     neighbor_valid = neighbor_valid & (gathered_distances < large * 0.5)
     if query_mask is not None:
         neighbor_valid = neighbor_valid & query_mask[:, :, None]
