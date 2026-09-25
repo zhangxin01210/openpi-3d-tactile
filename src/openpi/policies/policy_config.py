@@ -84,7 +84,10 @@ def create_trained_policy(
     ]
 
     if data_config.spatial is not None:
+        import openpi.policies.spatial_online as spatial_online
+
         input_transforms = [
+            spatial_online.XHandSpatialOnlinePreprocess(),
             transforms.PreserveKeysTransform(
                 transform=transforms.compose(input_transforms),
                 keys=("spatial",),
