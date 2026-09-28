@@ -60,6 +60,28 @@ def _spatial_observation_to_model_dict(observation: SpatialObservation) -> dict[
 
 
 @dataclasses.dataclass(frozen=True)
+class XHandSpatialOnlineRepack(transforms.DataTransformFn):
+    """Repack the raw deployment observation for XHandInputs at inference time."""
+
+    def __call__(self, data: transforms.DataDict) -> transforms.DataDict:
+        images = {
+            camera_name: _get_any(
+                data,
+                (f"observation.images.{camera_name}", f"observation/{camera_name}_image"),
+                name=f"{camera_name} RGB image",
+            )
+            for camera_name in ("cam_front", "cam_left", "cam_right")
+        }
+        output = {
+            "images": images,
+            "state": _get_any(data, ("observation.state", "observation/state"), name="observation.state"),
+        }
+        if "prompt" in data:
+            output["prompt"] = data["prompt"]
+        return output
+
+
+@dataclasses.dataclass(frozen=True)
 class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     """Build the model's spatial input from raw online UR7e + XHand observations.
 

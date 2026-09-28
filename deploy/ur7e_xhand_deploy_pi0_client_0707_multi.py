@@ -723,7 +723,7 @@ def build_env_state(obs: dict, state_names: list[str]) -> np.ndarray:
 
 def state_schema_has_raw_xhand_state(state_names: list[str]) -> bool:
     required_dim = TACTILE_BLOCK_START + TACTILE_SENSOR_COUNT * TACTILE_BLOCK_SIZE
-    return len(state_names) >= required_dim
+    return len(state_names) == required_dim
 
 
 def get_current_action(obs: dict, action_names: list[str]) -> np.ndarray:
@@ -740,8 +740,7 @@ def get_image(obs: dict, camera_name: str, height: int, width: int) -> np.ndarra
             if key in image:
                 return np.asarray(image[key], dtype=np.uint8)
     if image is None:
-        logging.warning("Camera %s missing from observation; sending a zero image", camera_name)
-        return np.zeros((height, width, 3), dtype=np.uint8)
+        raise KeyError(f"Missing RGB image for {camera_name}; expected {width}x{height} camera observation")
     return np.asarray(image, dtype=np.uint8)
 
 
@@ -801,6 +800,8 @@ def normalize_action_chunk(actions, expected_dim: int, max_action_chunk_size: in
         raise ValueError(f"Server returned actions with invalid shape {action_chunk.shape}; expected [T, {expected_dim}]")
     if action_chunk.shape[1] != expected_dim:
         raise ValueError(f"Server returned action dim {action_chunk.shape[1]}, expected {expected_dim}")
+    if action_chunk.shape[0] == 0 or not np.all(np.isfinite(action_chunk)):
+        raise ValueError("Server returned an empty or non-finite action chunk")
     return action_chunk[:max_action_chunk_size]
 
 
@@ -1179,12 +1180,15 @@ def run_policy_once(
                 raw_action = action_chunk[chunk_idx].copy()
                 chunk_idx += 1
 
-                if previous_action is not None:
+                if active_fallback:
+                    action = raw_action
+                elif previous_action is not None:
                     action = args.smoothing_alpha * raw_action + (1.0 - args.smoothing_alpha) * previous_action
                 else:
                     action = raw_action
-                action = action * args.action_scale
-                action = apply_index_splay_deadzone(action, action_names, args)
+                if not active_fallback:
+                    action = action * args.action_scale
+                    action = apply_index_splay_deadzone(action, action_names, args)
                 previous_action = action.copy()
 
                 action_dict = action_array_to_dict(action, action_names)
@@ -1279,10 +1283,18 @@ def main() -> int:
             f"Dataset expects unsupported cameras {sorted(unsupported_cameras)}; "
             f"available cameras are {sorted(supported_cameras)}"
         )
+    missing_cameras = supported_cameras - set(camera_names)
+    if missing_cameras:
+        raise ValueError(
+            f"Spatial deployment requires all three RGB cameras; missing {sorted(missing_cameras)} "
+            f"from {dataset_dir / 'meta' / 'info.json'}"
+        )
+    if len(action_names) != len(FALLBACK_ACTION_NAMES):
+        raise ValueError(f"Spatial deployment requires 18 action names, got {len(action_names)}")
     if not state_schema_has_raw_xhand_state(state_names):
         required_dim = TACTILE_BLOCK_START + TACTILE_SENSOR_COUNT * TACTILE_BLOCK_SIZE
         raise ValueError(
-            "Spatial deployment requires the full raw UR7e + XHand observation.state with at least "
+            "Spatial deployment requires the full raw UR7e + XHand observation.state with exactly "
             f"{required_dim} values so the server can build tactile spatial inputs, got {len(state_names)}. "
             "Check --dataset-dir/--dataset-root/--dataset-name."
         )

@@ -89,7 +89,10 @@ def create_trained_policy(
         input_transforms = [
             spatial_online.XHandSpatialOnlinePreprocess(),
             transforms.PreserveKeysTransform(
-                transform=transforms.compose(input_transforms),
+                transform=transforms.compose([
+                    spatial_online.XHandSpatialOnlineRepack(),
+                    *input_transforms,
+                ]),
                 keys=("spatial",),
             )
         ]
