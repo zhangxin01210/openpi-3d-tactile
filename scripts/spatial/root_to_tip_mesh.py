@@ -58,6 +58,7 @@ def load_marker_camera_report(report_path: Path, key: str) -> tuple[np.ndarray, 
 
 def resolve_mesh_urdf(repo_root: Path, supplied: Path | None) -> Path:
     candidates = [supplied] if supplied is not None else [
+        repo_root / "configs/ur7e_xhand/root_to_tip_assets/pointcloud_delivery/configs/ur7e_xhand_verified.urdf",
         repo_root / "assets/root_to_tip/pointcloud_delivery/configs/ur7e_xhand_verified.urdf",
         repo_root / "3D_tactile/pointcloud_delivery/configs/ur7e_xhand_verified.urdf",
     ]
@@ -74,8 +75,19 @@ def resolve_mesh_urdf(repo_root: Path, supplied: Path | None) -> Path:
     raise FileNotFoundError(
         "Root-to-tip requires the verified URDF and its visual meshes. "
         f"Tried: {[str(p) for p in candidates]}. "
-        "Copy the mesh bundle as documented in README.md, or pass --mesh-urdf."
+        "Ensure configs/ur7e_xhand/root_to_tip_assets is present, or pass --mesh-urdf."
     )
+
+
+def _visual_mesh_path(filename: str, urdf: Path) -> Path:
+    prefix = "package://ur_description/"
+    if filename.startswith(prefix):
+        return (
+            urdf.parent.parent / "diagnostics/ur_description_source" / filename.removeprefix(prefix)
+        ).resolve()
+    if filename.startswith("package://") or Path(filename).is_absolute():
+        raise ValueError(f"Visual mesh must have a portable relative path: {filename}")
+    return (urdf.parent / filename).resolve()
 
 
 def _origin_matrix(origin: ET.Element | None) -> np.ndarray:
@@ -112,12 +124,7 @@ def load_visual_meshes(urdf: Path, *, include_fingers: bool = False) -> dict[str
             filename = elem.get("filename")
             if filename is None:
                 raise ValueError(f"{name} visual mesh has no filename")
-            if filename.startswith("package://ur_description/"):
-                path = Path("/opt/ros/humble/share/ur_description") / filename.removeprefix(
-                    "package://ur_description/"
-                )
-            else:
-                path = (urdf.parent / filename).resolve()
+            path = _visual_mesh_path(filename, urdf)
             if not path.is_file():
                 missing.append(str(path))
                 continue

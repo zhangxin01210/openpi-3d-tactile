@@ -18,7 +18,7 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync --frozen --no-group rlds
 
 激活已安装好的环境后，下面的命令直接使用 `python`。在已有训练环境中不要随手运行普通 `uv run`：它可能同步并重建 `.venv`。如果必须通过 uv 调用已有环境，使用 `uv run --no-sync ...`。`rlds` 依赖组用于其他数据流程，本项目的 LeRobot spatial 训练不需要它。
 
-离线标注/对照工具额外需要 `pyarrow`、`av`、`opencv-python`、`scipy`、`plotly`；root-to-tip CAD 轮廓还需 `trimesh`、加载 DAE 所需的 `pycollada` 和下述 URDF 网格。缺失时在**单独的分析环境**安装，不必改动机器人控制环境；缺网格会明确报错，不再静默改画骨架。
+离线标注/对照工具额外需要 `pyarrow`、`av`、`opencv-python`、`scipy`、`plotly`；root-to-tip CAD 轮廓还需 `trimesh` 和加载 DAE 所需的 `pycollada`。激活现有分析环境后若缺包，可执行 `python -m pip install trimesh pycollada`；不要因此重建训练环境。root-to-tip 的 verified URDF 与其引用的网格已收进 `configs/ur7e_xhand/root_to_tip_assets/`，正常同步仓库后不需要另行复制旧 `3D_tactile` 目录。
 
 本项目的数据、配置和输出位置：
 
@@ -60,19 +60,7 @@ PYTHONPATH=src python scripts/spatial/compare_front_calibration.py \
 
 打开 `diagnostics/press_button_0_front_compare/index.html`，逐帧比较未纠正/候选纠正的 root-to-tip **CAD 网格逐段与累积轮廓** PNG 和交互 3D 网页。轮廓使用原 RGB + 视野外黑色展开画布，与 `0916_marker_anchored_root_to_tip_upper_lag0` 的版式一致。网页同时显示稠密 ROI、**模型实际看到的 4096 点**、触觉点、C0–C8 机械臂/手掌轮廓和五指轮廓；图例可单击开关各层。三维 CAD 是 FK 生成的参考几何，**不是模型额外输入**。`--output` 必须是不存在的目录。点云仍由当前 canonical `SpatialPreprocessor` 生成，稠密与 4096 层使用相同外参。先看图，没问题就不必重新标注。
 
-渲染器优先读取 `assets/root_to_tip/` 中的独立网格包；若不存在，则读取本机忽略的 `3D_tactile/` 目录。只需将旧项目中的以下文件按相对目录复制一次；`assets/` 不提交 Git：
-
-```bash
-mkdir -p assets/root_to_tip/pointcloud_delivery/configs
-mkdir -p assets/root_to_tip/pointcloud_delivery/diagnostics/ur_description_source/meshes/ur5e
-mkdir -p assets/root_to_tip/ur5_xhand
-cp 3D_tactile/pointcloud_delivery/configs/ur7e_xhand_verified.urdf assets/root_to_tip/pointcloud_delivery/configs/
-cp -a 3D_tactile/pointcloud_delivery/diagnostics/ur_description_source/meshes/ur5e/visual assets/root_to_tip/pointcloud_delivery/diagnostics/ur_description_source/meshes/ur5e/
-cp -a 3D_tactile/ur5_xhand/Flange_meshes assets/root_to_tip/ur5_xhand/
-cp -a 3D_tactile/ur5_xhand/xhand_meshes assets/root_to_tip/ur5_xhand/
-```
-
-如果旧项目不在本机，先从原机器复制上述 4 处到对应的 `assets/root_to_tip/` 相对目录；或者将完整旧项目放在仓库根目录的 `3D_tactile/`。也可用 `--mesh-urdf /path/to/ur7e_xhand_verified.urdf` 指定 URDF，但它引用的相对网格路径必须存在，且 URDF 必须与 `configs/ur7e_xhand/ur7e_xhand_verified.urdf` 一致。这里不需要复制碰撞网格。
+渲染器默认优先读取仓库内的 `configs/ur7e_xhand/root_to_tip_assets/pointcloud_delivery/configs/ur7e_xhand_verified.urdf`，对应 76 个 visual/collision 网格按原 URDF 的相对路径排列；其中 visual 网格用于上述诊断。老的 `assets/root_to_tip/` 和本机 `3D_tactile/` 仍作为兼容备选，但**不再是必需项**。`--mesh-urdf` 可指定自备网格包；其 URDF 必须与当前 FK 使用的 `configs/ur7e_xhand/ur7e_xhand_verified.urdf` 一致。渲染器不依赖 `/opt/ros/humble` 或个人目录中的网格路径。
 
 要重现 `0916_marker_anchored_root_to_tip_upper_lag0` 那种**使用 marker 标定相机位姿**的投影，单独调用：
 
