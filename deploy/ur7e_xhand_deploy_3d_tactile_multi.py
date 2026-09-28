@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3 
 """
 Deploy the current OpenPI / pi0 spatial policy on the UR7e + XHand robot.
 
@@ -62,7 +62,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 DEFAULT_DATASET_ROOT = REPO_ROOT / "data"
 DEFAULT_DATASET_NAME = "grasp_pipette"
-DEFAULT_TASK = "pick up the pipette"
+DEFAULT_TASK = "press the button 4 times and put it into the box"
 DEFAULT_SERVER_PORT = 8990
 TACTILE_SENSOR_COUNT = 5
 TACTILE_BLOCK_SIZE = 384
@@ -528,13 +528,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-mode",
         choices=["single", "multi"],
-        default="single",
+        default="multi",
         help="single keeps the original one-shot behavior; multi keeps hardware connected across repeated runs.",
     )
     parser.add_argument(
         "--num-runs",
         type=int,
-        default=1,
+        default=0,
         help="Number of runs in multi mode. Use 0 to keep running until Ctrl+C.",
     )
     parser.add_argument(
@@ -563,7 +563,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-action-chunk-size", type=int, default=30, help="Max actions to use from each server chunk.")
     parser.add_argument("--smoothing-alpha", type=float, default=1.0)
     parser.add_argument("--action-scale", type=float, default=1.0)
-    parser.add_argument("--no-home", action="store_true", help="Do not reset robot to home before policy run")
+    parser.add_argument("--no-home", action="store_true", help="Skip the physical home reset before each run, including dry runs")
     parser.add_argument(
         "--no-tactile-reset",
         action="store_true",
@@ -592,7 +592,7 @@ def parse_args() -> argparse.Namespace:
         default=INDEX_SPLAY_DEADZONE_MAX_RAD,
         help="Upper bound for the index-splay action dead zone.",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Run inference but do not send actions")
+    parser.add_argument("--dry-run", action="store_true", help="Run inference without sending policy actions; home reset still runs unless --no-home is set")
     parser.add_argument("--check-config", action="store_true", help="Validate dataset wiring and exit")
     parser.add_argument("--yes", action="store_true", help="Skip interactive start confirmation")
     parser.add_argument("--verbose", action="store_true")
@@ -752,6 +752,7 @@ def get_depth(obs: dict, camera_name: str) -> np.ndarray:
                 return np.asarray(image_like[key])
 
     candidates = (
+        f"depths.{camera_name}",
         f"observation.depths.{camera_name}",
         f"observation/{camera_name}_depth",
         f"{camera_name}_depth",
@@ -809,6 +810,17 @@ def action_array_to_dict(action: np.ndarray, action_names: list[str]) -> dict[st
     if len(action) != len(action_names):
         raise ValueError(f"Action length {len(action)} does not match action names {len(action_names)}")
     return {name: float(value) for name, value in zip(action_names, action, strict=True)}
+
+
+def format_dry_run_action(action_dict: dict[str, float], obs: dict) -> str:
+    groups = []
+    for prefix in ("arm_", "hand_"):
+        entries = [(name, value) for name, value in action_dict.items() if name.startswith(prefix)]
+        values = ", ".join(f"{name.removeprefix(prefix)}={value:.4f}" for name, value in entries)
+        deltas = [abs(value - float(obs[name])) for name, value in entries if name in obs]
+        delta_text = f" max_abs_delta={max(deltas):.4f} rad" if deltas else ""
+        groups.append(f"{prefix.removesuffix('_')}=[{values}]{delta_text}")
+    return " | ".join(groups)
 
 
 def read_tactile_calc_force_from_hand(hand_observation: dict[str, float]) -> np.ndarray:
@@ -1027,8 +1039,10 @@ def reset_robot_to_home_for_run(robot, args: argparse.Namespace, run_index: int)
     if not args.no_home:
         print("Resetting robot to home...")
         if not robot.reset_to_home():
-            print("Warning: reset_to_home reported a failure")
+            raise RuntimeError(f"Home reset failed before run {run_index}; refusing to start with an unknown initial pose")
         time.sleep(2.0)
+    else:
+        print("Skipping home reset (--no-home); initial observation uses the robot's current pose.")
 
     seed_action_target_fallback(robot)
     if not args.no_tactile_reset:
@@ -1044,8 +1058,9 @@ def prepare_robot_for_policy_run(robot, args: argparse.Namespace, run_index: int
     print(f"\n=== Preparing PI0 run {run_label} ===")
 
     if args.run_mode == "multi":
+        preparation = "start" if args.no_home else "reset home and start"
         input(
-            f"Press ENTER to reset home and start PI0 run {run_label}. "
+            f"Press ENTER to {preparation} PI0 run {run_label}. "
             "Press RIGHT arrow during the run to finish this run: "
         )
         reset_robot_to_home_for_run(robot, args, run_index)
@@ -1193,11 +1208,13 @@ def run_policy_once(
 
                 action_dict = action_array_to_dict(action, action_names)
                 if args.dry_run:
-                    if frame_idx % max(args.fps, 1) == 0:
-                        print(
-                            f"[dry-run] run={run_index} frame={frame_idx} chunk={chunk_idx}/{n_action_steps} "
-                            f"action_range=[{action.min():.3f}, {action.max():.3f}]"
-                        )
+                    print(
+                        f"[dry-run would_send] run={run_index} frame={frame_idx} "
+                        f"chunk={chunk_idx}/{n_action_steps} "
+                        f"{'fallback_hold ' if active_fallback else ''}"
+                        f"{format_dry_run_action(action_dict, obs)}",
+                        flush=True,
+                    )
                 else:
                     robot.send_action(action_dict)
 
