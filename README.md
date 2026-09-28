@@ -18,7 +18,7 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync --frozen --no-group rlds
 
 激活已安装好的环境后，下面的命令直接使用 `python`。在已有训练环境中不要随手运行普通 `uv run`：它可能同步并重建 `.venv`。如果必须通过 uv 调用已有环境，使用 `uv run --no-sync ...`。`rlds` 依赖组用于其他数据流程，本项目的 LeRobot spatial 训练不需要它。
 
-离线标注/对照工具额外需要 `pyarrow`、`av`、`opencv-python`、`scipy`、`plotly`；旧网格轮廓还需 `trimesh` 与本机 `3D_tactile` 资产。缺失时在**单独的分析环境**安装，不必改动机器人控制环境；没有旧网格也能生成 FK 骨架投影。
+离线标注/对照工具额外需要 `pyarrow`、`av`、`opencv-python`、`scipy`、`plotly`；root-to-tip CAD 轮廓还需 `trimesh`、加载 DAE 所需的 `pycollada` 和下述 URDF 网格。缺失时在**单独的分析环境**安装，不必改动机器人控制环境；缺网格会明确报错，不再静默改画骨架。
 
 本项目的数据、配置和输出位置：
 
@@ -58,7 +58,44 @@ PYTHONPATH=src python scripts/spatial/compare_front_calibration.py \
   --output diagnostics/press_button_0_front_compare
 ```
 
-打开 `diagnostics/press_button_0_front_compare/index.html`，逐帧比较未纠正/候选纠正的 root-to-tip 展开轮廓 PNG 和交互 3D 网页。网页分别显示稠密 ROI、**模型实际看到的 4096 点**和触觉点。`--output` 必须是不存在的目录。若本机有 `3D_tactile` 的旧网格资产，使用其展开轮廓渲染；没有时自动退化为 FK 关节骨架投影。点云始终由当前 canonical `SpatialPreprocessor` 生成。先看图，没问题就不必重新标注。
+打开 `diagnostics/press_button_0_front_compare/index.html`，逐帧比较未纠正/候选纠正的 root-to-tip **CAD 网格逐段与累积轮廓** PNG 和交互 3D 网页。轮廓使用原 RGB + 视野外黑色展开画布，与 `0916_marker_anchored_root_to_tip_upper_lag0` 的版式一致。网页同时显示稠密 ROI、**模型实际看到的 4096 点**、触觉点、C0–C8 机械臂/手掌轮廓和五指轮廓；图例可单击开关各层。三维 CAD 是 FK 生成的参考几何，**不是模型额外输入**。`--output` 必须是不存在的目录。点云仍由当前 canonical `SpatialPreprocessor` 生成，稠密与 4096 层使用相同外参。先看图，没问题就不必重新标注。
+
+渲染器优先读取 `assets/root_to_tip/` 中的独立网格包；若不存在，则读取本机忽略的 `3D_tactile/` 目录。只需将旧项目中的以下文件按相对目录复制一次；`assets/` 不提交 Git：
+
+```bash
+mkdir -p assets/root_to_tip/pointcloud_delivery/configs
+mkdir -p assets/root_to_tip/pointcloud_delivery/diagnostics/ur_description_source/meshes/ur5e
+mkdir -p assets/root_to_tip/ur5_xhand
+cp 3D_tactile/pointcloud_delivery/configs/ur7e_xhand_verified.urdf assets/root_to_tip/pointcloud_delivery/configs/
+cp -a 3D_tactile/pointcloud_delivery/diagnostics/ur_description_source/meshes/ur5e/visual assets/root_to_tip/pointcloud_delivery/diagnostics/ur_description_source/meshes/ur5e/
+cp -a 3D_tactile/ur5_xhand/Flange_meshes assets/root_to_tip/ur5_xhand/
+cp -a 3D_tactile/ur5_xhand/xhand_meshes assets/root_to_tip/ur5_xhand/
+```
+
+如果旧项目不在本机，先从原机器复制上述 4 处到对应的 `assets/root_to_tip/` 相对目录；或者将完整旧项目放在仓库根目录的 `3D_tactile/`。也可用 `--mesh-urdf /path/to/ur7e_xhand_verified.urdf` 指定 URDF，但它引用的相对网格路径必须存在，且 URDF 必须与 `configs/ur7e_xhand/ur7e_xhand_verified.urdf` 一致。这里不需要复制碰撞网格。
+
+要重现 `0916_marker_anchored_root_to_tip_upper_lag0` 那种**使用 marker 标定相机位姿**的投影，单独调用：
+
+```bash
+PYTHONPATH=src python scripts/spatial/root_to_tip_front.py \
+  --dataset /path/to/0916_camera_upper --episode 0 --frames 309,417,843 \
+  --marker-camera-report 3D_tactile/pointcloud_delivery/diagnostics/0916_forearm_marker_continuous_handeye_e2_upperarm_anchor_lag0/report.json \
+  --output diagnostics/0916_marker_root_to_tip
+```
+
+`--frames report-qc` 可从报告的 `qc_images` 读取帧号。默认读取 `free_camera_T_base_color`；其他键可用 `--camera-report-key`。也可以给上面的 `compare_front_calibration.py` 命令追加 `--marker-camera-report /path/to/report.json`，它会在 baseline/corrected 之外增加 marker 一行；此时 2D 轮廓、3D 稠密云、4096 点、CAD 轮廓均使用报告中的**同一个** front 位姿。这个覆盖只在离线可视化时生效，不会修改训练/部署 profile；不能直接把 marker 页当成当前模型看到的点云。报告只能用于它对应的数据集、相机安装和时间段；换数据集须验证外参是否仍然成立。
+
+单帧点云网页也可直接生成：
+
+```bash
+PYTHONPATH=src python scripts/spatial/visualize_spatial_web.py \
+  --dataset data/press_button_0 --episode 0 --frame 0 --cameras front \
+  --cad-root-to-tip --output diagnostics/frame_000000_cad_cloud.html
+```
+
+如网页较大，用 `--max-dense-points-per-camera 5000` 或 `--max-cad-edges-per-group 1500` 缩减**仅用于展示**的点和轮廓线，不影响正式模型输入。
+
+检查点云时，先在**深度相机坐标系**用多个已知尺寸的静态平面/标记物核对深度单位、`depth_intrinsics`、图像分辨率/裁剪及深度对齐方式；再检查 `T_color_depth` 和 RGB 映射；最后用多个姿态、不同深度的已知三维物体校验 `T_base_color`。可记录有效深度覆盖率、平面点到平面距离的 median/p90、CAD 可见表面的深度残差 median/p90，以及独立测量标记的三维误差；按距离、图像区域、姿态分组看系统偏差。不要把所有触觉点到点云的最近邻距离当准确率：不接触时两者本来就有间隔，接触物体也可能被手遮挡。用“真实触觉位置”做绝对误差需要额外独立真值（实测 taxel 几何/接触点或外部追踪），当前状态+触觉值+深度图自身无法给出该真值。
 
 如候选残差在这个数据集上不准，再生成标注页面。点击可辨认的物理关节中心/指尖，不可见或不确定的跳过：
 

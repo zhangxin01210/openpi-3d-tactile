@@ -98,6 +98,7 @@ Final 4096 则直接调用：
 from __future__ import annotations
 
 import argparse
+import dataclasses
 from pathlib import Path
 import webbrowser
 
@@ -105,6 +106,7 @@ import numpy as np
 
 from openpi.spatial.config import make_baseline_config
 from openpi.spatial.geometry import build_camera_cache
+from openpi.spatial.geometry import apply_diagnostic_overrides
 from openpi.spatial.geometry import colorize_from_source_cameras
 from openpi.spatial.geometry import depth_to_base_roi
 from openpi.spatial.preprocess import SpatialPreprocessor
@@ -151,6 +153,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional front calibration profile JSON; default is uncorrected baseline.",
     )
+    parser.add_argument(
+        "--cad-root-to-tip",
+        action="store_true",
+        help="Overlay FK CAD silhouettes by link group (requires the verified visual meshes).",
+    )
+    parser.add_argument("--mesh-urdf", type=Path, default=None)
+    parser.add_argument("--max-cad-edges-per-group", type=int, default=3000)
+    parser.add_argument("--marker-camera-report", type=Path, default=None,
+                        help="Offline-only FRONT T_base_color override for cloud and CAD")
+    parser.add_argument("--camera-report-key", default="free_camera_T_base_color")
 
     parser.add_argument(
         "--max-dense-points-per-camera",
@@ -329,13 +341,13 @@ def build_dense_roi_by_camera(
 
     cfg = preprocessor.config
 
+    active_calibrations = apply_diagnostic_overrides(
+        preprocessor.calibration_bundle.cameras, cfg.diagnostics
+    )
+
     for role in camera_roles:
         calibration = (
-            preprocessor
-            .calibration_bundle
-            .cameras[
-                role
-            ]
+            active_calibrations[role]
         )
 
         depth = np.asarray(
@@ -682,6 +694,62 @@ def force_line_trace(
     )
 
 
+def cad_root_to_tip_traces(*, go, preprocessor, state, camera, mesh_urdf, max_edges):
+    """Project visible CAD silhouette edges into the same base frame as the cloud."""
+    from root_to_tip_mesh import CHAIN_GROUPS, COLORS, FINGER_COLORS, FINGER_PREFIXES, load_visual_meshes
+
+    meshes = load_visual_meshes(mesh_urdf, include_fingers=True)
+    q = {
+        name: float(state[index])
+        for name, index in preprocessor.state_mapping.items()
+        if name in preprocessor.kinematics.measured_movable
+    }
+    transforms = preprocessor.kinematics.compute(q, root="base_link")
+    camera_origin = camera.T_base_color[:3, 3]
+    traces = []
+    finger_groups = [
+        (f"finger {name}", tuple(link for link in meshes if link.startswith(prefix)))
+        for name, prefix in FINGER_PREFIXES
+    ]
+    for group_index, (group_name, links) in enumerate((*CHAIN_GROUPS, *finger_groups)):
+        segments = []
+        for link in links:
+            if link not in transforms:
+                raise KeyError(f"FK missing {link}")
+            mesh = meshes[link].copy()
+            mesh.merge_vertices()
+            T = transforms[link]
+            vertices = mesh.vertices @ T[:3, :3].T + T[:3, 3]
+            face_centers = mesh.triangles_center @ T[:3, :3].T + T[:3, 3]
+            face_normals = mesh.face_normals @ T[:3, :3].T
+            facing = np.einsum("ij,ij->i", face_normals, camera_origin - face_centers) > 0
+            adjacent = mesh.face_adjacency
+            silhouette = mesh.face_adjacency_edges[facing[adjacent[:, 0]] != facing[adjacent[:, 1]]]
+            counts = np.bincount(mesh.edges_unique_inverse, minlength=len(mesh.edges_unique))
+            boundary = mesh.edges_unique[counts == 1]
+            edges = np.concatenate((silhouette, boundary), axis=0)
+            if len(edges):
+                segments.append(vertices[edges])
+        if not segments:
+            continue
+        segments = np.concatenate(segments, axis=0)
+        if max_edges and len(segments) > max_edges:
+            segments = segments[np.linspace(0, len(segments) - 1, max_edges, dtype=int)]
+        separated = np.full((len(segments), 3, 3), np.nan)
+        separated[:, :2, :] = segments
+        rgb = (*COLORS, *FINGER_COLORS)[group_index]
+        traces.append(go.Scatter3d(
+            x=separated[:, :, 0].ravel(),
+            y=separated[:, :, 1].ravel(),
+            z=separated[:, :, 2].ravel(),
+            mode="lines",
+            name=f"CAD {group_name}",
+            line={"color": f"rgb({rgb[0]},{rgb[1]},{rgb[2]})", "width": 3},
+            hoverinfo="skip",
+        ))
+    return traces
+
+
 # =============================================================================
 # 6. Main
 # =============================================================================
@@ -729,6 +797,19 @@ def main() -> None:
         raise ValueError(
             "--cameras cannot be empty"
         )
+    if args.cad_root_to_tip and "front" not in camera_roles:
+        raise ValueError("--cad-root-to-tip requires front in --cameras")
+    if args.marker_camera_report is not None and "front" not in camera_roles:
+        raise ValueError("--marker-camera-report requires front in --cameras")
+    if args.marker_camera_report is not None and args.front_calibration_profile is not None:
+        raise ValueError("Use either --marker-camera-report or --front-calibration-profile")
+    if args.max_cad_edges_per_group < 0:
+        raise ValueError("--max-cad-edges-per-group must be nonnegative")
+    mesh_urdf = None
+    if args.cad_root_to_tip:
+        from root_to_tip_mesh import resolve_mesh_urdf
+
+        mesh_urdf = resolve_mesh_urdf(repo_root, args.mesh_urdf)
 
     (
         timestamp_s,
@@ -762,6 +843,17 @@ def main() -> None:
             config=cfg,
         )
     )
+    if args.marker_camera_report is not None:
+        from root_to_tip_mesh import load_marker_camera_report
+
+        marker_T, _ = load_marker_camera_report(
+            args.marker_camera_report.expanduser().resolve(), args.camera_report_key
+        )
+        cameras = dict(preprocessor.calibration_bundle.cameras)
+        cameras["front"] = dataclasses.replace(cameras["front"], T_base_color=marker_T)
+        preprocessor.calibration_bundle = dataclasses.replace(
+            preprocessor.calibration_bundle, cameras=cameras
+        )
 
     # -------------------------------------------------------------------------
     # 6.1 Final canonical SpatialObservation
@@ -993,6 +1085,20 @@ def main() -> None:
             force_trace
         )
 
+    if mesh_urdf is not None:
+        camera = apply_diagnostic_overrides(
+            preprocessor.calibration_bundle.cameras, cfg.diagnostics
+        )["front"]
+        for trace in cad_root_to_tip_traces(
+            go=go,
+            preprocessor=preprocessor,
+            state=state,
+            camera=camera,
+            mesh_urdf=mesh_urdf,
+            max_edges=args.max_cad_edges_per_group,
+        ):
+            figure.add_trace(trace)
+
     # -------------------------------------------------------------------------
     # 6.6 Layout
     # -------------------------------------------------------------------------
@@ -1002,13 +1108,14 @@ def main() -> None:
         )
         for role in camera_roles
     )
+    calibration_label = " | marker camera (offline only)" if args.marker_camera_report else ""
 
     figure.update_layout(
         title=(
             "Spatial QA | "
             f"episode={args.episode}, "
             f"frame={args.frame}, "
-            f"cameras={','.join(camera_roles)}"
+            f"cameras={','.join(camera_roles)}{calibration_label}"
             "<br>"
             f"<sup>Dense ROI: {dense_counts_text}; "
             f"Final=4096; tactile=600; "
@@ -1024,13 +1131,13 @@ def main() -> None:
         legend={
             "itemsizing": "constant",
         },
+        autosize=True,
         margin={
             "l": 0,
-            "r": 0,
+            "r": 240 if mesh_urdf is not None else 80,
             "b": 0,
             "t": 85,
         },
-        width=1400,
         height=900,
     )
 
