@@ -2,6 +2,7 @@ from collections.abc import Iterator, Sequence
 import logging
 import multiprocessing
 import os
+import pathlib
 import typing
 from typing import Literal, Protocol, SupportsIndex, TypeVar
 
@@ -216,10 +217,47 @@ def create_torch_dataset(
             data_config.spatial.dataset_root,
             version=data_config.spatial.version,
         )
+        actual_roles = tuple(spatial_dataset.manifest["spatial_contract"]["camera_roles"])
+        if actual_roles != data_config.spatial.camera_roles:
+            raise ValueError(
+                f"Spatial sidecar camera roles {actual_roles} do not match config "
+                f"{data_config.spatial.camera_roles}"
+            )
+        manifest_diagnostics = spatial_dataset.manifest.get("preprocess_config", {}).get("diagnostics", {})
+        if data_config.spatial.front_calibration_profile is None:
+            expected_extrinsic = expected_intrinsic = False
+        else:
+            from openpi.spatial.calibration_profile import apply_front_calibration_profile
+            from openpi.spatial.config import make_baseline_config
+
+            profile_path = pathlib.Path(data_config.spatial.front_calibration_profile)
+            if not profile_path.is_absolute():
+                profile_path = pathlib.Path(__file__).resolve().parents[3] / profile_path
+            expected = apply_front_calibration_profile(make_baseline_config(), profile_path).diagnostics
+            expected_extrinsic = expected.enable_front_extrinsic_correction
+            expected_intrinsic = expected.enable_front_intrinsic_k1
+            if expected_extrinsic:
+                actual_translation = np.asarray(
+                    manifest_diagnostics.get("front_extrinsic_translation_base_m", ()), dtype=float
+                )
+                if actual_translation.shape != (3,) or not np.allclose(
+                    actual_translation, expected.front_extrinsic_translation_base_m
+                ):
+                    raise ValueError("Spatial sidecar front extrinsic does not match the configured profile")
+            if expected_intrinsic:
+                actual_k = manifest_diagnostics.get("front_color_k1", {})
+                if any(not np.isclose(actual_k.get(key, np.nan), getattr(expected.front_color_k1, key))
+                       for key in ("fx", "fy", "cx", "cy")):
+                    raise ValueError("Spatial sidecar front intrinsic does not match the configured profile")
+        if (bool(manifest_diagnostics.get("enable_front_extrinsic_correction")) != expected_extrinsic
+                or bool(manifest_diagnostics.get("enable_front_intrinsic_k1")) != expected_intrinsic):
+            raise ValueError("Spatial sidecar diagnostic calibration flags do not match the train config")
         dataset = SpatialAugmentedDataset(
             dataset,
             spatial_dataset,
             copy_arrays=data_config.spatial.copy_arrays,
+            use_visual=getattr(model_config, "use_visual", True),
+            use_tactile=getattr(model_config, "use_tactile", True),
         )
     return dataset
 

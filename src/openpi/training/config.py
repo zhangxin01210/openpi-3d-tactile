@@ -118,6 +118,8 @@ class SpatialDataConfig:
     dataset_root: str
     version: str = "v1"
     copy_arrays: bool = True
+    camera_roles: tuple[str, ...] = ("front", "left")
+    front_calibration_profile: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1515,6 +1517,54 @@ _CONFIGS = [
     *roboarena_config.get_roboarena_configs(),
     *polaris_config.get_polaris_configs(),
 ]
+
+
+FRONT_SPATIAL_VERSION = "v1_front"
+FRONT_CALIBRATION_PROFILE: str | None = None
+
+
+def _front_only_structured_suffix_config(
+    name: str, *, use_visual: bool, use_tactile: bool
+) -> TrainConfig:
+    baseline = next(config for config in _CONFIGS if config.name == "pi0_xhand_spatial_structured_suffix")
+    assert isinstance(baseline.model, spatial_pi0_config.StructuredSpatialPi0Config)
+    assert isinstance(baseline.data, LeRobotXHandDataConfig)
+    assert baseline.data.spatial is not None
+    model = dataclasses.replace(baseline.model, use_visual=use_visual, use_tactile=use_tactile)
+    spatial = dataclasses.replace(
+        baseline.data.spatial,
+        version=FRONT_SPATIAL_VERSION,
+        camera_roles=("front",),
+        front_calibration_profile=FRONT_CALIBRATION_PROFILE,
+    )
+    return dataclasses.replace(
+        baseline,
+        name=name,
+        model=model,
+        data=dataclasses.replace(baseline.data, spatial=spatial),
+        freeze_filter=model.get_freeze_filter(),
+        policy_metadata={
+            "spatial_camera_roles": ["front"] if use_visual else [],
+            "spatial_use_visual": use_visual,
+            "spatial_use_tactile": use_tactile,
+            "front_calibration_profile": FRONT_CALIBRATION_PROFILE,
+        },
+    )
+
+
+_CONFIGS.extend(
+    [
+        _front_only_structured_suffix_config(
+            "pi0_xhand_spatial_structured_suffix_front", use_visual=True, use_tactile=True
+        ),
+        _front_only_structured_suffix_config(
+            "pi0_xhand_spatial_structured_suffix_front_visual", use_visual=True, use_tactile=False
+        ),
+        _front_only_structured_suffix_config(
+            "pi0_xhand_spatial_structured_suffix_front_tactile", use_visual=False, use_tactile=True
+        ),
+    ]
+)
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")

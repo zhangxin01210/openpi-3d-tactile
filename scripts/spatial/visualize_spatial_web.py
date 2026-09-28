@@ -145,6 +145,12 @@ def parse_args() -> argparse.Namespace:
         default="front,left",
         help="例如 front / left / front,left。",
     )
+    parser.add_argument(
+        "--front-calibration-profile",
+        type=Path,
+        default=None,
+        help="Optional front calibration profile JSON; default is uncorrected baseline.",
+    )
 
     parser.add_argument(
         "--max-dense-points-per-camera",
@@ -742,6 +748,13 @@ def main() -> None:
             *camera_roles
         )
     )
+    if args.front_calibration_profile is not None:
+        from openpi.spatial.calibration_profile import apply_front_calibration_profile
+
+        profile_path = args.front_calibration_profile
+        if not profile_path.is_absolute():
+            profile_path = repo_root / profile_path
+        cfg = apply_front_calibration_profile(cfg, profile_path)
 
     preprocessor = (
         SpatialPreprocessor.from_repo_root(

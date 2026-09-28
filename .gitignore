@@ -170,3 +170,4 @@ cython_debug/
 # Local spatial debug / derived outputs
 /output/
 /review/
+3D_tactile

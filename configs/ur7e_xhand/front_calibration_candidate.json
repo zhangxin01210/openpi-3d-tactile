@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "front_extrinsic_translation_base_m": [0.0, -0.012, 0.005],
+  "front_color_intrinsics": {
+    "fx": 634.8879216573664,
+    "fy": 617.5755080760925,
+    "cx": 318.8070728820338,
+    "cy": 235.91048429182663
+  },
+  "provenance": "Prior 3D_tactile diagnostic candidate; validate on each dataset before training."
+}

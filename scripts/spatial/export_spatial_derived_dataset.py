@@ -290,6 +290,13 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
+        "--front-calibration-profile",
+        type=Path,
+        default=None,
+        help="Optional front calibration profile JSON; use a new --version when enabled.",
+    )
+
+    parser.add_argument(
         "--shard-size",
         type=int,
         default=128,
@@ -1877,6 +1884,13 @@ def main() -> None:
             num_points=args.num_points,
         )
     )
+    if args.front_calibration_profile is not None:
+        from openpi.spatial.calibration_profile import apply_front_calibration_profile
+
+        profile_path = args.front_calibration_profile
+        if not profile_path.is_absolute():
+            profile_path = repo_root / profile_path
+        config = apply_front_calibration_profile(config, profile_path)
 
     preprocessor = (
         SpatialPreprocessor.from_repo_root(

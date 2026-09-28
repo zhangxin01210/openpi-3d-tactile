@@ -59,6 +59,26 @@ def _spatial_observation_to_model_dict(observation: SpatialObservation) -> dict[
     }
 
 
+def _tactile_to_model_dict(tactile: Any) -> dict[str, np.ndarray]:
+    return {
+        "xyz_m": np.asarray(tactile.xyz_m, dtype=np.float32),
+        "force": np.asarray(tactile.force_base, dtype=np.float32),
+        "force_norm": np.asarray(tactile.force_norm, dtype=np.float32),
+        "finger_id": np.asarray(tactile.finger_id, dtype=np.int32),
+        "taxel_id": np.asarray(tactile.taxel_id, dtype=np.int32),
+        "point_mask": np.ones((tactile.xyz_m.shape[0],), dtype=np.bool_),
+    }
+
+
+def _visual_to_model_dict(visual: Any) -> dict[str, np.ndarray]:
+    return {
+        "xyz_m": np.asarray(visual.xyz_m, dtype=np.float32),
+        "rgb": np.asarray(visual.rgb, dtype=np.uint8),
+        "rgb_valid": np.asarray(visual.rgb_valid, dtype=np.bool_),
+        "point_mask": np.ones((visual.xyz_m.shape[0],), dtype=np.bool_),
+    }
+
+
 @dataclasses.dataclass(frozen=True)
 class XHandSpatialOnlineRepack(transforms.DataTransformFn):
     """Repack the raw deployment observation for XHandInputs at inference time."""
@@ -92,10 +112,19 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
 
     repo_root: str | Path | None = None
     camera_roles: tuple[str, ...] = ("front", "left")
+    use_visual: bool = True
+    use_tactile: bool = True
+    front_calibration_profile: str | None = None
 
     def __post_init__(self) -> None:
+        if not (self.use_visual or self.use_tactile):
+            raise ValueError("At least one spatial modality must be enabled")
         repo_root = Path(self.repo_root).expanduser().resolve() if self.repo_root is not None else _default_repo_root()
         config = make_baseline_config().with_camera_roles(*self.camera_roles)
+        if self.front_calibration_profile is not None:
+            from openpi.spatial.calibration_profile import apply_front_calibration_profile
+
+            config = apply_front_calibration_profile(config, repo_root / self.front_calibration_profile)
         preprocessor = SpatialPreprocessor.from_repo_root(repo_root=repo_root, config=config)
         object.__setattr__(self, "_preprocessor", preprocessor)
 
@@ -116,7 +145,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
 
         rgb_by_role: dict[str, np.ndarray] = {}
         depth_by_role: dict[str, np.ndarray] = {}
-        for role in self.camera_roles:
+        for role in self.camera_roles if self.use_visual else ():
             camera_name = _camera_name(role)
             rgb_by_role[role] = np.asarray(
                 _get_any(
@@ -146,14 +175,22 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
         frame_index = _as_scalar(data.get("frame_index", data.get("current_action_step", 0)), dtype=int)
         timestamp_s = _as_scalar(data.get("timestamp_s", frame_index), dtype=float)
 
-        spatial_observation = self._preprocessor.preprocess(
-            frame_index=frame_index,
-            timestamp_s=timestamp_s,
-            state=state,
-            depth_by_role=depth_by_role,
-            rgb_by_role=rgb_by_role,
-        )
-
         output = dict(data)
-        output["spatial"] = _spatial_observation_to_model_dict(spatial_observation)
+        if self.use_visual and self.use_tactile:
+            spatial_observation = self._preprocessor.preprocess(
+                frame_index=frame_index,
+                timestamp_s=timestamp_s,
+                state=state,
+                depth_by_role=depth_by_role,
+                rgb_by_role=rgb_by_role,
+            )
+            spatial = _spatial_observation_to_model_dict(spatial_observation)
+        elif self.use_visual:
+            visual = self._preprocessor.preprocess_visual(
+                depth_by_role=depth_by_role, rgb_by_role=rgb_by_role
+            )
+            spatial = {"visual": _visual_to_model_dict(visual)}
+        else:
+            spatial = {"tactile": _tactile_to_model_dict(self._preprocessor.preprocess_tactile(state))}
+        output["spatial"] = spatial
         return output

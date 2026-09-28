@@ -1,0 +1,32 @@
+{
+  "landmarks": [
+    {
+      "name": "elbow_joint_center",
+      "group": "base",
+      "link": "forearm_link",
+      "local_xyz_m": [0, 0, 0],
+      "description": "Visible circular elbow joint center; skip if occluded"
+    },
+    {
+      "name": "wrist_1_joint_center",
+      "group": "base",
+      "link": "wrist_1_link",
+      "local_xyz_m": [0, 0, 0],
+      "description": "First wrist joint center; skip if occluded"
+    },
+    {
+      "name": "wrist_2_joint_center",
+      "group": "base",
+      "link": "wrist_2_link",
+      "local_xyz_m": [0, 0, 0],
+      "description": "Second wrist joint center; skip if occluded"
+    },
+    {
+      "name": "wrist_3_joint_center",
+      "group": "tip",
+      "link": "wrist_3_link",
+      "local_xyz_m": [0, 0, 0],
+      "description": "Wrist-3 circular flange interface center; use only if visible"
+    }
+  ]
+}

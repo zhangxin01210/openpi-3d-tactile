@@ -416,6 +416,8 @@ class SpatialAugmentedDataset:
         spatial_dataset: SpatialDerivedDataset,
         *,
         copy_arrays: bool = True,
+        use_visual: bool = True,
+        use_tactile: bool = True,
         episode_key: str = "episode_index",
         frame_key: str = "frame_index",
         output_key: str = "spatial",
@@ -431,6 +433,10 @@ class SpatialAugmentedDataset:
         self.copy_arrays = bool(
             copy_arrays
         )
+        self.use_visual = bool(use_visual)
+        self.use_tactile = bool(use_tactile)
+        if not (self.use_visual or self.use_tactile):
+            raise ValueError("At least one spatial modality must be enabled")
 
         self.episode_key = str(
             episode_key
@@ -538,6 +544,10 @@ class SpatialAugmentedDataset:
         spatial = self._to_dict(
             spatial_sample
         )
+        if not self.use_visual:
+            spatial.pop("visual")
+        if not self.use_tactile:
+            spatial.pop("tactile")
 
         # 不修改 base dataset 返回的原对象。
         output = dict(

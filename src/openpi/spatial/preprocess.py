@@ -155,11 +155,13 @@ from openpi.spatial.calibration import CalibrationBundle
 from openpi.spatial.calibration import load_camera_calibrations
 from openpi.spatial.config import SpatialPreprocessConfig
 from openpi.spatial.geometry import build_visual_geometry
+from openpi.spatial.geometry import VisualGeometryResult
 from openpi.spatial.kinematics import RobotKinematics
 from openpi.spatial.kinematics import load_state_mapping_csv
 from openpi.spatial.kinematics import tactile_link_transforms
 from openpi.spatial.schema import SpatialObservation
 from openpi.spatial.tactile import build_tactile_observation
+from openpi.spatial.tactile import TactileGeometryResult
 from openpi.spatial.tactile_geometry import TaxelGeometryBundle
 from openpi.spatial.tactile_geometry import load_xhand_taxel_geometry
 
@@ -365,7 +367,39 @@ class SpatialPreprocessor:
         # RGB-D -> base_link visual point cloud
         # -> ROI -> voxel -> fixed-N sampling -> RGB association
         # ---------------------------------------------------------------------
-        visual = build_visual_geometry(
+        visual = self.preprocess_visual(depth_by_role=depth_by_role, rgb_by_role=rgb_by_role)
+
+        # ---------------------------------------------------------------------
+        # 2.2.2 Kinematics branch
+        # ---------------------------------------------------------------------
+        tactile = self.preprocess_tactile(state)
+
+        # ---------------------------------------------------------------------
+        # 2.2.3 Canonical schema
+        # ---------------------------------------------------------------------
+        observation = SpatialObservation(
+            frame_index=int(frame_index),
+            timestamp_s=float(timestamp_s),
+            visual_xyz_m=np.asarray(visual.xyz_m, dtype=np.float32),
+            visual_rgb=np.asarray(visual.rgb, dtype=np.uint8),
+            visual_rgb_valid=np.asarray(visual.rgb_valid, dtype=np.bool_),
+            tactile_xyz_m=np.asarray(tactile.xyz_m, dtype=np.float32),
+            tactile_force_base=np.asarray(tactile.force_base, dtype=np.float32),
+            tactile_force_norm=np.asarray(tactile.force_norm, dtype=np.float32),
+            finger_id=np.asarray(tactile.finger_id, dtype=np.int8),
+            taxel_id=np.asarray(tactile.taxel_id, dtype=np.int16),
+        )
+        observation.validate(
+            expected_visual_points=self.config.visual.num_points,
+            expected_tactile_points=self.config.tactile.num_taxels,
+        )
+        return observation
+
+    def preprocess_visual(
+        self, *, depth_by_role: Mapping[str, np.ndarray], rgb_by_role: Mapping[str, np.ndarray]
+    ) -> VisualGeometryResult:
+        """Build the canonical RGB-D branch without evaluating tactile FK."""
+        return build_visual_geometry(
             depth_by_role=dict(
                 depth_by_role
             ),
@@ -382,11 +416,11 @@ class SpatialPreprocessor:
             ),
         )
 
-        # ---------------------------------------------------------------------
-        # 2.2.2 Kinematics branch
-        #
-        # state -> q -> verified FK -> five T_base_link2
-        # ---------------------------------------------------------------------
+    def preprocess_tactile(self, state: np.ndarray) -> TactileGeometryResult:
+        """Build the canonical tactile branch without decoding or projecting RGB-D."""
+        state = np.asarray(state)
+        if state.ndim != 1 or not np.all(np.isfinite(state)):
+            raise ValueError("state must be a finite 1-D array")
         tactile_transforms = (
             tactile_link_transforms(
                 np.asarray(
@@ -407,82 +441,12 @@ class SpatialPreprocessor:
         # raw force + local taxel geometry + current FK
         # -> 600 base_link tactile points / force vectors
         # ---------------------------------------------------------------------
-        tactile = (
-            build_tactile_observation(
-                state=np.asarray(
-                    state
-                ),
-                taxel_xyz_link_m=(
-                    self.taxel_geometry.xyz_link_m
-                ),
-                T_base_link_by_name=(
-                    tactile_transforms
-                ),
-                config=self.config.tactile,
-            )
+        return build_tactile_observation(
+            state=state,
+            taxel_xyz_link_m=self.taxel_geometry.xyz_link_m,
+            T_base_link_by_name=tactile_transforms,
+            config=self.config.tactile,
         )
-
-        # ---------------------------------------------------------------------
-        # 2.2.4 Canonical schema
-        #
-        # 注意：
-        # VisualGeometryResult / TactileGeometryResult 都是 preprocessing
-        # 内部对象；从这里开始，上层只看到 SpatialObservation。
-        # ---------------------------------------------------------------------
-        observation = SpatialObservation(
-            frame_index=int(
-                frame_index
-            ),
-            timestamp_s=float(
-                timestamp_s
-            ),
-            visual_xyz_m=np.asarray(
-                visual.xyz_m,
-                dtype=np.float32,
-            ),
-            visual_rgb=np.asarray(
-                visual.rgb,
-                dtype=np.uint8,
-            ),
-            visual_rgb_valid=np.asarray(
-                visual.rgb_valid,
-                dtype=np.bool_,
-            ),
-            tactile_xyz_m=np.asarray(
-                tactile.xyz_m,
-                dtype=np.float32,
-            ),
-            tactile_force_base=np.asarray(
-                tactile.force_base,
-                dtype=np.float32,
-            ),
-            tactile_force_norm=np.asarray(
-                tactile.force_norm,
-                dtype=np.float32,
-            ),
-            finger_id=np.asarray(
-                tactile.finger_id,
-                dtype=np.int8,
-            ),
-            taxel_id=np.asarray(
-                tactile.taxel_id,
-                dtype=np.int16,
-            ),
-        )
-
-        # ---------------------------------------------------------------------
-        # 2.2.5 在系统边界再次检查最终 contract
-        # ---------------------------------------------------------------------
-        observation.validate(
-            expected_visual_points=(
-                self.config.visual.num_points
-            ),
-            expected_tactile_points=(
-                self.config.tactile.num_taxels
-            ),
-        )
-
-        return observation
 
     # =========================================================================
     # 2.3 Static contract

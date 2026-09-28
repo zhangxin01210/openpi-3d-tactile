@@ -78,9 +78,6 @@ INDEX_SPLAY_DEADZONE_MAX_RAD = 0.0
 DEBUG_INFER_PRINT_LIMIT = 3
 DIAGNOSTIC_CONTROL_BLOCK_FRAMES = 30
 
-SPATIAL_CAMERA_ROLES = ("front", "left")
-
-
 FALLBACK_STATE_NAMES = [
     *[f"arm_joint_{i}.pos" for i in range(6)],
     *[f"arm_joint_{i}.vel" for i in range(6)],
@@ -226,7 +223,7 @@ class DiagnosticRecorder:
             "state_names": state_names,
             "action_names": action_names,
             "camera_names": camera_names,
-            "spatial_camera_roles": list(SPATIAL_CAMERA_ROLES),
+            "spatial_camera_roles": list(args.spatial_cameras),
             "tactile": {
                 "finger_names": list(TACTILE_FINGER_NAMES),
                 "block_size": TACTILE_BLOCK_SIZE,
@@ -558,6 +555,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--realsense-width", type=int, default=640)
     parser.add_argument("--realsense-height", type=int, default=480)
     parser.add_argument("--realsense-fps", type=int, default=15)
+    parser.add_argument(
+        "--spatial-cameras",
+        choices=("front,left", "front", "none"),
+        default="front,left",
+        help="Depth images sent for spatial input; use front for front-only models, none for tactile-only.",
+    )
     parser.add_argument("--camera-read-timeout-ms", type=float, default=80.0)
     parser.add_argument("--query-frequency", type=int, default=48, help="Request a new action chunk every N frames.")
     parser.add_argument("--max-action-chunk-size", type=int, default=30, help="Max actions to use from each server chunk.")
@@ -609,7 +612,9 @@ def parse_args() -> argparse.Namespace:
         help="Maximum pending diagnostic writes; full queues drop records instead of delaying control.",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.spatial_cameras = () if args.spatial_cameras == "none" else tuple(args.spatial_cameras.split(","))
+    return args
 
 
 def read_json(path: Path) -> dict:
@@ -669,7 +674,7 @@ def build_robot(args: argparse.Namespace):
         width=args.realsense_width,
         height=args.realsense_height,
         color_mode=camera_configs.ColorMode.RGB,
-        use_depth=True,
+        use_depth=bool(args.spatial_cameras),
     )
     cameras = {
         "cam_front": realsense.RealSenseCameraConfig(
@@ -787,7 +792,7 @@ def build_pi0_observation(
     for camera_name in camera_names:
         image = get_image(obs, camera_name, args.realsense_height, args.realsense_width)
         observation[f"observation.images.{camera_name}"] = image
-    for role in SPATIAL_CAMERA_ROLES:
+    for role in args.spatial_cameras:
         camera_name = f"cam_{role}"
         observation[f"observation.depths.{camera_name}"] = get_depth(obs, camera_name)
     return observation
@@ -1322,7 +1327,7 @@ def main() -> int:
     print(f"State dim: {len(state_names)}")
     print(f"Action dim: {len(action_names)}")
     print(f"Cameras: {', '.join(camera_names)}")
-    print("RealSense depth: enabled")
+    print(f"Spatial depth cameras: {', '.join(args.spatial_cameras) if args.spatial_cameras else 'none'}")
     print(f"Prompt: {args.prompt or args.task}")
     print(f"FPS: {args.fps}, duration: {args.duration}s")
     print("Policy input mode: spatial raw obs")
@@ -1342,8 +1347,15 @@ def main() -> int:
         open_timeout=args.server_open_timeout,
     )
     metadata = client.get_server_metadata()
+    args.server_metadata = metadata
     if metadata:
         print(f"Server metadata: {metadata}")
+        expected_roles = metadata.get("spatial_camera_roles")
+        if expected_roles is not None and tuple(expected_roles) != args.spatial_cameras:
+            raise ValueError(
+                f"Client --spatial-cameras={args.spatial_cameras} differs from server "
+                f"spatial_camera_roles={tuple(expected_roles)}"
+            )
 
     robot = build_robot(args)
 

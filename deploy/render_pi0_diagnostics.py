@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--video-fps", type=float, default=2.0)
     parser.add_argument("--max-summary-keyframes", type=int, default=3)
     parser.add_argument("--skip-query-images", action="store_true")
+    parser.add_argument("--front-calibration-profile", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -119,27 +120,27 @@ def plot_channels(ax, time_s: np.ndarray, values: np.ndarray, names: list[str], 
     ax.grid(alpha=0.25)
 
 
-def make_preprocessor(repo_root: Path):
+def make_preprocessor(repo_root: Path, roles: tuple[str, ...], profile: Path | None = None):
     from openpi.spatial.config import make_baseline_config
     from openpi.spatial.preprocess import SpatialPreprocessor
 
-    config = make_baseline_config().with_camera_roles("front", "left")
+    config = make_baseline_config().with_camera_roles(*(roles or ("front",)))
+    if profile is not None:
+        from openpi.spatial.calibration_profile import apply_front_calibration_profile
+
+        config = apply_front_calibration_profile(config, profile)
     return SpatialPreprocessor.from_repo_root(repo_root=repo_root.expanduser().resolve(), config=config)
 
 
-def reconstruct_spatial(preprocessor, query_input: dict[str, np.ndarray]):
+def reconstruct_spatial(preprocessor, query_input: dict[str, np.ndarray], roles: tuple[str, ...]):
+    if not roles:
+        return preprocessor.preprocess_tactile(np.asarray(query_input["state"], dtype=np.float32))
     return preprocessor.preprocess(
         frame_index=int(scalar(query_input.get("frame_index"), 0)),
         timestamp_s=float(scalar(query_input.get("timestamp_s"), 0.0)),
         state=np.asarray(query_input["state"], dtype=np.float32),
-        depth_by_role={
-            "front": query_input["depth_cam_front"],
-            "left": query_input["depth_cam_left"],
-        },
-        rgb_by_role={
-            "front": query_input["rgb_cam_front"],
-            "left": query_input["rgb_cam_left"],
-        },
+        depth_by_role={role: query_input[f"depth_cam_{role}"] for role in roles},
+        rgb_by_role={role: query_input[f"rgb_cam_{role}"] for role in roles},
     )
 
 
@@ -334,11 +335,15 @@ def render_query(
 
     query_input = query["input"]
     query_output = query["output"]
+    model_metadata = manifest.get("args", {}).get("server_metadata", {})
+    use_visual = bool(model_metadata.get("spatial_use_visual", True))
+    use_tactile = bool(model_metadata.get("spatial_use_tactile", True))
     spatial = None
     spatial_error = None
     if preprocessor is not None:
         try:
-            spatial = reconstruct_spatial(preprocessor, query_input)
+            roles = tuple(manifest.get("spatial_camera_roles", ("front", "left")))
+            spatial = reconstruct_spatial(preprocessor, query_input, roles)
         except Exception as exc:
             spatial_error = f"{type(exc).__name__}: {exc}"
 
@@ -354,7 +359,7 @@ def render_query(
 
     show_depth(axes[1, 0], query_input.get("depth_cam_front", np.empty((1, 1))), "depth front")
     show_depth(axes[1, 1], query_input.get("depth_cam_left", np.empty((1, 1))), "depth left")
-    if spatial is not None:
+    if use_visual and spatial is not None and hasattr(spatial, "visual_xyz_m"):
         rgb = np.asarray(spatial.visual_rgb, dtype=np.float32) / 255.0
         scatter_spatial(axes[1, 2], spatial.visual_xyz_m, rgb, f"visual point cloud ({spatial.visual_count})")
     else:
@@ -369,7 +374,7 @@ def render_query(
     axes[2, 0].set_title("Per-finger raw tactile force norm")
     figure.colorbar(tactile_image, ax=axes[2, 0], fraction=0.025)
 
-    if spatial is not None:
+    if use_tactile and spatial is not None:
         tactile_color = np.asarray(spatial.tactile_force_norm, dtype=np.float32)
         scatter = axes[2, 1].scatter(
             spatial.tactile_xyz_m[:, 0],
@@ -514,7 +519,15 @@ def main() -> int:
 
     preprocessor = None
     try:
-        preprocessor = make_preprocessor(args.repo_root)
+        roles = tuple(manifest.get("spatial_camera_roles", ("front", "left")))
+        profile = args.front_calibration_profile
+        if profile is None:
+            profile = manifest.get("args", {}).get("server_metadata", {}).get("front_calibration_profile")
+        if profile is not None:
+            profile = Path(profile)
+            if not profile.is_absolute():
+                profile = args.repo_root / profile
+        preprocessor = make_preprocessor(args.repo_root, roles, profile)
     except Exception as exc:
         print(f"Warning: spatial reconstruction disabled: {type(exc).__name__}: {exc}", file=sys.stderr)
 
