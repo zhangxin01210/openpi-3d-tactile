@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 from pathlib import Path
 
 import cv2
@@ -82,6 +83,9 @@ def render(input_dir: Path, output_dir: Path) -> None:
             if not (input_dir / mode / f"frame_{frame:06d}_depth_cad.png").is_file():
                 raise FileNotFoundError(input_dir / mode / f"frame_{frame:06d}_depth_cad.png")
     output_dir.mkdir(parents=True, exist_ok=False)
+    def href(path: Path) -> str:
+        return html.escape(Path(os.path.relpath(path, output_dir)).as_posix(), quote=True)
+
     links = []
     for frame in frames:
         base = split_sheet(input_dir / "baseline" / f"frame_{frame:06d}_depth_cad.png")
@@ -97,10 +101,33 @@ def render(input_dir: Path, output_dir: Path) -> None:
             c = paired["corrected"]["abs_median_mm"]
             note = (f"<p>Same-pixel absolute median: {b:.1f} mm baseline, "
                     f"{c:.1f} mm corrected; {paired['common_pixels']} pixels.</p>")
-        links.append(f"<h2>Frame {frame}</h2>{note}<a href='{filename}'><img src='{filename}'></a>")
+        rgb_overlay = input_dir / "rgb_cad_overlay" / f"frame_{frame:06d}_rgb_cad_comparison.png"
+        rgb_link = (f"<a href='{href(rgb_overlay)}'><img src='{href(rgb_overlay)}'></a>"
+                    if rgb_overlay.is_file() else "")
+        joint_links = []
+        for mode in ("baseline", "corrected"):
+            path = input_dir / mode / "rgb_depth_joint" / f"frame_{frame:06d}_rgb_depth_cad.png"
+            if path.is_file():
+                color_root = (input_dir / mode / "root_to_tip_color"
+                              / f"frame_{frame:06d}_front_color_root_to_tip.png")
+                depth_root = (input_dir / mode / "root_to_tip_depth"
+                              / f"frame_{frame:06d}_front_depth_root_to_tip.png")
+                root_links = " ".join(
+                    f"<a href='{href(p)}'>{label}</a>"
+                    for p, label in ((color_root, "RGB root-to-tip"), (depth_root, "depth root-to-tip"))
+                    if p.is_file()
+                )
+                joint_links.append(
+                    f"<div><h3>{mode}</h3><a href='{href(path)}'><img src='{href(path)}'></a>"
+                    f"<p>{root_links}</p></div>"
+                )
+        joint = f"<div class='modes'>{''.join(joint_links)}</div>" if joint_links else ""
+        links.append(f"<h2>Frame {frame}</h2>{note}<a href='{filename}'><img src='{filename}'></a>{rgb_link}{joint}")
         print(output_dir / filename)
     page = ("<!doctype html><meta charset='utf-8'><title>Depth CAD comparison</title>"
-            "<style>body{font:15px system-ui;margin:24px}img{max-width:100%}</style>"
+            "<style>body{font:15px system-ui;margin:24px}img{max-width:100%}"
+            ".modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}"
+            "@media(max-width:800px){.modes{grid-template-columns:1fr}}</style>"
             f"<h1>Depth CAD comparison</h1><p>{html.escape(str(report['dataset']))}</p>"
             "<p>Same raw-depth pixel grid. Red: baseline; green: corrected. "
             "Residual panels retain the original audit's color scale; their masks can differ.</p>"

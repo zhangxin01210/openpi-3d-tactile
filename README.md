@@ -93,7 +93,9 @@ PYTHONPATH=src python scripts/spatial/audit_front_depth_cad.py \
   --output diagnostics/press_0828_17_depth_cad
 ```
 
-输出 `baseline/` 与 `corrected/` 各帧 PNG、逐段深度版 `root_to_tip_depth/`、同一原始深度像素网格的 `comparison/index.html`、`summary.csv` 和 `report.json`。红色轮廓是 baseline，绿色是 corrected；逐段图沿用 ONLY/累积的 root-to-tip 版式，但只画深度相机可见的 CAD 表面。`--save-front-rgb` 另存选定帧的原始彩色图；报告总会记录每帧 state/depth 的 SHA-256 指纹，便于跨机器核对是否真为同一原始记录。输出还包含 C0–C8 和五指 CAD 的逐段结果及实际使用的 `depth_intrinsics`、深度尺度、`T_base_color`、`T_color_depth`。
+输出 `baseline/` 与 `corrected/` 各帧 PNG、逐段深度版 `root_to_tip_depth/`、同一原始深度像素网格的 `comparison/index.html`、`summary.csv` 和 `report.json`。红色轮廓是 baseline，绿色是 corrected；逐段图沿用 ONLY/累积的 root-to-tip 版式，但只画深度相机可见的 CAD 表面。加 `--save-front-rgb` 后还会保存原始 RGB、彩色坐标逐段 `root_to_tip_color/` 和每帧的 `rgb_depth_joint/` 六联图；`rgb_cad_overlay/` 把两个标定的 CAD 轮廓以红/绿画在**同一张原始 RGB**上，对比首页也把 baseline/corrected 的六联图并排，便于对照同一帧。报告总会记录每帧 state/depth 的 SHA-256 指纹，启用 RGB 时也记录 RGB 指纹，便于跨机器核对。输出还包含 C0–C8 和五指 CAD 的逐段结果及实际使用的 color/depth 内参、深度尺度、`T_base_color`、`T_color_depth`。
+
+六联图上排依次为 RGB+CAD、RGB+投到**彩色像素坐标**的原始深度+CAD、RGB 边缘（绿）/深度跳变（红）/CAD（多色）；下排为**原始深度像素坐标**的深度+CAD、仅最近像素投影的深度、配准覆盖图。覆盖图中绿色是原始深度样本投到的像素，琥珀色是为了看清轮廓而扩展的四邻像素，**不是新测量**；因此不能凭四邻扩展的外圈断言深度传感器的物理边界一定偏大。六联图每个模式使用同一帧的原始 RGB/深度，深度伪彩共用该帧的色阶，但 RGB 网格与 depth 网格本来就不同，不能直接按图中位置跨网格比较。彩色视图的 CAD 使用 color K + `T_base_color`；深度视图使用 depth K + `T_base_color @ T_color_depth`；原始深度投到彩色图只使用 depth K、`T_color_depth` 和 color K，**不会受 `T_base_color` 改变**。
 
 单模式 PNG 从左上顺时针分别是原始深度、预测 CAD 深度、近表面残差、全部重叠像素残差；残差定义为 **原始深度减 CAD 深度**，蓝/负值表示观测表面更靠近相机。这是深度光轴方向的差，**不是**点到 CAD 表面的最短三维距离。默认对 CAD mask 内缩 3 像素以减少边缘混合；`near_surface` 只保留绝对残差不超过 50 mm 的像素，灰色表示剔除，阈值可用 `--near-surface-mm` 调整。各深度面板单独自动拉伸，**不可凭颜色直接比较绝对距离**，应看残差图和 CSV 数值。两种标定的 CAD mask 可能不同，比较中位数时也要看有效像素数量和热图；新版报告的 `paired_common_pixels` 额外只在两模式都有效的**同一批像素**上计算误差。
 
@@ -106,6 +108,18 @@ python scripts/spatial/render_depth_cad_comparison.py \
 ```
 
 旧输出没有逐段深度图和原始数据指纹，须用**新输出目录**重新运行 audit 才能得到它们。若怀疑两份数据是同一录制，优先比较对应帧的 `source_fingerprints`：state 和 depth 的哈希同时相等才支持“原始状态/深度完全相同”；不同则先核对 episode、帧号与数据来源。彩色图可辅助检查，但原始深度 PNG 采用逐帧自动色阶，不能靠颜色差估计毫米偏移。
+
+若 RGB 与配准深度只在轮廓外沿分离，且覆盖图主要是琥珀色，优先怀疑投影取整/空洞填补/混合像素，再检查原始深度图与深度坐标的 CAD；若离轮廓较远的完整表面也有稳定的毫米残差，就不是单纯的边缘显示问题。RGB 与配准深度整体错位时，核对两路图像是否同一时刻、是否已被设备预先对齐或裁剪，以及实际 depth/color K 和 `T_color_depth`。RGB root-to-tip 准只能约束彩色几何；不能据此断定深度 K、深度尺度或相机间外参也准。当前工具是诊断，不会自动把残差写回训练/部署标定。
+
+有真正静止、无遮挡的平面区域时，可另测原始深度的时间稳定性。`--roi` 是**原始深度图**的左上/右下像素坐标，右下角不包含；建议选平面内部并避开深度边缘，帧范围内相机和平面都不能动：
+
+```bash
+PYTHONPATH=src python scripts/spatial/audit_static_front_depth.py \
+  --dataset data/press_0828_17 --episode 0 --frames 0:30 \
+  --roi 200,150,280,220 --output diagnostics/front_static_plane
+```
+
+输出 `summary.csv`、`report.json`、`temporal_mad_mm_clipped20.png`。逐像素时间中值作为参考，逐帧给出中值漂移与绝对偏差 p90；平面残差是用**该帧自身数据拟合的平面**算出的中值/p90。最后一个热图在 20 mm 处截断显示。它们分别检验抖动与局部平整度，**不能测量绝对深度尺度或 CAD/真实几何的绝对位置**。上述 ROI 只是命令示例，必须按实际原始深度图重新挑选；运动数据没有静止片段时需单独录一段。
 
 此处把 FK 的 URDF **visual mesh** 投到深度相机的 z-buffer，并非物体分割：遮挡、深度孔洞、CAD 与真实外壳差异以及 RGB/深度时间不同步会污染统计。先看多帧、多 link 的有符号残差形态与有效像素数量；只改 color 相机 `fx/fy/cx/cy` 不会改变此报告的几何结果。若同一 link 呈稳定的整体偏移，应先核对深度尺度、深度分辨率/是否对齐、`T_color_depth` 方向、相机外参与时序；若偏差随视场或距离变化，再调查 depth K、畸变和深度非线性。不要直接拿一张图的 CAD 残差去同时拟合全部内外参；需要独立的多个姿态、多个深度/视场位置的三维约束，并留出帧验证。
 

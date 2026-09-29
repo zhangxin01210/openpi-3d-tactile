@@ -17,9 +17,11 @@ from openpi.spatial.config import make_baseline_config
 from openpi.spatial.geometry import apply_diagnostic_overrides
 from openpi.spatial.preprocess import SpatialPreprocessor
 from openpi.spatial_dataset.source import RawSpatialDataset
+from rgb_depth_joint_diagnostic import (
+    align_depth_to_color, make_color_cad_comparison, make_joint_sheet, make_link_sheet,
+)
 from root_to_tip_mesh import (
-    CHAIN_GROUPS, COLORS, FINGER_COLORS, FINGER_PREFIXES,
-    label_panel, load_visual_meshes, make_sheet as make_root_to_tip_sheet, resolve_mesh_urdf,
+    CHAIN_GROUPS, FINGER_PREFIXES, load_visual_meshes, resolve_mesh_urdf,
 )
 
 
@@ -42,13 +44,11 @@ def array_fingerprint(value):
     return digest.hexdigest()
 
 
-def render_cad_depth(meshes, transforms, camera, shape, group_defs=CHAIN_GROUPS):
-    """Z-buffer triangular visual meshes; return frontmost depth and chain ID."""
+def render_cad_zbuffer(meshes, transforms, T_base_sensor, intrinsics, shape, group_defs=CHAIN_GROUPS):
+    """Z-buffer triangular visual meshes in one optical camera's pixel grid."""
     h, w = shape
-    kd = camera.depth_intrinsics
-    T_base_depth = camera.T_base_color @ camera.T_color_depth
-    R_depth_base = T_base_depth[:3, :3].T
-    t_base_depth = T_base_depth[:3, 3]
+    R_sensor_base = T_base_sensor[:3, :3].T
+    t_base_sensor = T_base_sensor[:3, 3]
     zbuf = np.full((h, w), np.inf, np.float32)
     groups = np.full((h, w), -1, np.int16)
     for group_index, (_, links) in enumerate(group_defs):
@@ -56,12 +56,12 @@ def render_cad_depth(meshes, transforms, camera, shape, group_defs=CHAIN_GROUPS)
             mesh = meshes[link]
             T = transforms[link]
             points_base = mesh.vertices @ T[:3, :3].T + T[:3, 3]
-            xyz = (points_base - t_base_depth) @ R_depth_base.T
+            xyz = (points_base - t_base_sensor) @ R_sensor_base.T
             z = xyz[:, 2]
             uv = np.empty((len(z), 2), np.float64)
             good = np.isfinite(xyz).all(axis=1) & (z > 0.05)
-            uv[good, 0] = kd.fx * xyz[good, 0] / z[good] + kd.cx
-            uv[good, 1] = kd.fy * xyz[good, 1] / z[good] + kd.cy
+            uv[good, 0] = intrinsics.fx * xyz[good, 0] / z[good] + intrinsics.cx
+            uv[good, 1] = intrinsics.fy * xyz[good, 1] / z[good] + intrinsics.cy
             faces = np.asarray(mesh.faces, np.int32)
             for face in faces[np.all(good[faces], axis=1)]:
                 tri = uv[face]
@@ -96,6 +96,14 @@ def render_cad_depth(meshes, transforms, camera, shape, group_defs=CHAIN_GROUPS)
                 zbuf[py[update], px[update]] = pred[update]
                 groups[py[update], px[update]] = group_index
     return zbuf, groups
+
+
+def render_cad_depth(meshes, transforms, camera, shape, group_defs=CHAIN_GROUPS):
+    """Render CAD in the original front depth stream's pixel grid."""
+    return render_cad_zbuffer(
+        meshes, transforms, camera.T_base_color @ camera.T_color_depth,
+        camera.depth_intrinsics, shape, group_defs,
+    )
 
 
 def summarize(values):
@@ -183,25 +191,7 @@ def make_depth_root_to_tip(obs, groups, group_defs):
         lo, hi = np.percentile(obs[ok], [2, 98])
         gray[ok] = np.clip(225 - 175 * (obs[ok] - lo) / max(hi - lo, 1e-6), 40, 225).astype(np.uint8)
     background = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-    palette = tuple(tuple(reversed(color)) for color in COLORS + FINGER_COLORS)
-    panels = [label_panel(background, "raw front depth / grayscale")]
-
-    def add_group(canvas, index):
-        mask = (groups == index).astype(np.uint8)
-        if not np.any(mask):
-            return canvas
-        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        out = canvas.copy()
-        cv2.drawContours(out, contours, -1, palette[index], 2, cv2.LINE_AA)
-        return out
-
-    for index, (name, _) in enumerate(group_defs):
-        panels.append(label_panel(add_group(background, index), f"{name} ONLY / visible CAD"))
-    cumulative = background.copy()
-    for index, (name, _) in enumerate(group_defs):
-        cumulative = add_group(cumulative, index)
-        panels.append(label_panel(cumulative, f"cumulative through {name}"))
-    return make_root_to_tip_sheet(panels, width=380, cols=4)
+    return make_link_sheet(background, groups, group_defs, title="raw front depth / grayscale")
 
 
 def main():
@@ -237,10 +227,12 @@ def main():
         }
         for frame in frames
     }
+    rgb_by_frame = {}
     if args.save_front_rgb:
         rgb_dir = output / "raw_front_rgb"
         rgb_dir.mkdir()
-        for frame, rgb in dataset.load_video_frames("front", selected=frames).items():
+        rgb_by_frame = dataset.load_video_frames("front", selected=frames)
+        for frame, rgb in rgb_by_frame.items():
             fingerprints[str(frame)]["rgb_sha256"] = array_fingerprint(rgb)
             path = rgb_dir / f"frame_{frame:06d}_front_rgb.png"
             if not cv2.imwrite(str(path), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)):
@@ -248,6 +240,7 @@ def main():
     results = []
     calibrations = {}
     baseline_maps = {}
+    baseline_color_groups = {}
     paired_comparisons = {}
     for mode, profile in (("baseline", None), ("corrected", args.profile)):
         if mode == "corrected" and profile is None:
@@ -259,6 +252,7 @@ def main():
         camera = apply_diagnostic_overrides(pre.calibration_bundle.cameras, config.diagnostics)["front"]
         calibrations[mode] = {
             "depth_intrinsics": {key: float(getattr(camera.depth_intrinsics, key)) for key in ("fx", "fy", "cx", "cy")},
+            "color_intrinsics": {key: float(getattr(camera.color_intrinsics, key)) for key in ("fx", "fy", "cx", "cy")},
             "depth_scale_m_per_unit": camera.depth_scale_m_per_unit,
             "T_base_color": camera.T_base_color.tolist(),
             "T_color_depth": camera.T_color_depth.tolist(),
@@ -303,6 +297,53 @@ def main():
             overlay_path = overlay_dir / f"frame_{frame:06d}_front_depth_root_to_tip.png"
             if not cv2.imwrite(str(overlay_path), make_depth_root_to_tip(obs, groups, group_defs)):
                 raise RuntimeError(f"Could not write {overlay_path}")
+            if args.save_front_rgb:
+                rgb = rgb_by_frame[frame]
+                color_pred, color_groups = render_cad_zbuffer(
+                    meshes, transforms, camera.T_base_color,
+                    camera.color_intrinsics, rgb.shape[:2], group_defs,
+                )
+                if mode == "baseline":
+                    baseline_color_groups[frame] = color_groups
+                else:
+                    overlay_dir = output / "rgb_cad_overlay"
+                    overlay_dir.mkdir(exist_ok=True)
+                    overlay_path = overlay_dir / f"frame_{frame:06d}_rgb_cad_comparison.png"
+                    if not cv2.imwrite(
+                        str(overlay_path),
+                        make_color_cad_comparison(rgb, baseline_color_groups[frame], color_groups),
+                    ):
+                        raise RuntimeError(f"Could not write {overlay_path}")
+                aligned_nearest = align_depth_to_color(obs, camera, rgb.shape, splat="nearest")
+                aligned_four = align_depth_to_color(obs, camera, rgb.shape, splat="four")
+                nearest_valid = np.isfinite(aligned_nearest)
+                four_valid = np.isfinite(aligned_four)
+                report["rgb_depth_alignment"] = {
+                    "raw_depth_valid_pixels": int(np.count_nonzero(obs > 0)),
+                    "color_grid_nearest_pixels": int(nearest_valid.sum()),
+                    "color_grid_four_splat_pixels": int(four_valid.sum()),
+                    "four_splat_only_pixels": int(np.count_nonzero(four_valid & ~nearest_valid)),
+                    "color_cad_visible_pixels": int(np.isfinite(color_pred).sum()),
+                    "note": "Four-splat-only pixels are display coverage, not additional depth measurements.",
+                }
+                joint_dir = folder / "rgb_depth_joint"
+                joint_dir.mkdir(exist_ok=True)
+                joint_path = joint_dir / f"frame_{frame:06d}_rgb_depth_cad.png"
+                joint = make_joint_sheet(
+                    rgb, obs, aligned_nearest, aligned_four, groups, color_groups, group_defs
+                )
+                if not cv2.imwrite(str(joint_path), joint):
+                    raise RuntimeError(f"Could not write {joint_path}")
+                color_dir = folder / "root_to_tip_color"
+                color_dir.mkdir(exist_ok=True)
+                color_path = color_dir / f"frame_{frame:06d}_front_color_root_to_tip.png"
+                if not cv2.imwrite(
+                    str(color_path), make_link_sheet(
+                        cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), color_groups, group_defs,
+                        title="raw front RGB / color optical",
+                    )
+                ):
+                    raise RuntimeError(f"Could not write {color_path}")
             print(f"{mode} frame {frame}: {report['near_surface']}; {path}", flush=True)
     (output / "report.json").write_text(json.dumps({
         "dataset": str(args.dataset), "episode": args.episode, "frames": frames,
