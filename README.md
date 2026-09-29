@@ -83,6 +83,19 @@ PYTHONPATH=src python scripts/spatial/visualize_spatial_web.py \
 
 如网页较大，用 `--max-dense-points-per-camera 5000` 或 `--max-cad-edges-per-group 1500` 缩减**仅用于展示**的点和轮廓线，不影响正式模型输入。
 
+如果 2D root-to-tip 已贴合、3D 点云仍与 CAD 表面有 gap，先在**原始 front 深度像素坐标**做定量检查（不是 4096 点抽样，也不是彩色相机投影）：
+
+```bash
+PYTHONPATH=src python scripts/spatial/audit_front_depth_cad.py \
+  --dataset data/press_0828_17 --episode 0 --frames 0,50,100 \
+  --profile configs/ur7e_xhand/front_calibration_candidate.json \
+  --output diagnostics/press_0828_17_depth_cad
+```
+
+输出 `baseline/` 与 `corrected/` 各帧 PNG、`summary.csv`、`report.json`，包含 C0–C8 和五指 CAD 的逐段结果及实际使用的 `depth_intrinsics`、深度尺度、`T_base_color`、`T_color_depth`。PNG 从左上顺时针分别是原始深度、预测 CAD 深度、近表面残差、全部重叠像素残差；残差定义为 **原始深度减 CAD 深度**，蓝/负值表示观测表面更靠近相机。这是深度光轴方向的差，**不是**点到 CAD 表面的最短三维距离。默认对 CAD mask 内缩 3 像素以减少边缘混合；`near_surface` 只保留绝对残差不超过 50 mm 的像素，灰色表示剔除，阈值可用 `--near-surface-mm` 调整。各深度面板单独自动拉伸，**不可凭颜色直接比较绝对距离**，应看残差图和 CSV 数值。两种标定的 CAD mask 可能不同，比较中位数时也要看有效像素数量和热图。
+
+此处把 FK 的 URDF **visual mesh** 投到深度相机的 z-buffer，并非物体分割：遮挡、深度孔洞、CAD 与真实外壳差异以及 RGB/深度时间不同步会污染统计。先看多帧、多 link 的有符号残差形态与有效像素数量；只改 color 相机 `fx/fy/cx/cy` 不会改变此报告的几何结果。若同一 link 呈稳定的整体偏移，应先核对深度尺度、深度分辨率/是否对齐、`T_color_depth` 方向、相机外参与时序；若偏差随视场或距离变化，再调查 depth K、畸变和深度非线性。不要直接拿一张图的 CAD 残差去同时拟合全部内外参；需要独立的多个姿态、多个深度/视场位置的三维约束，并留出帧验证。
+
 检查点云时，先在**深度相机坐标系**用多个已知尺寸的静态平面/标记物核对深度单位、`depth_intrinsics`、图像分辨率/裁剪及深度对齐方式；再检查 `T_color_depth` 和 RGB 映射；最后用多个姿态、不同深度的已知三维物体校验 `T_base_color`。可记录有效深度覆盖率、平面点到平面距离的 median/p90、CAD 可见表面的深度残差 median/p90，以及独立测量标记的三维误差；按距离、图像区域、姿态分组看系统偏差。不要把所有触觉点到点云的最近邻距离当准确率：不接触时两者本来就有间隔，接触物体也可能被手遮挡。用“真实触觉位置”做绝对误差需要额外独立真值（实测 taxel 几何/接触点或外部追踪），当前状态+触觉值+深度图自身无法给出该真值。
 
 如候选残差在这个数据集上不准，再生成标注页面。点击可辨认的物理关节中心/指尖，不可见或不确定的跳过：
