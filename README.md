@@ -89,10 +89,23 @@ PYTHONPATH=src python scripts/spatial/visualize_spatial_web.py \
 PYTHONPATH=src python scripts/spatial/audit_front_depth_cad.py \
   --dataset data/press_0828_17 --episode 0 --frames 0,50,100 \
   --profile configs/ur7e_xhand/front_calibration_candidate.json \
+  --save-front-rgb \
   --output diagnostics/press_0828_17_depth_cad
 ```
 
-输出 `baseline/` 与 `corrected/` 各帧 PNG、`summary.csv`、`report.json`，包含 C0–C8 和五指 CAD 的逐段结果及实际使用的 `depth_intrinsics`、深度尺度、`T_base_color`、`T_color_depth`。PNG 从左上顺时针分别是原始深度、预测 CAD 深度、近表面残差、全部重叠像素残差；残差定义为 **原始深度减 CAD 深度**，蓝/负值表示观测表面更靠近相机。这是深度光轴方向的差，**不是**点到 CAD 表面的最短三维距离。默认对 CAD mask 内缩 3 像素以减少边缘混合；`near_surface` 只保留绝对残差不超过 50 mm 的像素，灰色表示剔除，阈值可用 `--near-surface-mm` 调整。各深度面板单独自动拉伸，**不可凭颜色直接比较绝对距离**，应看残差图和 CSV 数值。两种标定的 CAD mask 可能不同，比较中位数时也要看有效像素数量和热图。
+输出 `baseline/` 与 `corrected/` 各帧 PNG、逐段深度版 `root_to_tip_depth/`、同一原始深度像素网格的 `comparison/index.html`、`summary.csv` 和 `report.json`。红色轮廓是 baseline，绿色是 corrected；逐段图沿用 ONLY/累积的 root-to-tip 版式，但只画深度相机可见的 CAD 表面。`--save-front-rgb` 另存选定帧的原始彩色图；报告总会记录每帧 state/depth 的 SHA-256 指纹，便于跨机器核对是否真为同一原始记录。输出还包含 C0–C8 和五指 CAD 的逐段结果及实际使用的 `depth_intrinsics`、深度尺度、`T_base_color`、`T_color_depth`。
+
+单模式 PNG 从左上顺时针分别是原始深度、预测 CAD 深度、近表面残差、全部重叠像素残差；残差定义为 **原始深度减 CAD 深度**，蓝/负值表示观测表面更靠近相机。这是深度光轴方向的差，**不是**点到 CAD 表面的最短三维距离。默认对 CAD mask 内缩 3 像素以减少边缘混合；`near_surface` 只保留绝对残差不超过 50 mm 的像素，灰色表示剔除，阈值可用 `--near-surface-mm` 调整。各深度面板单独自动拉伸，**不可凭颜色直接比较绝对距离**，应看残差图和 CSV 数值。两种标定的 CAD mask 可能不同，比较中位数时也要看有效像素数量和热图；新版报告的 `paired_common_pixels` 额外只在两模式都有效的**同一批像素**上计算误差。
+
+已有旧版 `audit_front_depth_cad.py` 输出（仅 `report.json` 和模式 PNG）也可不重算 CAD，直接生成叠加对照：
+
+```bash
+python scripts/spatial/render_depth_cad_comparison.py \
+  --input diagnostics/press_0828_17_depth_cad \
+  --output diagnostics/press_0828_17_depth_cad_comparison
+```
+
+旧输出没有逐段深度图和原始数据指纹，须用**新输出目录**重新运行 audit 才能得到它们。若怀疑两份数据是同一录制，优先比较对应帧的 `source_fingerprints`：state 和 depth 的哈希同时相等才支持“原始状态/深度完全相同”；不同则先核对 episode、帧号与数据来源。彩色图可辅助检查，但原始深度 PNG 采用逐帧自动色阶，不能靠颜色差估计毫米偏移。
 
 此处把 FK 的 URDF **visual mesh** 投到深度相机的 z-buffer，并非物体分割：遮挡、深度孔洞、CAD 与真实外壳差异以及 RGB/深度时间不同步会污染统计。先看多帧、多 link 的有符号残差形态与有效像素数量；只改 color 相机 `fx/fy/cx/cy` 不会改变此报告的几何结果。若同一 link 呈稳定的整体偏移，应先核对深度尺度、深度分辨率/是否对齐、`T_color_depth` 方向、相机外参与时序；若偏差随视场或距离变化，再调查 depth K、畸变和深度非线性。不要直接拿一张图的 CAD 残差去同时拟合全部内外参；需要独立的多个姿态、多个深度/视场位置的三维约束，并留出帧验证。
 

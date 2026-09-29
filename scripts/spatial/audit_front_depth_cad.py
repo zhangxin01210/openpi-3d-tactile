@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 from pathlib import Path
 
@@ -16,7 +17,10 @@ from openpi.spatial.config import make_baseline_config
 from openpi.spatial.geometry import apply_diagnostic_overrides
 from openpi.spatial.preprocess import SpatialPreprocessor
 from openpi.spatial_dataset.source import RawSpatialDataset
-from root_to_tip_mesh import CHAIN_GROUPS, FINGER_PREFIXES, load_visual_meshes, resolve_mesh_urdf
+from root_to_tip_mesh import (
+    CHAIN_GROUPS, COLORS, FINGER_COLORS, FINGER_PREFIXES,
+    label_panel, load_visual_meshes, make_sheet as make_root_to_tip_sheet, resolve_mesh_urdf,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +31,15 @@ def mesh_groups(meshes):
         (name, tuple(link for link in meshes if link.startswith(prefix)))
         for name, prefix in FINGER_PREFIXES
     )
+
+
+def array_fingerprint(value):
+    data = np.ascontiguousarray(value)
+    digest = hashlib.sha256()
+    digest.update(str(data.dtype).encode("ascii"))
+    digest.update(str(data.shape).encode("ascii"))
+    digest.update(data.tobytes())
+    return digest.hexdigest()
 
 
 def render_cad_depth(meshes, transforms, camera, shape, group_defs=CHAIN_GROUPS):
@@ -161,6 +174,36 @@ def make_sheet(obs, pred, residual, valid, matched, clip_mm):
     return sheet
 
 
+def make_depth_root_to_tip(obs, groups, group_defs):
+    """Show frontmost CAD link contours on the raw depth pixel grid."""
+    h, w = obs.shape
+    ok = np.isfinite(obs) & (obs > 0)
+    gray = np.zeros((h, w), np.uint8)
+    if np.any(ok):
+        lo, hi = np.percentile(obs[ok], [2, 98])
+        gray[ok] = np.clip(225 - 175 * (obs[ok] - lo) / max(hi - lo, 1e-6), 40, 225).astype(np.uint8)
+    background = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    palette = tuple(tuple(reversed(color)) for color in COLORS + FINGER_COLORS)
+    panels = [label_panel(background, "raw front depth / grayscale")]
+
+    def add_group(canvas, index):
+        mask = (groups == index).astype(np.uint8)
+        if not np.any(mask):
+            return canvas
+        contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        out = canvas.copy()
+        cv2.drawContours(out, contours, -1, palette[index], 2, cv2.LINE_AA)
+        return out
+
+    for index, (name, _) in enumerate(group_defs):
+        panels.append(label_panel(add_group(background, index), f"{name} ONLY / visible CAD"))
+    cumulative = background.copy()
+    for index, (name, _) in enumerate(group_defs):
+        cumulative = add_group(cumulative, index)
+        panels.append(label_panel(cumulative, f"cumulative through {name}"))
+    return make_root_to_tip_sheet(panels, width=380, cols=4)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, required=True)
@@ -172,6 +215,7 @@ def main():
     parser.add_argument("--edge-px", type=int, default=3)
     parser.add_argument("--near-surface-mm", type=float, default=50)
     parser.add_argument("--clip-mm", type=float, default=50)
+    parser.add_argument("--save-front-rgb", action="store_true", help="Also export selected raw front RGB frames")
     args = parser.parse_args()
     frames = [int(x.strip()) for x in args.frames.split(",") if x.strip()]
     if not frames or min(frames) < 0 or len(frames) != len(set(frames)):
@@ -186,8 +230,25 @@ def main():
     rows = {int(row["frame_index"]): row for row in dataset.iter_rows(selected=frames, depth_roles=("front",))}
     output = args.output.expanduser().resolve()
     output.mkdir(parents=True, exist_ok=False)
+    fingerprints = {
+        str(frame): {
+            "state_sha256": array_fingerprint(np.asarray(rows[frame]["observation.state"], dtype=np.float32)),
+            "depth_sha256": array_fingerprint(rows[frame]["observation.depths.cam_front"]),
+        }
+        for frame in frames
+    }
+    if args.save_front_rgb:
+        rgb_dir = output / "raw_front_rgb"
+        rgb_dir.mkdir()
+        for frame, rgb in dataset.load_video_frames("front", selected=frames).items():
+            fingerprints[str(frame)]["rgb_sha256"] = array_fingerprint(rgb)
+            path = rgb_dir / f"frame_{frame:06d}_front_rgb.png"
+            if not cv2.imwrite(str(path), cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)):
+                raise RuntimeError(f"Could not write {path}")
     results = []
     calibrations = {}
+    baseline_maps = {}
+    paired_comparisons = {}
     for mode, profile in (("baseline", None), ("corrected", args.profile)):
         if mode == "corrected" and profile is None:
             continue
@@ -215,20 +276,43 @@ def main():
             report, residual, valid, matched = evaluate(
                 obs, pred, groups, args.edge_px, args.near_surface_mm / 1000, group_defs
             )
+            if mode == "baseline":
+                baseline_maps[frame] = (residual, valid)
+            else:
+                baseline_residual, baseline_valid = baseline_maps[frame]
+                common = baseline_valid & valid
+                common &= (np.abs(baseline_residual) <= args.near_surface_mm / 1000)
+                common &= (np.abs(residual) <= args.near_surface_mm / 1000)
+                paired_comparisons[str(frame)] = {
+                    "common_pixels": int(common.sum()),
+                    "baseline": summarize(baseline_residual[common]),
+                    "corrected": summarize(residual[common]),
+                    "improved_fraction": (
+                        float(np.mean(np.abs(residual[common]) < np.abs(baseline_residual[common])))
+                        if np.any(common) else None
+                    ),
+                }
             report.update({"mode": mode, "frame": frame})
             results.append(report)
             path = folder / f"frame_{frame:06d}_depth_cad.png"
             sheet = make_sheet(obs, pred, residual, valid, matched, args.clip_mm)
             if not cv2.imwrite(str(path), sheet):
                 raise RuntimeError(f"Could not write {path}")
+            overlay_dir = folder / "root_to_tip_depth"
+            overlay_dir.mkdir(exist_ok=True)
+            overlay_path = overlay_dir / f"frame_{frame:06d}_front_depth_root_to_tip.png"
+            if not cv2.imwrite(str(overlay_path), make_depth_root_to_tip(obs, groups, group_defs)):
+                raise RuntimeError(f"Could not write {overlay_path}")
             print(f"{mode} frame {frame}: {report['near_surface']}; {path}", flush=True)
     (output / "report.json").write_text(json.dumps({
         "dataset": str(args.dataset), "episode": args.episode, "frames": frames,
         "profile": str(args.profile) if args.profile else None,
         "depth_coordinate_system": "raw front depth optical", "cad": "URDF visual meshes C0-C8 plus five fingers",
         "residual_sign": "observed minus predicted, depth optical z, mm",
-        "edge_px": args.edge_px, "near_surface_mm": args.near_surface_mm,
+        "edge_px": args.edge_px, "near_surface_mm": args.near_surface_mm, "clip_mm": args.clip_mm,
         "calibrations": calibrations,
+        "source_fingerprints": fingerprints,
+        "paired_common_pixels": paired_comparisons,
         "note": "Predicted CAD pixels are not a robot segmentation; occluders and depth holes can bias overlap statistics.",
         "results": results,
     }, indent=2), encoding="utf-8")
@@ -247,6 +331,10 @@ def main():
                                  "near_pixels": group["near_surface"]["count"],
                                  **{key: group["near_surface"][key] for key in ("signed_median_mm", "abs_median_mm", "abs_p90_mm")}})
     print(f"Wrote {output / 'report.json'} and {output / 'summary.csv'}")
+    if args.profile is not None:
+        from render_depth_cad_comparison import render
+
+        render(output, output / "comparison")
 
 
 if __name__ == "__main__":

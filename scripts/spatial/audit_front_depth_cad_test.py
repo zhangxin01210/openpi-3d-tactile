@@ -17,6 +17,9 @@ SPEC.loader.exec_module(audit)
 
 
 def test_depth_raster_and_signed_residual() -> None:
+    assert audit.array_fingerprint(np.array([1, 2], np.uint16)) != audit.array_fingerprint(
+        np.array([1, 3], np.uint16)
+    )
     triangle = SimpleNamespace(
         vertices=np.array([[-0.2, -0.2, 1], [0.2, -0.2, 1], [0, 0.2, 1]], dtype=float),
         faces=np.array([[0, 1, 2]], dtype=int),
@@ -43,3 +46,7 @@ def test_depth_raster_and_signed_residual() -> None:
     report, _, valid, _ = audit.evaluate(obs, pred, groups, 2, 0.05)
     assert not valid[32, 32]
     assert report["observed_interior_pixels"] < report["interior_pixels"]
+
+    sheet = audit.make_depth_root_to_tip(obs, groups, audit.CHAIN_GROUPS)
+    assert sheet.shape[1] == 4 * 380
+    assert np.any(sheet != 0)
