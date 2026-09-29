@@ -1519,8 +1519,8 @@ _CONFIGS = [
 ]
 
 
-FRONT_SPATIAL_VERSION = "v1_front"
-FRONT_CALIBRATION_PROFILE: str | None = None
+FRONT_SPATIAL_VERSION = "v1_front_candidate"
+FRONT_CALIBRATION_PROFILE: str | None = "configs/ur7e_xhand/front_calibration_candidate.json"
 
 
 def _front_only_structured_suffix_config(

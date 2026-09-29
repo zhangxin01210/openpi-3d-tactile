@@ -127,6 +127,27 @@ PYTHONPATH=src python scripts/spatial/compare_front_depth_filter.py \
 
 本机 `press_button_0` 第 50 帧试验：25 mm/1 px 剔除了有效深度的 4.5%、ROI 内 898/90,697 点，近表面有符号残差约 -16.31→-16.34 mm；10 mm/2 px 加孔洞边界剔除了 35.5%、ROI 内 16,257 点，残差仍约 -16.41 mm。**这帧**的主要 gap 不像是少量边缘飞点造成的；强行多删点会损失有效几何。残差变化是在不同像素子集上统计，不能当作剩余深度值被“修准”。若保留点仍有系统偏差，还需分别核对 depth K/尺度、`T_color_depth`、相机对 base 的外参、RGB-D 时序以及 CAD/FK；不能仅凭过滤后仍有 gap 就断言传感器深度本身不准。
 
+继续区分几何偏差与机器人状态时序时，可用固定深度帧扫描相邻 FK 姿态，并按 link、原始深度区间、图像九宫格输出残差：
+
+```bash
+PYTHONPATH=src python scripts/spatial/audit_front_depth_hypotheses.py \
+  --dataset data/press_button_0 --episode 0 --frames 45,90 \
+  --profile configs/ur7e_xhand/front_calibration_candidate.json \
+  --lag-radius 2 --output diagnostics/front_depth_hypotheses_45_90
+```
+
+`report.json` 的 `state_lag_probe` 在**各 lag 共同有效的同一批像素**上比较绝对深度残差；`state_lag_by_center_link` 进一步分 link；`centered_bias_probe` 仅从这些残差中代数地扣除 0-lag 中位偏差，再重排 lag，**绝不修改深度或生成校正 profile**。`stratified_residual.csv` 给出深度、视场和 link 分组。本机 7 帧里，运动方向相近的 45/218 帧偏好 -2，方向大致相反的 90/303 帧偏好 +2；第 100 帧偏好 0。第 45/90 帧扣除固定残差中位数后，最优分别变为 0/-1，lag 分数差缩到约 0.1 mm 量级。这**不支持简单的固定两帧时延**；偏移排名很容易被稳定几何偏差驱动。深度残差主要落在 0.7–1.1 m，各 link 的有符号中位数也不同，不能从这些机器人/CAD 像素唯一拟合 depth K 或 scale。
+
+旧数据的 `timestamp` 由 `frame_index/fps` 产生，没有 color/depth 各自的设备时间或帧号，因此无法从旧 episode 还原真实 RGB-D 同步。若要继续分辨时间与相机内部几何，在**停止占用 front 相机的部署进程后**，于装有 `pyrealsense2`、NumPy、OpenCV 的部署机运行只读采集（只有 `deploy/` 文件夹即可）：
+
+```bash
+python deploy/capture_front_rgbd_timing.py \
+  --serial 347622074420 --fps 15 --frames 60 \
+  --out ./front_rgbd_board_near
+```
+
+分别让尺寸已知、平整的标定板在近/中/远距离及图像中心/边角**保持静止**，每个位置单独采一组，不要边移动边当作静态真值。工具保存原始 RGB PNG、原始 Z16 PNG、`calibration.json`、`frames.json`、`timing.csv`，不下发机器人动作、不运行 `rs.align` 或填洞。只有 color/depth 时间域相同才记录两路时间戳差；帧对来自同一个 RealSense frameset，但这仍不是曝光绝对同步的证明。上述板的真实尺寸/位置与多姿态观测可用于后续单独核验深度尺度/K 和 `T_color_depth`；单靠旧数据中的机器人 CAD，深度残差只约束复合变换 `T_base_color @ T_color_depth`，不能把两者唯一分开。此次运行时查询的 front 原始 depth/color K、尺度及 `T_color_depth` 与仓库 0903 配置数值一致，但“配置一致”不等于几何误差已小。
+
 有真正静止、无遮挡的平面区域时，可另测原始深度的时间稳定性。`--roi` 是**原始深度图**的左上/右下像素坐标，右下角不包含；建议选平面内部并避开深度边缘，帧范围内相机和平面都不能动：
 
 ```bash
@@ -182,19 +203,26 @@ python scripts/spatial/export_spatial_derived_dataset.py \
 # 新三组消融共用这份完整 visual+tactile sidecar。
 python scripts/spatial/export_spatial_derived_dataset.py \
   --dataset data/press_button_4_times_clean \
-  --episodes all --frames all --version v1_front \
-  --cameras front --num-points 4096 --shard-size 128
+  --episodes all --frames all --version v1_front_candidate \
+  --cameras front --num-points 4096 --shard-size 128 \
+  --front-calibration-profile configs/ur7e_xhand/front_calibration_candidate.json
 ```
 
-如使用候选/拟合 profile，把 front-only 导出命令改用**新版本名**并追加 `--front-calibration-profile <profile.json>`，然后同步修改 `FRONT_SPATIAL_VERSION` 与 `FRONT_CALIBRATION_PROFILE`。不能让已纠正的 sidecar 配上未纠正的在线服务；训练 loader 会检查角色和标定参数。导出器默认拒绝覆盖已有目录。可选的统计和输入检查：
+三卡配置已固定使用上述候选 profile 和 `v1_front_candidate`。**旧 `v1_front` 是未纠正数据，不能用于这三组训练。** 如果后续更改 profile 数值，必须再换一个新的 sidecar 版本名并同步修改 `FRONT_SPATIAL_VERSION`，不能覆盖当前版本。训练 loader 会检查 front-only 角色及内外参残差开关和值；导出器默认拒绝覆盖已有目录。开训前检查：
 
 ```bash
 python scripts/spatial/compute_spatial_dataset_stats.py \
-  --dataset data/press_button_4_times_clean --version v1_front
+  --dataset data/press_button_4_times_clean --version v1_front_candidate
 
 python scripts/spatial/smoke_test_xhand_spatial_pipeline.py \
   --config-name pi0_xhand_spatial_structured_suffix_front --sample-index 0
+
+PYTHONPATH=src python scripts/spatial/check_front_ablation_ready.py
 ```
+
+最后一条应打印三组 `READY` 信息；它会拒绝旧/未完成 sidecar、缺少任何 episode/frame、候选内外参不一致或三组超参不一致。**通过后再启动三卡训练**。若训练机的仓库绝对路径与 `config.py` 中继承的 `repo_id` 不同，先修正配置并重新运行该检查；不要仅改 README 命令。
+
+候选 profile 的外参平移残差作用于 front 深度反投影后的 base_link XYZ；候选**彩色**内参残差作用于点云的 RGB 投影/着色，**不改变深度点的 XYZ**。目前没有 depth K 残差，不能把这套实验描述成同时校正了 depth K。front-only 指空间视觉点云只来自 front 深度；原有三路 RGB VLM 输入仍保留。
 
 更多数据格式和标定约定见 [`docs/spatial_preprocessing_v1.md`](docs/spatial_preprocessing_v1.md)。
 
