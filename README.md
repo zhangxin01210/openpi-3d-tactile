@@ -111,6 +111,22 @@ python scripts/spatial/render_depth_cad_comparison.py \
 
 若 RGB 与配准深度只在轮廓外沿分离，且覆盖图主要是琥珀色，优先怀疑投影取整/空洞填补/混合像素，再检查原始深度图与深度坐标的 CAD；若离轮廓较远的完整表面也有稳定的毫米残差，就不是单纯的边缘显示问题。RGB 与配准深度整体错位时，核对两路图像是否同一时刻、是否已被设备预先对齐或裁剪，以及实际 depth/color K 和 `T_color_depth`。RGB root-to-tip 准只能约束彩色几何；不能据此断定深度 K、深度尺度或相机间外参也准。当前工具是诊断，不会自动把残差写回训练/部署标定。
 
+要看**两个候选残差同时生效**时，删掉深度跳变边缘是否让点云更贴近 CAD，可运行离线对照（分析环境需有 `plotly`、`trimesh`、`pycollada`；输出目录须不存在）：
+
+```bash
+PYTHONPATH=src python scripts/spatial/compare_front_depth_filter.py \
+  --dataset data/press_0828_17 --episode 0 --frame 50 \
+  --profile configs/ur7e_xhand/front_calibration_candidate.json \
+  --jump-mm 25 --radius-px 1 \
+  --output diagnostics/press_0828_17_depth_edge_f50
+```
+
+打开 `diagnostics/press_0828_17_depth_edge_f50/index.html`：网页同时给出原始/过滤后稠密 ROI、各自的**正式 `SpatialPreprocessor` 4096 点**、剔除点与 CAD 的可切换图层；红色二维像素图分别显示原始深度网格中的剔除位置和投到 RGB 上的剔除位置。`report.json` 记录剔除比例、原始/过滤后 CAD 深度残差、实际 color/depth 内参与相机变换。`--jump-mm` 是原始深度相邻像素的米制跳变阈值；每条跳变**两侧**都标无效，再按 `--radius-px` 扩展。默认不处理深度孔洞边界；`--include-hole-boundaries` 会更激进。该工具只把选中的原始深度值置零，**剩余点的 XYZ 完全不移动**，不补洞、不做平滑，也**不改训练/部署**。候选 profile 的外参残差会改变 XYZ，color 内参残差只改变 RGB 投影/着色，不能靠它修正原始深度反投影的位置。
+
+对照页还给出**同一色阶**的 RGB+配准深度筛除前/后图，以便看外沿是否收缩；其四邻覆盖只是显示用，并非新增深度测量。正式点云始终使用未插值的原始深度或置零后的深度。
+
+本机 `press_button_0` 第 50 帧试验：25 mm/1 px 剔除了有效深度的 4.5%、ROI 内 898/90,697 点，近表面有符号残差约 -16.31→-16.34 mm；10 mm/2 px 加孔洞边界剔除了 35.5%、ROI 内 16,257 点，残差仍约 -16.41 mm。**这帧**的主要 gap 不像是少量边缘飞点造成的；强行多删点会损失有效几何。残差变化是在不同像素子集上统计，不能当作剩余深度值被“修准”。若保留点仍有系统偏差，还需分别核对 depth K/尺度、`T_color_depth`、相机对 base 的外参、RGB-D 时序以及 CAD/FK；不能仅凭过滤后仍有 gap 就断言传感器深度本身不准。
+
 有真正静止、无遮挡的平面区域时，可另测原始深度的时间稳定性。`--roi` 是**原始深度图**的左上/右下像素坐标，右下角不包含；建议选平面内部并避开深度边缘，帧范围内相机和平面都不能动：
 
 ```bash
