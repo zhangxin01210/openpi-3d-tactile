@@ -1,0 +1,22 @@
+{
+  "dataset_root": "/home/sai/zx/openpi-sim-runtime/data_lerobot/univtac_insert_hole_depth_3seed",
+  "rows": 666,
+  "points_per_row": 2048,
+  "episode_row_counts": {
+    "0": 200,
+    "1": 236,
+    "2": 230
+  },
+  "world_xyz_min_m": [
+    -0.0954321026802063,
+    -0.36261987686157227,
+    -0.0015464143361896276
+  ],
+  "world_xyz_max_m": [
+    0.995548665523529,
+    0.5000001192092896,
+    0.8311561346054077
+  ],
+  "all_rows_step_matched_and_finite": true,
+  "pass": true
+}

@@ -1,0 +1,722 @@
+{
+    "features": [
+        "core/contact_system",
+        "core/affine_body_state_accessor",
+        "core/finite_element_state_accessor"
+    ],
+    "sim_systems": [
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::BDF1Flag",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::NewtonToleranceManager",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::MaxTranslationChecker",
+            "strong_deps": [
+                "uipc::backend::cuda::NewtonToleranceManager",
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::LinearPCG",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::GlobalLinearSystem"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalLinearSystem",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::LineSearcher",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::HalfPlaneVertexReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::HalfPlane",
+                "uipc::backend::cuda::HalfPlaneBodyReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::HalfPlaneBodyReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalBodyManager",
+                "uipc::backend::cuda::HalfPlane"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalBodyManager",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FiniteElementVertexReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::FiniteElementBodyReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalVertexManager",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FiniteElementSurfaceReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalSimplicialSurfaceManager",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::FiniteElementVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FiniteElementStateAccessor",
+            "strong_deps": [
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::FiniteElementVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::FiniteElementMethod",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FiniteElementBodyReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalBodyManager",
+                "uipc::backend::cuda::FiniteElementMethod"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FiniteElementAnimator",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalAnimator",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::GlobalAnimator"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FEMLinearSubsystem",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::FiniteElementVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": [
+                "uipc::backend::cuda::FEMDyTopoEffectReceiver",
+                "uipc::backend::cuda::FiniteElementAnimator"
+            ]
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FEMLineSearchReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::LineSearcher",
+                "uipc::backend::cuda::FiniteElementMethod"
+            ],
+            "valid": true,
+            "weak_deps": [
+                "uipc::backend::cuda::FiniteElementAnimator"
+            ]
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FEMDyTopoEffectReceiver",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::FiniteElementVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SoftPositionConstraint",
+            "strong_deps": [
+                "uipc::backend::cuda::FiniteElementAnimator"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::HalfPlane",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::IPCSimplexNormalContact",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalTrajectoryFilter",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexNormalContactPTExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexNormalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::LBVHSimplexTrajectoryFilter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::GlobalSimplicialSurfaceManager",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalBodyManager",
+                "uipc::backend::cuda::GlobalTrajectoryFilter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffineBodyBDF1Kinetic",
+            "strong_deps": [
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::BDF1Flag"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::EasyVertexHalfPlaneTrajectoryFilter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::GlobalSimplicialSurfaceManager",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::HalfPlane",
+                "uipc::backend::cuda::HalfPlaneVertexReporter",
+                "uipc::backend::cuda::GlobalTrajectoryFilter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FEMBDF1Integrator",
+            "strong_deps": [
+                "uipc::backend::cuda::TimeIntegratorManager",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::BDF1Flag"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDBDF1Integrator",
+            "strong_deps": [
+                "uipc::backend::cuda::TimeIntegratorManager",
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::BDF1Flag"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffinebodySurfaceReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalSimplicialSurfaceManager",
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::AffineBodyVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SoftTransformConstraint",
+            "strong_deps": [
+                "uipc::backend::cuda::AffineBodyAnimator"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::VertexHalfPlaneFrictionalContactExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCVertexHalfPlaneFrictionalContact",
+                "uipc::backend::cuda::HalfPlaneVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::DyTopoEffectLineSearchReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::LineSearcher",
+                "uipc::backend::cuda::GlobalDyTopoEffectManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::OrthoPotential",
+            "strong_deps": [
+                "uipc::backend::cuda::AffineBodyDynamics"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalSimplicialSurfaceManager",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": [
+                "uipc::backend::cuda::GlobalVertexManager"
+            ]
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FiniteElementBDF1Kinetic",
+            "strong_deps": [
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::BDF1Flag"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDToleranceChecker",
+            "strong_deps": [
+                "uipc::backend::cuda::NewtonToleranceManager",
+                "uipc::backend::cuda::AffineBodyDynamics"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::TimeIntegratorManager",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalAnimator",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDLineSearchReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::LineSearcher",
+                "uipc::backend::cuda::AffineBodyDynamics"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffineBodyVertexReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::AffineBodyBodyReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexNormalContactPPExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexNormalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDFEMDyTopoEffectReceiver",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::AffineBodyVertexReporter",
+                "uipc::backend::cuda::FiniteElementVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::AffineBodyDynamics",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffineBodyBodyReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalBodyManager",
+                "uipc::backend::cuda::AffineBodyDynamics"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDLinearSubsystem",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::AffineBodyVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": [
+                "uipc::backend::cuda::ABDDyTopoEffectReceiver"
+            ]
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexFrictionalContactPEExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexFrictionalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDDyTopoEffectReceiver",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::AffineBodyVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffineBodyAnimatorLinearSubsystemReporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ABDLinearSubsystem",
+                "uipc::backend::cuda::AffineBodyAnimator"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDDiagPreconditioner",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::ABDLinearSubsystem",
+                "uipc::backend::cuda::AffineBodyDynamics"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffineBodyAnimatorLineSearchSubreporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ABDLineSearchReporter",
+                "uipc::backend::cuda::AffineBodyAnimator"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::StableNeoHookean3D",
+            "strong_deps": [
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::FiniteElementMethod"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalContactManager",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": [
+                "uipc::backend::cuda::GlobalTrajectoryFilter"
+            ]
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexFrictionalContactPTExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexFrictionalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffineBodyStateAccessor",
+            "strong_deps": [
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::AffineBodyVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FEMDiagPreconditioner",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::FEMLinearSubsystem",
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalTrajectoryFilter",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalContactManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ContactExporterManager",
+            "strong_deps": [],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": true,
+            "name": "uipc::backend::cuda::GlobalDyTopoEffectManager",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::IPCVertexHalfPlaneFrictionalContact",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalTrajectoryFilter",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::HalfPlaneVertexReporter",
+                "uipc::backend::cuda::HalfPlane"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::FEMABDDyTopoEffectReceiver",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::AffineBodyVertexReporter",
+                "uipc::backend::cuda::FiniteElementVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::IPCVertexHalfPlaneNormalContact",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalTrajectoryFilter",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalVertexManager",
+                "uipc::backend::cuda::HalfPlaneVertexReporter",
+                "uipc::backend::cuda::HalfPlane"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexFrictionalContactEEExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexFrictionalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::AffineBodyAnimator",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalAnimator",
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::GlobalAnimator"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexFrictionalContactPPExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexFrictionalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexNormalContactEEExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexNormalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::SimplexNormalContactPEExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCSimplexNormalContact"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::VertexHalfPlaneNormalContactExporter",
+            "strong_deps": [
+                "uipc::backend::cuda::ContactExporterManager",
+                "uipc::backend::cuda::IPCVertexHalfPlaneNormalContact",
+                "uipc::backend::cuda::HalfPlaneVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::IPCSimplexFrictionalContact",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalDyTopoEffectManager",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalTrajectoryFilter",
+                "uipc::backend::cuda::GlobalContactManager",
+                "uipc::backend::cuda::GlobalVertexManager"
+            ],
+            "valid": true,
+            "weak_deps": []
+        },
+        {
+            "engine_aware": false,
+            "name": "uipc::backend::cuda::ABDFEMLinearSubsystem",
+            "strong_deps": [
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::GlobalLinearSystem",
+                "uipc::backend::cuda::ABDFEMDyTopoEffectReceiver",
+                "uipc::backend::cuda::FEMABDDyTopoEffectReceiver",
+                "uipc::backend::cuda::ABDLinearSubsystem",
+                "uipc::backend::cuda::FEMLinearSubsystem",
+                "uipc::backend::cuda::AffineBodyDynamics",
+                "uipc::backend::cuda::FiniteElementMethod",
+                "uipc::backend::cuda::AffineBodyVertexReporter",
+                "uipc::backend::cuda::FiniteElementVertexReporter"
+            ],
+            "valid": true,
+            "weak_deps": []
+        }
+    ]
+}

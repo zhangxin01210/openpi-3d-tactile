@@ -1,0 +1,35 @@
+{
+  "replayed_seeds": 3,
+  "rows": [
+    {
+      "seed": 0,
+      "frame_count": 201,
+      "joint_mae_rad": 1.839339529396966e-05,
+      "joint_max_abs_rad": 0.004799187183380127,
+      "prism_translation_mean_mm": 3.2187430188059807,
+      "success_during_trajectory": true,
+      "terminal_eval_success": true
+    },
+    {
+      "seed": 1,
+      "frame_count": 237,
+      "joint_mae_rad": 1.8384953364147805e-05,
+      "joint_max_abs_rad": 0.0056112706661224365,
+      "prism_translation_mean_mm": 2.477699890732765,
+      "success_during_trajectory": true,
+      "terminal_eval_success": true
+    },
+    {
+      "seed": 2,
+      "frame_count": 231,
+      "joint_mae_rad": 1.527944186818786e-05,
+      "joint_max_abs_rad": 0.005708932876586914,
+      "prism_translation_mean_mm": 2.975418930873275,
+      "success_during_trajectory": true,
+      "terminal_eval_success": true
+    }
+  ],
+  "all_terminal_success": true,
+  "all_trajectory_success": true,
+  "interpretation": "Replay of three selected clean demonstrations; not an unbiased task success-rate estimate."
+}

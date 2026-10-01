@@ -1,0 +1,67 @@
+{
+  "source_commit": "fd90dcc625b66c2e535a8b25bcf75bc81c7b080d",
+  "source_archive_sha256": "3f12d7208a26172a8e410771cc678b708d5eadce518b9aa0b852d7817825fd80",
+  "isaaclab_tag": "v2.3.2",
+  "isaaclab_commit": "37ddf626871758333d6ed89cf64ad702aef127d0",
+  "isaaclab_archive_local_sha256": "1db015e079c3ee5c7d86ac41ccbdbf5e2153afa3b30743efa52a926d70d282e3",
+  "asset_revision": "63e6ca0412eefbfaca0bbec0640dfd98ff466b57",
+  "asset_files": 48,
+  "asset_bytes": 62385361,
+  "data": {
+    "repo": "teleopdata",
+    "revision": "4062f0b5c8506375aa04208e149f151b39b152a0",
+    "proxy_used": false,
+    "files": [
+      {
+        "Id": null,
+        "Name": "episode_000000.hdf5",
+        "Type": "blob",
+        "Path": "dataset/73_jigsaw_puzzle_assembly/origin-generalization/episode_000000.hdf5",
+        "Mode": "33188",
+        "CommitId": null,
+        "CommitMessage": "add task 73+adjust some tasks",
+        "CommitterName": "smfszhpr",
+        "CommittedDate": 1785922627,
+        "Revision": "0c980f2c5ae877324f49ebd24a923423bb6fbd3a",
+        "IsLFS": true,
+        "Size": 3840901,
+        "InCheck": false,
+        "Sha256": "15f3cfd3d3d42c70bdb6e20a851b04263c72e9a79e336953a683350dcfa57ed4"
+      },
+      {
+        "Id": null,
+        "Name": "episode_000024.hdf5",
+        "Type": "blob",
+        "Path": "dataset/73_jigsaw_puzzle_assembly/origin-generalization/episode_000024.hdf5",
+        "Mode": "33188",
+        "CommitId": null,
+        "CommitMessage": "add task 73+adjust some tasks",
+        "CommitterName": "smfszhpr",
+        "CommittedDate": 1785922627,
+        "Revision": "0c980f2c5ae877324f49ebd24a923423bb6fbd3a",
+        "IsLFS": true,
+        "Size": 4051499,
+        "InCheck": false,
+        "Sha256": "5d7133ec0b41ecf7c6a1e440986f38dce63a5021a82e072c123a403fc8af15ba"
+      },
+      {
+        "Id": null,
+        "Name": "episode_000049.hdf5",
+        "Type": "blob",
+        "Path": "dataset/73_jigsaw_puzzle_assembly/origin-generalization/episode_000049.hdf5",
+        "Mode": "33188",
+        "CommitId": null,
+        "CommitMessage": "add task 73+adjust some tasks",
+        "CommitterName": "smfszhpr",
+        "CommittedDate": 1785922627,
+        "Revision": "0c980f2c5ae877324f49ebd24a923423bb6fbd3a",
+        "IsLFS": true,
+        "Size": 3810028,
+        "InCheck": false,
+        "Sha256": "9a344ec80657b139b78fab9933f61049e362bf93eb6fdcf610d3cb8d0cc1b798"
+      }
+    ]
+  },
+  "network": "All source, asset and sample downloads in this followup used direct connections, no proxy",
+  "runtime": "Existing univtac-isaac51 env, Torch2.7.0+cu128, IsaacSim5.1; per-process PYTHONPATH selects isolated IsaacLab2.3.2 source; existing installed IsaacLab2.3.0 untouched"
+}

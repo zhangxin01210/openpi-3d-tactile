@@ -1,0 +1,31 @@
+{
+  "status": "failed",
+  "python": "3.11.15 (main, Mar 11 2026, 17:20:07) [GCC 14.3.0]",
+  "executable": "/home/sai/miniconda3/envs/gpt-policy-isaac51/bin/python",
+  "gpu": {
+    "name": "NVIDIA GeForce RTX 5090",
+    "capability": [
+      12,
+      0
+    ],
+    "torch": "2.7.0+cu128",
+    "cuda": "12.8",
+    "cuda_matmul_finite": true
+  },
+  "packages": {
+    "isaacsim": "5.1.0.0",
+    "numpy": "1.26.0",
+    "torch": "2.7.0+cu128",
+    "torchvision": "0.22.0+cu128",
+    "isaaclab": "0.47.2"
+  },
+  "isaaclab_controller_import": "DifferentialIKController",
+  "error": "Traceback (most recent call last):\n  File \"/home/sai/zx/llm as policy/scripts/check_isaac.py\", line 114, in main\n    assert rgba.shape == (240, 320, 4), f\"Unexpected camera dimensions: {rgba.shape}\"\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Unexpected camera dimensions: (0,)\n",
+  "wall_seconds": 10.781370639999977,
+  "audit_date": "2026-09-29",
+  "check_script": "/home/sai/zx/llm as policy/scripts/check_isaac.py",
+  "check_script_sha256": "8db37fd6af2c352f8544afa70cd7b7027e1cbc1229b44fb42c256e68d8d293f3",
+  "output_directory": "/tmp/openpi-sim-audit-20260929-6zCGEW/isaac_smoke",
+  "observed_process_exit_code": 0,
+  "interpretation": "CUDA and application startup passed; camera shape assertion failed. Physics position and reset assertions occur later and were not reached. This is not a FORGE or ContactWorld task validation."
+}

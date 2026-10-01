@@ -1,0 +1,49 @@
+{
+  "status": "blocked_at_torch_cuda_gate",
+  "date": "2026-10-01",
+  "authorized_scope": [
+    "legacy compatibility",
+    "online data alignment"
+  ],
+  "deferred_by_user": [
+    "perturbation recovery collection"
+  ],
+  "environment": {
+    "path": "/home/sai/zx/openpi-sim-runtime/envs/contactworld-legacy",
+    "python": "3.8.20",
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "compute_capability": "sm_120",
+    "driver": "580.173.02",
+    "torch": "2.4.1+cu121"
+  },
+  "gates": {
+    "native_gpu_physics": "passed",
+    "native_cpu_physics": "passed",
+    "native_rgb_depth_cpu_readback": "passed",
+    "live_front_camera_matrices": "passed",
+    "source_pointcloud_frame_correction": "passed_for_fixed_front_and_identity_base",
+    "pixel_center_correction": "passed_on_known_box_and_ground",
+    "released_sample_reprojection": "60_frames_passed",
+    "torch_cuda_elementwise": "failed_no_kernel_image",
+    "gymtorch_import": "not_reached",
+    "gpu_camera_tensor": "not_tested",
+    "tactile_sdf_and_tacff": "not_tested",
+    "usb_peg_task_reset_step": "not_tested",
+    "full_state_action_contact_alignment": "not_tested",
+    "wrist_extrinsics": "not_tested"
+  },
+  "source_revisions": {
+    "ContactWorld": "8d0d0edff44f2bb28b58d96e3cf638088589e789",
+    "manifeel_isaacgymenvs": "1a61da683cf1485f3307684c740771ea5e842b39",
+    "dataset": "6587189d8e06480e739af5a4004d411c5c07743b"
+  },
+  "stop_reason": "Tested legacy Torch wheel cannot execute even arange on this GPU. Native physics/rendering works; no claim that all legacy configurations are impossible.",
+  "scope_limits": [
+    "No full task instantiated",
+    "No perturbation collection",
+    "No training",
+    "No original dataset rewrite"
+  ],
+  "evidence_directory": "compatibility",
+  "geometry_contract": "runtime_geometry.json"
+}

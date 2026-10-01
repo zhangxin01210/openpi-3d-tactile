@@ -156,6 +156,7 @@ BOTH：
 from __future__ import annotations
 
 from flax import nnx
+import jax.numpy as jnp
 
 from openpi.models.spatial_encoders.conditioning import (
     SpatialConditionedTokens,
@@ -192,6 +193,8 @@ class SpatialConditioningRouter(
         prefix_dim: int | None,
         suffix_dim: int | None,
         rngs: nnx.Rngs,
+        prefix_token_indices: tuple[int, ...] | None = None,
+        suffix_token_indices: tuple[int, ...] | None = None,
     ) -> None:
         if encoder_token_dim <= 0:
             raise ValueError(
@@ -229,6 +232,8 @@ class SpatialConditioningRouter(
         )
 
         self.conditioning = conditioning
+        self.prefix_token_indices = prefix_token_indices
+        self.suffix_token_indices = suffix_token_indices
 
         self.prefix_adapter: (
             LinearSpatialTokenAdapter
@@ -342,6 +347,10 @@ class SpatialConditioningRouter(
             prefix_mask = (
                 prefix_output.token_mask
             )
+            if self.prefix_token_indices is not None:
+                selected = jnp.zeros((prefix_mask.shape[-1],), dtype=jnp.bool_)
+                selected = selected.at[jnp.asarray(self.prefix_token_indices)].set(True)
+                prefix_mask = jnp.logical_and(prefix_mask, selected[None, :])
 
         if self.conditioning.use_suffix:
             if self.suffix_adapter is None:
@@ -363,6 +372,10 @@ class SpatialConditioningRouter(
             suffix_mask = (
                 suffix_output.token_mask
             )
+            if self.suffix_token_indices is not None:
+                selected = jnp.zeros((suffix_mask.shape[-1],), dtype=jnp.bool_)
+                selected = selected.at[jnp.asarray(self.suffix_token_indices)].set(True)
+                suffix_mask = jnp.logical_and(suffix_mask, selected[None, :])
 
         conditioned = SpatialConditionedTokens(
             prefix_tokens=prefix_tokens,

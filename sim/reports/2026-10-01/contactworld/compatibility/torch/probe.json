@@ -1,0 +1,33 @@
+{
+  "status": "failed",
+  "python": "3.8.20 (default, Oct  3 2024, 15:24:27) \n[GCC 11.2.0]",
+  "stages": [
+    {
+      "stage": "imports",
+      "torch": "2.4.1+cu121",
+      "cuda": "12.1",
+      "gpu": "NVIDIA GeForce RTX 5090",
+      "capability": [
+        12,
+        0
+      ],
+      "torch_arch_list": [
+        "sm_50",
+        "sm_60",
+        "sm_70",
+        "sm_75",
+        "sm_80",
+        "sm_86",
+        "sm_90"
+      ]
+    },
+    {
+      "stage": "cuda_elementwise_begin"
+    },
+    {
+      "stage": "exception",
+      "type": "RuntimeError",
+      "message": "CUDA error: no kernel image is available for execution on the device\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n"
+    }
+  ]
+}

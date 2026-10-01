@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "checked_date": "2026-09-29",
+  "status": "initial_remote_metadata_only_not_an_installed_environment_lock",
+  "repositories": {
+    "openpi-3d-tactile": {
+      "url": "https://github.com/zhangxin01210/openpi-3d-tactile",
+      "local_head": "165493a54636160b0afd40660d2fb16554667a37",
+      "remote_main": "165493a54636160b0afd40660d2fb16554667a37",
+      "remote_verification": "git ls-remote origin refs/heads/main over repository SSH remote",
+      "initial_local_and_remote_head": "7d0dcd1467cf0be67eb9f8238f3593702da9e76b",
+      "existing_worktree_changes": true
+    },
+    "IsaacLab": {
+      "url": "https://github.com/isaac-sim/IsaacLab",
+      "local_reference_path": "/home/sai/zx/llm as policy/third_party/IsaacLab",
+      "commit": "3c6e67bb5c7ada942a6d1884ab69338f57596f77",
+      "release": "v2.3.0",
+      "independent_copy_created": false
+    },
+    "ContactWorld": {
+      "url": "https://github.com/PokuangZhou/ContactWorld",
+      "commit": "8d0d0edff44f2bb28b58d96e3cf638088589e789",
+      "cloned": false,
+      "transitive_source_revisions_locked": false
+    }
+  },
+  "dataset": {
+    "repo_id": "Pokuang/ContactWorld",
+    "revision": "6587189d8e06480e739af5a4004d411c5c07743b",
+    "license_tag_from_api": "cc-by-nc-4.0",
+    "files": [
+      {
+        "path": "releases/insertion_usb_dataset.tar.gz",
+        "bytes": 6585153409,
+        "expected_sha256_from_lfs": "e4b0a6b9d7751cea5d43b48916fb2bbca847b814d29242d58ec7eb7dae452f09",
+        "url": "https://huggingface.co/datasets/Pokuang/ContactWorld/resolve/6587189d8e06480e739af5a4004d411c5c07743b/releases/insertion_usb_dataset.tar.gz",
+        "downloaded": false,
+        "local_hash_verified": false
+      },
+      {
+        "path": "releases/insertion_usb_ckpt.tar.gz",
+        "bytes": 1508068239,
+        "expected_sha256_from_lfs": "490ec0c41408738f82416154e5a7eea0ad009a04f53d1555f05b4e31f4eab37e",
+        "url": "https://huggingface.co/datasets/Pokuang/ContactWorld/resolve/6587189d8e06480e739af5a4004d411c5c07743b/releases/insertion_usb_ckpt.tar.gz",
+        "downloaded": false,
+        "local_hash_verified": false
+      },
+      {
+        "path": "assets/industreal.tar",
+        "bytes": 61839360,
+        "expected_sha256_from_lfs": "84a19fd77b3c712a42c5677f6140acfa6eff73fa51c804397f8f09fd855c0375",
+        "url": "https://huggingface.co/datasets/Pokuang/ContactWorld/resolve/6587189d8e06480e739af5a4004d411c5c07743b/assets/industreal.tar",
+        "downloaded": false,
+        "local_hash_verified": false
+      }
+    ]
+  },
+  "legacy_simulator_package": {
+    "name": "IsaacGym_Preview_TacSL_Package.tar.gz",
+    "url_from_upstream_install_script": "https://drive.google.com/file/d/13dFRF9EXpzIWaJF2Z6f7BsuPUGQkPE8v/view?usp=sharing",
+    "downloaded": false,
+    "rtx_5090_compatibility_verified": false,
+    "expected_sha256": null
+  }
+}

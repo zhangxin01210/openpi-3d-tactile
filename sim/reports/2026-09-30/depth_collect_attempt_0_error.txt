@@ -1,0 +1,66 @@
+
+2026-09-30T04:15:17Z [10,805ms] [Warning] [isaaclab.sim.utils] Could not perform 'modify_mass_properties' on any prims under: '/World/envs/env_0/prism'. This might be because of the following reasons:
+	(1) The desired attribute does not exist on any of the prims.
+	(2) The desired attribute exists on an instanced prim.
+		Discovered list of instanced prim paths: []
+2026-09-30T04:15:21Z [14,658ms] [Warning] [omni.physx.plugin] The rigid body at /World/envs/env_0/Robot/WristCamera has a possibly invalid inertia tensor of {1.0, 1.0, 1.0} and a negative mass, small sphere approximated inertia was used. Either specify correct values in the mass properties, or add collider(s) to any shape(s) that you wish to automatically compute mass properties for.
+2026-09-30T04:15:24Z [18,118ms] [Warning] [rtx.postprocessing.plugin] DLSS increasing input dimensions: Render resolution of (213, 160) is below minimal input resolution of 300.
+Traceback (most recent call last):
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/scripts/collect_data.py", line 186, in <module>
+    main()
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/scripts/collect_data.py", line 158, in main
+    task_env = create_task_env(
+               ^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/envs/utils/env_parser.py", line 366, in create_task_env
+    task = task_module.Task(env_cfg, mode=mode)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/envs/insert_hole.py", line 10, in __init__
+    super().__init__(cfg, mode, render_mode, **kwargs)
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/envs/_base_task.py", line 267, in __init__
+    self._robot_manager.setup()
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/envs/robot/robot.py", line 91, in setup
+    self.planner = CuroboPlanner(
+                   ^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/envs/robot/curobo_planner.py", line 87, in __init__
+    self.motion_gen.warmup()
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/motion_gen.py", line 1906, in warmup
+    self.plan_single_js(
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/motion_gen.py", line 2116, in plan_single_js
+    result = self._plan_js_from_solve_state(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/motion_gen.py", line 3783, in _plan_js_from_solve_state
+    traj_result = self._solve_trajopt_from_solve_state(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/miniconda3/envs/univtac-isaac51/lib/python3.11/contextlib.py", line 81, in inner
+    return func(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/motion_gen.py", line 2867, in _solve_trajopt_from_solve_state
+    traj_result = trajopt_instance.solve_any(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/trajopt.py", line 810, in solve_any
+    return self.solve_single(
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/trajopt.py", line 983, in solve_single
+    return self._solve_from_solve_state(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/trajopt.py", line 925, in _solve_from_solve_state
+    traj_result = self._get_result(
+                  ^^^^^^^^^^^^^^^^^
+  File "/home/sai/miniconda3/envs/univtac-isaac51/lib/python3.11/contextlib.py", line 81, in inner
+    return func(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/wrap/reacher/trajopt.py", line 1344, in _get_result
+    metrics = self.interpolate_rollout.get_metrics(interpolated_trajs)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/rollout/arm_base.py", line 436, in get_metrics
+    out_metrics = self.constraint_fn(state)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/rollout/arm_base.py", line 410, in constraint_fn
+    self_constraint = self.robot_self_collision_constraint.forward(state.robot_spheres)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/rollout/cost/self_collision_cost.py", line 58, in forward
+    self.update_batch_size(robot_spheres)
+  File "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/third_party/curobo/src/curobo/rollout/cost/self_collision_cost.py", line 53, in update_batch_size
+    self._sparse_sphere_idx = torch.zeros(
+                              ^^^^^^^^^^^^
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.00 MiB. GPU 0 has a total capacity of 31.36 GiB of which 2.06 MiB is free. Process 408350 has 24.03 GiB memory in use. Including non-PyTorch memory, this process has 7.27 GiB memory in use. Of the allocated memory 103.97 MiB is allocated by PyTorch, with 5.99 MiB allocated in private pools (e.g., CUDA Graphs), and 22.03 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

@@ -1,0 +1,252 @@
+{
+  "episodes": [
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/runs/bench2dex_review/episode_000000/replay.hdf5",
+      "before_homing_frames": 783,
+      "any_finger_active_frames": 390,
+      "per_site_active_frames": {
+        "left_index_elastomer": 130,
+        "left_middle_elastomer": 27,
+        "left_pinky_elastomer": 56,
+        "left_ring_elastomer": 28,
+        "left_thumb_elastomer": 102,
+        "right_index_elastomer": 199,
+        "right_middle_elastomer": 62,
+        "right_pinky_elastomer": 47,
+        "right_ring_elastomer": 42,
+        "right_thumb_elastomer": 154
+      },
+      "objects": {
+        "2": {
+          "initial_xyz_m": [
+            0.2326885461807251,
+            0.352664977312088,
+            0.7656553387641907
+          ],
+          "initial_yaw_deg": 2.3565994072535905,
+          "near_target_frames": 674,
+          "near_target_with_any_finger_active_frames": 351,
+          "near_target_xy_motion_over_2mm_frame_pairs": 6,
+          "near_target_motion_and_tactile_frame_pairs": 6
+        },
+        "3": {
+          "initial_xyz_m": [
+            -0.19542700052261353,
+            0.19083315134048462,
+            0.7656552791595459
+          ],
+          "initial_yaw_deg": -81.82955296925488,
+          "near_target_frames": 460,
+          "near_target_with_any_finger_active_frames": 235,
+          "near_target_xy_motion_over_2mm_frame_pairs": 0,
+          "near_target_motion_and_tactile_frame_pairs": 0
+        },
+        "4": {
+          "initial_xyz_m": [
+            -0.3646090626716614,
+            0.14130675792694092,
+            0.7656553387641907
+          ],
+          "initial_yaw_deg": -80.34560383848368,
+          "near_target_frames": 270,
+          "near_target_with_any_finger_active_frames": 142,
+          "near_target_xy_motion_over_2mm_frame_pairs": 1,
+          "near_target_motion_and_tactile_frame_pairs": 1
+        },
+        "5": {
+          "initial_xyz_m": [
+            0.15813328325748444,
+            0.1651633083820343,
+            0.7656552791595459
+          ],
+          "initial_yaw_deg": -6.550259317073326,
+          "near_target_frames": 109,
+          "near_target_with_any_finger_active_frames": 49,
+          "near_target_xy_motion_over_2mm_frame_pairs": 2,
+          "near_target_motion_and_tactile_frame_pairs": 2
+        }
+      }
+    },
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/runs/bench2dex_review/episode_000024/replay.hdf5",
+      "before_homing_frames": 812,
+      "any_finger_active_frames": 404,
+      "per_site_active_frames": {
+        "left_index_elastomer": 120,
+        "left_middle_elastomer": 111,
+        "left_pinky_elastomer": 54,
+        "left_ring_elastomer": 31,
+        "left_thumb_elastomer": 118,
+        "right_index_elastomer": 204,
+        "right_middle_elastomer": 35,
+        "right_pinky_elastomer": 43,
+        "right_ring_elastomer": 7,
+        "right_thumb_elastomer": 174
+      },
+      "objects": {
+        "2": {
+          "initial_xyz_m": [
+            0.24601247906684875,
+            0.3485795855522156,
+            0.7656596899032593
+          ],
+          "initial_yaw_deg": -8.001421968333426,
+          "near_target_frames": 672,
+          "near_target_with_any_finger_active_frames": 340,
+          "near_target_xy_motion_over_2mm_frame_pairs": 5,
+          "near_target_motion_and_tactile_frame_pairs": 5
+        },
+        "3": {
+          "initial_xyz_m": [
+            -0.21536870300769806,
+            0.2027803659439087,
+            0.7656596302986145
+          ],
+          "initial_yaw_deg": -85.43876789652825,
+          "near_target_frames": 478,
+          "near_target_with_any_finger_active_frames": 237,
+          "near_target_xy_motion_over_2mm_frame_pairs": 0,
+          "near_target_motion_and_tactile_frame_pairs": 0
+        },
+        "4": {
+          "initial_xyz_m": [
+            -0.37703460454940796,
+            0.14455626904964447,
+            0.7656596899032593
+          ],
+          "initial_yaw_deg": -80.01977155607396,
+          "near_target_frames": 287,
+          "near_target_with_any_finger_active_frames": 146,
+          "near_target_xy_motion_over_2mm_frame_pairs": 4,
+          "near_target_motion_and_tactile_frame_pairs": 3
+        },
+        "5": {
+          "initial_xyz_m": [
+            0.15072724223136902,
+            0.14174750447273254,
+            0.7656596899032593
+          ],
+          "initial_yaw_deg": 0.9658959700648138,
+          "near_target_frames": 93,
+          "near_target_with_any_finger_active_frames": 39,
+          "near_target_xy_motion_over_2mm_frame_pairs": 0,
+          "near_target_motion_and_tactile_frame_pairs": 0
+        }
+      }
+    },
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/runs/bench2dex_review/episode_000049/replay.hdf5",
+      "before_homing_frames": 767,
+      "any_finger_active_frames": 392,
+      "per_site_active_frames": {
+        "left_index_elastomer": 159,
+        "left_middle_elastomer": 44,
+        "left_pinky_elastomer": 28,
+        "left_ring_elastomer": 25,
+        "left_thumb_elastomer": 127,
+        "right_index_elastomer": 180,
+        "right_middle_elastomer": 31,
+        "right_pinky_elastomer": 14,
+        "right_ring_elastomer": 8,
+        "right_thumb_elastomer": 173
+      },
+      "objects": {
+        "2": {
+          "initial_xyz_m": [
+            0.24595728516578674,
+            0.3420419991016388,
+            0.7641980051994324
+          ],
+          "initial_yaw_deg": -4.555611399325689,
+          "near_target_frames": 643,
+          "near_target_with_any_finger_active_frames": 330,
+          "near_target_xy_motion_over_2mm_frame_pairs": 3,
+          "near_target_motion_and_tactile_frame_pairs": 3
+        },
+        "3": {
+          "initial_xyz_m": [
+            -0.21204277873039246,
+            0.19946454465389252,
+            0.7641985416412354
+          ],
+          "initial_yaw_deg": -89.46947787743461,
+          "near_target_frames": 474,
+          "near_target_with_any_finger_active_frames": 224,
+          "near_target_xy_motion_over_2mm_frame_pairs": 0,
+          "near_target_motion_and_tactile_frame_pairs": 0
+        },
+        "4": {
+          "initial_xyz_m": [
+            -0.3773289620876312,
+            0.16795073449611664,
+            0.7641981840133667
+          ],
+          "initial_yaw_deg": -99.02168386768739,
+          "near_target_frames": 292,
+          "near_target_with_any_finger_active_frames": 135,
+          "near_target_xy_motion_over_2mm_frame_pairs": 8,
+          "near_target_motion_and_tactile_frame_pairs": 8
+        },
+        "5": {
+          "initial_xyz_m": [
+            0.1641157567501068,
+            0.16272497177124023,
+            0.7641962170600891
+          ],
+          "initial_yaw_deg": -7.510174091012925,
+          "near_target_frames": 95,
+          "near_target_with_any_finger_active_frames": 37,
+          "near_target_xy_motion_over_2mm_frame_pairs": 1,
+          "near_target_motion_and_tactile_frame_pairs": 1
+        }
+      }
+    }
+  ],
+  "initial_variation": {
+    "2": {
+      "xyz_range_m": [
+        0.013323932886123657,
+        0.010622978210449219,
+        0.0014616847038269043
+      ],
+      "yaw_range_deg": 10.358021375587017
+    },
+    "3": {
+      "xyz_range_m": [
+        0.019941702485084534,
+        0.011947214603424072,
+        0.0014610886573791504
+      ],
+      "yaw_range_deg": 7.6399249081797365
+    },
+    "4": {
+      "xyz_range_m": [
+        0.012719899415969849,
+        0.02664397656917572,
+        0.0014615058898925781
+      ],
+      "yaw_range_deg": 19.001912311613424
+    },
+    "5": {
+      "xyz_range_m": [
+        0.013388514518737793,
+        0.023415803909301758,
+        0.001463472843170166
+      ],
+      "yaw_range_deg": 8.476070061077738
+    }
+  },
+  "thresholds": {
+    "tactile_distance_m": 0.0001,
+    "minimum_pixels": 10,
+    "near_target_xy_m": 0.04,
+    "near_target_relative_z_m": 0.04,
+    "motion_per_frame_m": 0.002
+  },
+  "limits": [
+    "Three selected trajectories only.",
+    "Any finger can contact any surface, not necessarily this puzzle piece.",
+    "Near-target motion is not proof of jamming, recovery, or tactile causality.",
+    "Tactile is reconstructed geometry, not measured force."
+  ]
+}

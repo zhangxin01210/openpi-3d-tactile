@@ -1,0 +1,44 @@
+{
+  "dataset_root": "/home/sai/zx/openpi-sim-runtime/data_lerobot/univtac_insert_hole_depth_3seed",
+  "results": [
+    {
+      "modalities": "RGB+GelSight_RGB",
+      "sample_indices": [
+        100,
+        101
+      ],
+      "batch_size": 2,
+      "loss": 1.7565982341766357,
+      "gradient_leaf_count": 50,
+      "nonzero_spatial_gradient_leaves": 0,
+      "tactile_image_shape": [
+        2,
+        224,
+        224,
+        3
+      ],
+      "tactile_image_mean_normalized": -0.4146791994571686,
+      "pass": true
+    },
+    {
+      "modalities": "RGB+world_PC+GelSight_RGB",
+      "sample_indices": [
+        100,
+        101
+      ],
+      "batch_size": 2,
+      "loss": 1.5785744190216064,
+      "gradient_leaf_count": 89,
+      "nonzero_spatial_gradient_leaves": 15,
+      "tactile_image_shape": [
+        2,
+        224,
+        224,
+        3
+      ],
+      "tactile_image_mean_normalized": -0.4146791994571686,
+      "pass": true
+    }
+  ],
+  "pass": true
+}

@@ -1,0 +1,40 @@
+{
+  "source": "https://bench2dex.github.io/assets/js/data.js",
+  "project": "https://bench2dex.github.io/",
+  "task_id": 73,
+  "rollouts_per_cell": 50,
+  "channel_order": [
+    "none",
+    "equi",
+    "inv",
+    "full"
+  ],
+  "stable_success_counts": {
+    "ACT": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "DPC": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "PI05": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "GR00T": [
+      10,
+      0,
+      0,
+      0
+    ]
+  },
+  "local_reproduction": false,
+  "limits": "Not a tactile ablation; failure causes and training modality of each baseline were not independently verified."
+}

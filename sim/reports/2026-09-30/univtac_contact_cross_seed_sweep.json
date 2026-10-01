@@ -1,0 +1,244 @@
+{
+  "task": "UniVTAC insert_hole",
+  "date": "2026-09-30",
+  "control_hz": 60,
+  "provider": "recorded HDF5 next-joint targets; observations are recorded but not used for decision-making",
+  "contact_pair_definition": "Active UIPC PP/PE/PT/EE normal contact primitives with every topology vertex in peg or slot and both actors represented; PH and mixed-actor primitives excluded.",
+  "force_definition": "Negative selected UIPC normal-barrier energy gradient on peg vertices divided by physics dt squared; a provisional model-derived estimate, not independently calibrated physical force.",
+  "window_definition": "pre is five actions immediately before perturb_index; post is perturb_index through final action, inclusive. Contact is probed after each action. Relative peg-minus-slot position is observed before that index action.",
+  "selection_note": "Indices were selected by similar recorded peg-minus-slot z near 83 mm, not by verified first-contact timing. The adverse y offset follows the sign of the pre-perturbation peg-minus-slot y residual.",
+  "cases": {
+    "0": {
+      "perturb_index": 170,
+      "clean": {
+        "source": "univtac_contact_gradient_clean_seed0_full.json",
+        "offset_xy_mm": [
+          0.0,
+          0.0
+        ],
+        "action_count": 201,
+        "terminal_success": true,
+        "joint_mae_rad": 1.8375656207649663e-05,
+        "relative_xyz_at_perturb_mm": [
+          -9.808599948883057,
+          0.4196632653474808,
+          83.36802222765982
+        ],
+        "relative_xyz_last_observation_mm": [
+          -29.484868049621582,
+          0.5446150898933411,
+          49.93255832232535
+        ],
+        "relative_z_decrease_mm": 33.43546390533447,
+        "pre": {
+          "pair_count_median": 27,
+          "provisional_barrier_force_magnitude_N_median": 3.642538997474653,
+          "provisional_barrier_force_magnitude_N_max": 3.91916944663431,
+          "action_reaction_residual_N_max": 8.903441835098303e-16,
+          "gradient_topology_mismatch_total": 0
+        },
+        "post": {
+          "pair_count_median": 25,
+          "provisional_barrier_force_magnitude_N_median": 3.7273909907936584,
+          "provisional_barrier_force_magnitude_N_max": 9.03569629862472,
+          "action_reaction_residual_N_max": 3.5535809346852124e-15,
+          "gradient_topology_mismatch_total": 0
+        }
+      },
+      "adverse_1mm": {
+        "source": "univtac_contact_gradient_minus1mm_seed0.json",
+        "offset_xy_mm": [
+          0.0,
+          -1.0
+        ],
+        "action_count": 201,
+        "terminal_success": false,
+        "joint_mae_rad": 1.852453576638726e-05,
+        "relative_xyz_at_perturb_mm": [
+          -9.808778762817383,
+          0.41967444121837616,
+          83.36769440211356
+        ],
+        "relative_xyz_last_observation_mm": [
+          -9.91147756576538,
+          1.4062616974115372,
+          83.29413481988013
+        ],
+        "relative_z_decrease_mm": 0.07355958223342896,
+        "pre": {
+          "pair_count_median": 27,
+          "provisional_barrier_force_magnitude_N_median": 3.6425577061621177,
+          "provisional_barrier_force_magnitude_N_max": 3.9190013439037523,
+          "action_reaction_residual_N_max": 8.968100940422724e-16,
+          "gradient_topology_mismatch_total": 0
+        },
+        "post": {
+          "pair_count_median": 331,
+          "provisional_barrier_force_magnitude_N_median": 669.256906389865,
+          "provisional_barrier_force_magnitude_N_max": 843.7576178367176,
+          "action_reaction_residual_N_max": 2.852419806878895e-12,
+          "gradient_topology_mismatch_total": 0
+        }
+      },
+      "post_pair_count_ratio_adverse_over_clean": 13.24,
+      "post_force_ratio_adverse_over_clean": 179.55103396527844
+    },
+    "1": {
+      "perturb_index": 191,
+      "clean": {
+        "source": "univtac_contact_gradient_clean_seed1.json",
+        "offset_xy_mm": [
+          0.0,
+          0.0
+        ],
+        "action_count": 237,
+        "terminal_success": true,
+        "joint_mae_rad": 1.789592515561344e-05,
+        "relative_xyz_at_perturb_mm": [
+          10.294020175933838,
+          -0.5506463348865509,
+          83.98685255087912
+        ],
+        "relative_xyz_last_observation_mm": [
+          28.0609130859375,
+          -0.5039237439632416,
+          52.5203796569258
+        ],
+        "relative_z_decrease_mm": 31.466472893953323,
+        "pre": {
+          "pair_count_median": 17,
+          "provisional_barrier_force_magnitude_N_median": 2.5925099719298137,
+          "provisional_barrier_force_magnitude_N_max": 3.1164554243915505,
+          "action_reaction_residual_N_max": 6.77599954797753e-16,
+          "gradient_topology_mismatch_total": 0
+        },
+        "post": {
+          "pair_count_median": 17.0,
+          "provisional_barrier_force_magnitude_N_median": 2.7711553519786793,
+          "provisional_barrier_force_magnitude_N_max": 4.7606848754549365,
+          "action_reaction_residual_N_max": 1.3325567187647329e-15,
+          "gradient_topology_mismatch_total": 0
+        }
+      },
+      "adverse_1mm": {
+        "source": "univtac_contact_gradient_slot_y_plus1mm_seed1.json",
+        "offset_xy_mm": [
+          0.0,
+          1.0
+        ],
+        "action_count": 237,
+        "terminal_success": false,
+        "joint_mae_rad": 1.8007830006252292e-05,
+        "relative_xyz_at_perturb_mm": [
+          10.31404733657837,
+          -0.5454178899526596,
+          83.99613597430289
+        ],
+        "relative_xyz_last_observation_mm": [
+          10.226190090179443,
+          -1.4516450464725494,
+          84.07178916968405
+        ],
+        "relative_z_decrease_mm": -0.07565319538116455,
+        "pre": {
+          "pair_count_median": 17,
+          "provisional_barrier_force_magnitude_N_median": 2.4757682827873837,
+          "provisional_barrier_force_magnitude_N_max": 3.112376735473923,
+          "action_reaction_residual_N_max": 2.2206195148221764e-15,
+          "gradient_topology_mismatch_total": 0
+        },
+        "post": {
+          "pair_count_median": 519.0,
+          "provisional_barrier_force_magnitude_N_median": 432.10527234737526,
+          "provisional_barrier_force_magnitude_N_max": 617.238029959779,
+          "action_reaction_residual_N_max": 9.41355163017715e-13,
+          "gradient_topology_mismatch_total": 0
+        }
+      },
+      "post_pair_count_ratio_adverse_over_clean": 30.529411764705884,
+      "post_force_ratio_adverse_over_clean": 155.92964574824018
+    },
+    "2": {
+      "perturb_index": 185,
+      "clean": {
+        "source": "univtac_contact_gradient_clean_seed2.json",
+        "offset_xy_mm": [
+          0.0,
+          0.0
+        ],
+        "action_count": 231,
+        "terminal_success": true,
+        "joint_mae_rad": 1.5608388921599828e-05,
+        "relative_xyz_at_perturb_mm": [
+          -10.252714157104492,
+          0.5864668637514114,
+          83.14934023655951
+        ],
+        "relative_xyz_last_observation_mm": [
+          -28.69623899459839,
+          0.5086641758680344,
+          51.60773568786681
+        ],
+        "relative_z_decrease_mm": 31.541604548692703,
+        "pre": {
+          "pair_count_median": 44,
+          "provisional_barrier_force_magnitude_N_median": 6.04893389862644,
+          "provisional_barrier_force_magnitude_N_max": 7.580743340817492,
+          "action_reaction_residual_N_max": 1.7837681635016787e-15,
+          "gradient_topology_mismatch_total": 0
+        },
+        "post": {
+          "pair_count_median": 35.5,
+          "provisional_barrier_force_magnitude_N_median": 4.131447224041427,
+          "provisional_barrier_force_magnitude_N_max": 6.182256590038702,
+          "action_reaction_residual_N_max": 5.330010077257569e-15,
+          "gradient_topology_mismatch_total": 0
+        }
+      },
+      "adverse_1mm": {
+        "source": "univtac_contact_gradient_slot_y_minus1mm_seed2.json",
+        "offset_xy_mm": [
+          0.0,
+          -1.0
+        ],
+        "action_count": 231,
+        "terminal_success": false,
+        "joint_mae_rad": 1.6691974225799415e-05,
+        "relative_xyz_at_perturb_mm": [
+          -10.243535041809082,
+          0.5884654819965363,
+          83.22729566134512
+        ],
+        "relative_xyz_last_observation_mm": [
+          -10.280072689056396,
+          1.578349620103836,
+          83.16744514741004
+        ],
+        "relative_z_decrease_mm": 0.05985051393508911,
+        "pre": {
+          "pair_count_median": 39,
+          "provisional_barrier_force_magnitude_N_median": 5.668128633710812,
+          "provisional_barrier_force_magnitude_N_max": 5.968933610199842,
+          "action_reaction_residual_N_max": 1.777454255113597e-15,
+          "gradient_topology_mismatch_total": 0
+        },
+        "post": {
+          "pair_count_median": 358.0,
+          "provisional_barrier_force_magnitude_N_median": 980.0039817504327,
+          "provisional_barrier_force_magnitude_N_max": 1469.1397374203664,
+          "action_reaction_residual_N_max": 1.9065862296939056e-12,
+          "gradient_topology_mismatch_total": 0
+        }
+      },
+      "post_pair_count_ratio_adverse_over_clean": 10.084507042253522,
+      "post_force_ratio_adverse_over_clean": 237.2059785848558
+    }
+  },
+  "gate_summary": {
+    "all_six_runs_executed": true,
+    "clean_terminal_success_count": 3,
+    "adverse_terminal_failure_count": 3,
+    "zero_gradient_topology_mismatch_in_all_probed_steps": true,
+    "interpretation": "Controlled replay observations on three selected successful seed trajectories, not a task success-rate or recovery-rate estimate."
+  }
+}

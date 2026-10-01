@@ -140,6 +140,8 @@ class Pi0(_model.BaseModel):
                             else None
                         ),
                         rngs=rngs,
+                        prefix_token_indices=(0,) if getattr(config, "split_route", False) else None,
+                        suffix_token_indices=(1,) if getattr(config, "split_route", False) else None,
                     )
                 )
 

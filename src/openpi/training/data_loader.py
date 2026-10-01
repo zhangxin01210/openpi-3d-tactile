@@ -212,6 +212,33 @@ def create_torch_dataset(
     if data_config.prompt_from_task:
         tasks = _lerobot_tasks_to_dict(dataset_meta.tasks)
         dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(tasks)])
+    if data_config.contactworld is not None:
+        from openpi.spatial_dataset.contactworld_lerobot import ContactWorldLeRobotSpatial
+
+        settings = data_config.contactworld
+        if settings.visual != bool(getattr(model_config, "use_visual", False)):
+            raise ValueError("ContactWorld visual sidecar and model spec disagree")
+        if settings.force != bool(getattr(model_config, "use_tactile", False)):
+            raise ValueError("ContactWorld force sidecar and model spec disagree")
+        dataset = ContactWorldLeRobotSpatial(
+            dataset, settings.root, visual=settings.visual, force=settings.force,
+            depth=settings.depth, cloud_noise_m=settings.cloud_noise_m,
+            force_ee3d_proxy=settings.force_ee3d_proxy, action_horizon=settings.action_horizon,
+        )
+    if data_config.univtac_pointcloud is not None:
+        from openpi.spatial_dataset.univtac import UniVTACVisualDataset
+
+        if data_config.spatial is not None:
+            raise ValueError("UniVTAC pointcloud and spatial sidecar cannot both be configured")
+        if not getattr(model_config, "use_visual", False) or getattr(model_config, "use_tactile", False):
+            raise ValueError("UniVTAC pointcloud adapter requires a visual-only spatial model")
+        settings = data_config.univtac_pointcloud
+        if getattr(model_config, "visual_points", None) != 2 * settings.points_per_camera:
+            raise ValueError("UniVTAC point count must match the model visual_points spec")
+        dataset = UniVTACVisualDataset(
+            dataset, settings.dataset_root,
+            points_per_camera=settings.points_per_camera, stride=settings.stride,
+        )
     if data_config.spatial is not None:
         spatial_dataset = SpatialDerivedDataset(
             data_config.spatial.dataset_root,
@@ -299,7 +326,9 @@ def transform_dataset(dataset: Dataset, data_config: _config.DataConfig, *, skip
             _transforms.Normalize(norm_stats, use_quantiles=data_config.use_quantile_norm),
             *data_config.model_transforms.inputs,
         ],
-        preserve_keys=("spatial",) if data_config.spatial is not None else (),
+        preserve_keys=("spatial",) if data_config.spatial is not None or data_config.univtac_pointcloud is not None
+        or (data_config.contactworld is not None and
+            (data_config.contactworld.visual or data_config.contactworld.force)) else (),
     )
 
 

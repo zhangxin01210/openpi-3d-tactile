@@ -1,0 +1,493 @@
+{
+  "status": "passed",
+  "runtime_capture": "/home/sai/zx/openpi-sim-runtime/runs/contactworld_compat/front_camera_centers/camera.npz",
+  "scope": "Fixed front camera, base at world origin with identity rotation; released source conversion only",
+  "limitations": [
+    "Collection-time matrices absent from released data",
+    "Wrist extrinsics unverified",
+    "No dynamic full-task state/action/contact replay in this check"
+  ],
+  "formula_column_vectors": "world = A @ stored_xyz + t",
+  "A": [
+    [
+      0.5,
+      -0.7487020734279055,
+      -0.4322633513947949
+    ],
+    [
+      0.0,
+      -0.49740420070050495,
+      0.8675240736920387
+    ],
+    [
+      -0.8660253882408142,
+      -0.43526072221654755,
+      -0.2512978996497475
+    ]
+  ],
+  "t": [
+    0.6800000071525574,
+    0.0,
+    0.15000000596046448
+  ],
+  "K": [
+    [
+      166.81285095214844,
+      0,
+      128.0
+    ],
+    [
+      0,
+      166.81285095214844,
+      128.0
+    ],
+    [
+      0,
+      0,
+      1
+    ]
+  ],
+  "pixel_centers": "Coordinates u+0.5, v+0.5; array lookup subtracts 0.5 before rounding",
+  "tasks": {
+    "insertion_usb": {
+      "passed": true,
+      "frames": 30,
+      "rgb_mae_max": 0.0,
+      "pixel_integer_max_error": 9.598093886609149e-05,
+      "half_pixel_world_shift_m_median": 0.0008014815515196961,
+      "half_pixel_world_shift_m_p99": 0.0032391931285660645,
+      "records": [
+        {
+          "episode": 0,
+          "global_row": 0,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 9.046948389368481e-05
+        },
+        {
+          "episode": 0,
+          "global_row": 31,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.482327609726781e-05
+        },
+        {
+          "episode": 0,
+          "global_row": 62,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.623362828075187e-05
+        },
+        {
+          "episode": 22,
+          "global_row": 1738,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.862637326956246e-05
+        },
+        {
+          "episode": 22,
+          "global_row": 1785,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.525088901478739e-05
+        },
+        {
+          "episode": 22,
+          "global_row": 1832,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.719578491422908e-05
+        },
+        {
+          "episode": 44,
+          "global_row": 3542,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.623693187814752e-05
+        },
+        {
+          "episode": 44,
+          "global_row": 3573,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.585825344198383e-05
+        },
+        {
+          "episode": 44,
+          "global_row": 3604,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.843667694691248e-05
+        },
+        {
+          "episode": 66,
+          "global_row": 5161,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 9.598093886609149e-05
+        },
+        {
+          "episode": 66,
+          "global_row": 5195,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.889918152021892e-05
+        },
+        {
+          "episode": 66,
+          "global_row": 5230,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.521491690771654e-05
+        },
+        {
+          "episode": 88,
+          "global_row": 6533,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.843667694691248e-05
+        },
+        {
+          "episode": 88,
+          "global_row": 6559,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.335346865351312e-05
+        },
+        {
+          "episode": 88,
+          "global_row": 6585,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.862637326956246e-05
+        },
+        {
+          "episode": 111,
+          "global_row": 8057,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.738887200365753e-05
+        },
+        {
+          "episode": 111,
+          "global_row": 8095,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.808668397364272e-05
+        },
+        {
+          "episode": 111,
+          "global_row": 8133,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.638559924634137e-05
+        },
+        {
+          "episode": 133,
+          "global_row": 9435,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.843667694691248e-05
+        },
+        {
+          "episode": 133,
+          "global_row": 9461,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.675351654119368e-05
+        },
+        {
+          "episode": 133,
+          "global_row": 9487,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.678897967229204e-05
+        },
+        {
+          "episode": 155,
+          "global_row": 10892,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.734544383059983e-05
+        },
+        {
+          "episode": 155,
+          "global_row": 10928,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.917198977087537e-05
+        },
+        {
+          "episode": 155,
+          "global_row": 10964,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.175583803904374e-05
+        },
+        {
+          "episode": 177,
+          "global_row": 12293,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.461736135245701e-05
+        },
+        {
+          "episode": 177,
+          "global_row": 12326,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.416994722892923e-05
+        },
+        {
+          "episode": 177,
+          "global_row": 12359,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.757194132158475e-05
+        },
+        {
+          "episode": 200,
+          "global_row": 13617,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 9.060292444473816e-05
+        },
+        {
+          "episode": 200,
+          "global_row": 13643,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.340371721260453e-05
+        },
+        {
+          "episode": 200,
+          "global_row": 13670,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.390743033714898e-05
+        }
+      ]
+    },
+    "insertion_peg": {
+      "passed": true,
+      "frames": 30,
+      "rgb_mae_max": 0.0,
+      "pixel_integer_max_error": 9.046948389368481e-05,
+      "half_pixel_world_shift_m_median": 0.0008760058151931335,
+      "half_pixel_world_shift_m_p99": 0.003327190451671951,
+      "records": [
+        {
+          "episode": 0,
+          "global_row": 0,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.568801177943897e-05
+        },
+        {
+          "episode": 0,
+          "global_row": 47,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.760796083606692e-05
+        },
+        {
+          "episode": 0,
+          "global_row": 95,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.937825097632413e-05
+        },
+        {
+          "episode": 16,
+          "global_row": 1173,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.784474954381949e-05
+        },
+        {
+          "episode": 16,
+          "global_row": 1213,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.674322515389576e-05
+        },
+        {
+          "episode": 16,
+          "global_row": 1254,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.784474954381949e-05
+        },
+        {
+          "episode": 33,
+          "global_row": 2522,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.808668397364272e-05
+        },
+        {
+          "episode": 33,
+          "global_row": 2590,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.787932773657303e-05
+        },
+        {
+          "episode": 33,
+          "global_row": 2659,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.719578491422908e-05
+        },
+        {
+          "episode": 50,
+          "global_row": 4190,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.78787887472754e-05
+        },
+        {
+          "episode": 50,
+          "global_row": 4219,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.666638683507699e-05
+        },
+        {
+          "episode": 50,
+          "global_row": 4248,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.557515383245118e-05
+        },
+        {
+          "episode": 67,
+          "global_row": 5386,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.700574221620627e-05
+        },
+        {
+          "episode": 67,
+          "global_row": 5422,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.225291449548422e-05
+        },
+        {
+          "episode": 67,
+          "global_row": 5459,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.78787887472754e-05
+        },
+        {
+          "episode": 84,
+          "global_row": 6740,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 9.046948389368481e-05
+        },
+        {
+          "episode": 84,
+          "global_row": 6783,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.543124988591444e-05
+        },
+        {
+          "episode": 84,
+          "global_row": 6827,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.889918152021892e-05
+        },
+        {
+          "episode": 101,
+          "global_row": 8025,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.702632482027184e-05
+        },
+        {
+          "episode": 101,
+          "global_row": 8054,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.623362828075187e-05
+        },
+        {
+          "episode": 101,
+          "global_row": 8084,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.889918152021892e-05
+        },
+        {
+          "episode": 118,
+          "global_row": 9191,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.917198977087537e-05
+        },
+        {
+          "episode": 118,
+          "global_row": 9236,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.70261164322983e-05
+        },
+        {
+          "episode": 118,
+          "global_row": 9281,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.700574221620627e-05
+        },
+        {
+          "episode": 135,
+          "global_row": 10330,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.363976769487635e-05
+        },
+        {
+          "episode": 135,
+          "global_row": 10382,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.820729669878347e-05
+        },
+        {
+          "episode": 135,
+          "global_row": 10434,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.78787887472754e-05
+        },
+        {
+          "episode": 152,
+          "global_row": 11627,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.649614534306238e-05
+        },
+        {
+          "episode": 152,
+          "global_row": 11677,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.889918152021892e-05
+        },
+        {
+          "episode": 152,
+          "global_row": 11727,
+          "valid_points": 1024,
+          "rgb_mae": 0.0,
+          "pixel_integer_max_error": 8.806433731933794e-05
+        }
+      ]
+    }
+  }
+}

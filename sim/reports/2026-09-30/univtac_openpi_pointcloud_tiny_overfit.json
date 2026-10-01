@@ -1,0 +1,60 @@
+{
+  "dataset_root": "/home/sai/zx/openpi-sim-runtime/data_lerobot/univtac_insert_hole_depth_3seed",
+  "sample_indices": [
+    100,
+    101
+  ],
+  "model": "StructuredSpatialPi0Config(dummy, dummy), visual only, random initialization",
+  "point_count_per_sample": 2048,
+  "deterministic_diffusion_rng": true,
+  "normalization": false,
+  "steps": 100,
+  "losses": [
+    {
+      "step": 0,
+      "loss": 1.5927811861038208
+    },
+    {
+      "step": 10,
+      "loss": 0.9025114178657532
+    },
+    {
+      "step": 20,
+      "loss": 0.7957642078399658
+    },
+    {
+      "step": 30,
+      "loss": 0.6634311079978943
+    },
+    {
+      "step": 40,
+      "loss": 0.5407555103302002
+    },
+    {
+      "step": 50,
+      "loss": 0.4032127559185028
+    },
+    {
+      "step": 60,
+      "loss": 0.24439409375190735
+    },
+    {
+      "step": 70,
+      "loss": 0.0997287929058075
+    },
+    {
+      "step": 80,
+      "loss": 0.04045918583869934
+    },
+    {
+      "step": 90,
+      "loss": 0.014124835841357708
+    },
+    {
+      "step": 100,
+      "loss": 0.0035660492721945047
+    }
+  ],
+  "final_to_initial_loss": 0.002238882090839854,
+  "threshold_pass": true
+}

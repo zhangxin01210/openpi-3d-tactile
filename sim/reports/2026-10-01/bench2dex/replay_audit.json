@@ -1,0 +1,1854 @@
+{
+  "episodes": [
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/runs/bench2dex_review/episode_000000/replay.hdf5",
+      "metadata": {
+        "collection_mode": "scripted_hold",
+        "demo_eligible": false,
+        "success": false,
+        "success_available": true,
+        "instruction": "Arrange the 8 Tetris building blocks into a compact cluster, then separate them again.",
+        "robot_key": "multi_iiwa7_with_sharpa",
+        "frame_count": 815,
+        "fps": 20,
+        "physics_dt": 0.016666666666666666,
+        "step_stride": 3
+      },
+      "before_homing_frames": 783,
+      "usable_action_frames_before_home": 782,
+      "nonfinite_action_rows": [
+        0
+      ],
+      "nonfinite_action_rows_marked_valid": 0,
+      "action_sources": {
+        "none": 1,
+        "teleop": 814
+      },
+      "qpos_all_finite": true,
+      "qpos_max_range_rad": 2.0609428882598877,
+      "sim_step_delta_counts": {
+        "1": 1,
+        "3": 813
+      },
+      "objects": {
+        "distractor_00_clutter_025_mug": {
+          "initial_xyz": [
+            0.504422664642334,
+            0.21544092893600464,
+            0.7576189637184143
+          ],
+          "final_before_home_xyz": [
+            0.5044227838516235,
+            0.21544089913368225,
+            0.7576189637184143
+          ],
+          "max_position_range_before_home_m": 2.384185791015625e-07
+        },
+        "obj_326_piece_0": {
+          "initial_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656553387641907
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_1": {
+          "initial_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656553387641907
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_2": {
+          "initial_xyz": [
+            0.2326885461807251,
+            0.352664977312088,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.06556316465139389,
+            0.2962152063846588,
+            0.7658658027648926
+          ],
+          "max_position_range_before_home_m": 0.3049125075340271
+        },
+        "obj_326_piece_3": {
+          "initial_xyz": [
+            -0.19542700052261353,
+            0.19083315134048462,
+            0.7656552791595459
+          ],
+          "final_before_home_xyz": [
+            -0.15110522508621216,
+            0.2670069932937622,
+            0.7658963799476624
+          ],
+          "max_position_range_before_home_m": 0.07617390155792236
+        },
+        "obj_326_piece_4": {
+          "initial_xyz": [
+            -0.3646090626716614,
+            0.14130675792694092,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.15166795253753662,
+            0.18078868091106415,
+            0.7656554579734802
+          ],
+          "max_position_range_before_home_m": 0.22258055210113525
+        },
+        "obj_326_piece_5": {
+          "initial_xyz": [
+            0.15813328325748444,
+            0.1651633083820343,
+            0.7656552791595459
+          ],
+          "final_before_home_xyz": [
+            -0.06354812532663345,
+            0.20818035304546356,
+            0.7656381130218506
+          ],
+          "max_position_range_before_home_m": 0.2216814160346985
+        }
+      },
+      "cameras": {
+        "cam_chest": {
+          "camera_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "clipping_range": {
+            "shape": [
+              2
+            ],
+            "dtype": "float32"
+          },
+          "depth": {
+            "shape": [
+              815,
+              480,
+              640
+            ],
+            "dtype": "float32"
+          },
+          "extrinsic_world_from_cam": {
+            "shape": [
+              815,
+              4,
+              4
+            ],
+            "dtype": "float32"
+          },
+          "intrinsic": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "rgb": {
+            "shape": [
+              815
+            ],
+            "dtype": "object"
+          },
+          "depth_valid_fraction_sampled": 1.0,
+          "depth_range_m_sampled": [
+            0.34065383672714233,
+            2.9619593620300293
+          ]
+        },
+        "cam_wrist_right": {
+          "camera_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "clipping_range": {
+            "shape": [
+              2
+            ],
+            "dtype": "float32"
+          },
+          "depth": {
+            "shape": [
+              815,
+              480,
+              640
+            ],
+            "dtype": "float32"
+          },
+          "distortion_coefficients": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32"
+          },
+          "distortion_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "extrinsic_world_from_cam": {
+            "shape": [
+              815,
+              4,
+              4
+            ],
+            "dtype": "float32"
+          },
+          "fisheye_camera_matrix": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "fisheye_valid_mask": {
+            "shape": [
+              480,
+              640
+            ],
+            "dtype": "bool"
+          },
+          "intrinsic": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "raw_image_semantics": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "rgb": {
+            "shape": [
+              815
+            ],
+            "dtype": "object"
+          },
+          "depth_valid_fraction_sampled": 0.47744574652777777,
+          "depth_range_m_sampled": [
+            1.5497207641601562e-06,
+            19.927978515625
+          ]
+        }
+      },
+      "tactile": {
+        "contact_mask/left_index_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_middle_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_pinky_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_ring_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_thumb_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_index_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_middle_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_pinky_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_ring_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_thumb_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "distance_along_normal_m/left_index_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.020623295841854124,
+          "maximum": 0.0038082022219896317
+        },
+        "distance_along_normal_m/left_middle_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.010992821233810497,
+          "maximum": 0.00500472029671073
+        },
+        "distance_along_normal_m/left_pinky_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.010691100034083164,
+          "maximum": 0.006424361374229193
+        },
+        "distance_along_normal_m/left_ring_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.011551231254260396,
+          "maximum": 0.004737471230328083
+        },
+        "distance_along_normal_m/left_thumb_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.03462157038173142,
+          "maximum": 0.004731443244963884
+        },
+        "distance_along_normal_m/right_index_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.07759507072256305,
+          "maximum": 0.014999991282820702
+        },
+        "distance_along_normal_m/right_middle_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.0269477675528289,
+          "maximum": 0.01499994471669197
+        },
+        "distance_along_normal_m/right_pinky_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.009071382924335378,
+          "maximum": 0.014999967999756336
+        },
+        "distance_along_normal_m/right_ring_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.010925783912747103,
+          "maximum": 0.006363087333738804
+        },
+        "distance_along_normal_m/right_thumb_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.061297631220177236,
+          "maximum": 0.0028436460997909307
+        },
+        "meta/correction_scale": {
+          "shape": [],
+          "dtype": "float64"
+        },
+        "meta/dataset_key": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/flip_normals": {
+          "shape": [],
+          "dtype": "bool"
+        },
+        "meta/image_size": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/max_distance_m": {
+          "shape": [],
+          "dtype": "float64"
+        },
+        "meta/native_resolution": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/resolution_step": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/robot_key": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/sensor_map_dir": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/sensor_type": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/site_names": {
+          "shape": [
+            10
+          ],
+          "dtype": "object"
+        },
+        "tacmap/left_index_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.02276339894342195,
+          "maximum": 209.0
+        },
+        "tacmap/left_middle_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.011717407975460123,
+          "maximum": 247.0
+        },
+        "tacmap/left_pinky_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.011977547716428085,
+          "maximum": 255.0
+        },
+        "tacmap/left_ring_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.012312414792092706,
+          "maximum": 239.0
+        },
+        "tacmap/left_thumb_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.03793460293115201,
+          "maximum": 238.0
+        },
+        "tacmap/right_index_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.08691468558282209,
+          "maximum": 255.0
+        },
+        "tacmap/right_middle_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.029223159509202453,
+          "maximum": 255.0
+        },
+        "tacmap/right_pinky_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.010636907805044308,
+          "maximum": 255.0
+        },
+        "tacmap/right_ring_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.011843941717791412,
+          "maximum": 255.0
+        },
+        "tacmap/right_thumb_elastomer": {
+          "shape": [
+            815,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.06659769086571234,
+          "maximum": 177.0
+        }
+      },
+      "recomputed_current_source_success": {
+        "before_homing_pass_frames": 33,
+        "last_before_homing_pass": true,
+        "longest_consecutive_pass_frames": 18,
+        "threshold_xy_m": 0.02,
+        "threshold_z_m": 0.01,
+        "uses_recorded_velocities": true,
+        "checks_orientation": false,
+        "targets_absolute_world_xy": true
+      }
+    },
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/runs/bench2dex_review/episode_000024/replay.hdf5",
+      "metadata": {
+        "collection_mode": "scripted_hold",
+        "demo_eligible": false,
+        "success": false,
+        "success_available": true,
+        "instruction": "Arrange the 8 Tetris building blocks into a compact cluster, then separate them again.",
+        "robot_key": "multi_iiwa7_with_sharpa",
+        "frame_count": 841,
+        "fps": 20,
+        "physics_dt": 0.016666666666666666,
+        "step_stride": 3
+      },
+      "before_homing_frames": 812,
+      "usable_action_frames_before_home": 811,
+      "nonfinite_action_rows": [
+        0
+      ],
+      "nonfinite_action_rows_marked_valid": 0,
+      "action_sources": {
+        "none": 1,
+        "teleop": 840
+      },
+      "qpos_all_finite": true,
+      "qpos_max_range_rad": 1.8670912981033325,
+      "sim_step_delta_counts": {
+        "1": 1,
+        "3": 839
+      },
+      "objects": {
+        "distractor_00_clutter_037a_scissors": {
+          "initial_xyz": [
+            0.38650259375572205,
+            0.19229857623577118,
+            0.7574372291564941
+          ],
+          "final_before_home_xyz": [
+            0.38650253415107727,
+            0.19229857623577118,
+            0.7574372887611389
+          ],
+          "max_position_range_before_home_m": 1.7881393432617188e-07
+        },
+        "distractor_01_clutter_058_golf_ball": {
+          "initial_xyz": [
+            0.4990352988243103,
+            0.0006122682243585587,
+            0.7553273439407349
+          ],
+          "final_before_home_xyz": [
+            0.4990353286266327,
+            0.0006123064085841179,
+            0.7553272247314453
+          ],
+          "max_position_range_before_home_m": 2.384185791015625e-07
+        },
+        "distractor_02_clutter_002_master_chef_can": {
+          "initial_xyz": [
+            0.8972779512405396,
+            0.173972487449646,
+            0.756844162940979
+          ],
+          "final_before_home_xyz": [
+            0.89727783203125,
+            0.1739727258682251,
+            0.7568439841270447
+          ],
+          "max_position_range_before_home_m": 4.023313522338867e-07
+        },
+        "obj_326_piece_0": {
+          "initial_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656596899032593
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_1": {
+          "initial_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656596899032593
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_2": {
+          "initial_xyz": [
+            0.24601247906684875,
+            0.3485795855522156,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.06607764959335327,
+            0.2994191646575928,
+            0.7655749917030334
+          ],
+          "max_position_range_before_home_m": 0.3171248733997345
+        },
+        "obj_326_piece_3": {
+          "initial_xyz": [
+            -0.21536870300769806,
+            0.2027803659439087,
+            0.7656596302986145
+          ],
+          "final_before_home_xyz": [
+            -0.14875583350658417,
+            0.2694876790046692,
+            0.765772819519043
+          ],
+          "max_position_range_before_home_m": 0.06954365968704224
+        },
+        "obj_326_piece_4": {
+          "initial_xyz": [
+            -0.37703460454940796,
+            0.14455626904964447,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.14885415136814117,
+            0.18353022634983063,
+            0.7702156901359558
+          ],
+          "max_position_range_before_home_m": 0.240514874458313
+        },
+        "obj_326_piece_5": {
+          "initial_xyz": [
+            0.15072724223136902,
+            0.14174750447273254,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.06250999867916107,
+            0.21374639868736267,
+            0.7706178426742554
+          ],
+          "max_position_range_before_home_m": 0.21325257420539856
+        }
+      },
+      "cameras": {
+        "cam_chest": {
+          "camera_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "clipping_range": {
+            "shape": [
+              2
+            ],
+            "dtype": "float32"
+          },
+          "depth": {
+            "shape": [
+              841,
+              480,
+              640
+            ],
+            "dtype": "float32"
+          },
+          "extrinsic_world_from_cam": {
+            "shape": [
+              841,
+              4,
+              4
+            ],
+            "dtype": "float32"
+          },
+          "intrinsic": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "rgb": {
+            "shape": [
+              841
+            ],
+            "dtype": "object"
+          },
+          "depth_valid_fraction_sampled": 1.0,
+          "depth_range_m_sampled": [
+            0.3403560519218445,
+            3.035249948501587
+          ]
+        },
+        "cam_wrist_right": {
+          "camera_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "clipping_range": {
+            "shape": [
+              2
+            ],
+            "dtype": "float32"
+          },
+          "depth": {
+            "shape": [
+              841,
+              480,
+              640
+            ],
+            "dtype": "float32"
+          },
+          "distortion_coefficients": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32"
+          },
+          "distortion_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "extrinsic_world_from_cam": {
+            "shape": [
+              841,
+              4,
+              4
+            ],
+            "dtype": "float32"
+          },
+          "fisheye_camera_matrix": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "fisheye_valid_mask": {
+            "shape": [
+              480,
+              640
+            ],
+            "dtype": "bool"
+          },
+          "intrinsic": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "raw_image_semantics": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "rgb": {
+            "shape": [
+              841
+            ],
+            "dtype": "object"
+          },
+          "depth_valid_fraction_sampled": 0.4802126736111111,
+          "depth_range_m_sampled": [
+            1.430511474609375e-06,
+            19.943252563476562
+          ]
+        }
+      },
+      "tactile": {
+        "contact_mask/left_index_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_middle_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_pinky_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_ring_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_thumb_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_index_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_middle_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_pinky_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_ring_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_thumb_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "distance_along_normal_m/left_index_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.032649788611441403,
+          "maximum": 0.004499933682382107
+        },
+        "distance_along_normal_m/left_middle_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.016390705509314308,
+          "maximum": 0.004937839228659868
+        },
+        "distance_along_normal_m/left_pinky_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.00963467350376536,
+          "maximum": 0.011236526072025299
+        },
+        "distance_along_normal_m/left_ring_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.007723485599154446,
+          "maximum": 0.004481607582420111
+        },
+        "distance_along_normal_m/left_thumb_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.050651031344959706,
+          "maximum": 0.003928873687982559
+        },
+        "distance_along_normal_m/right_index_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.07625150696921654,
+          "maximum": 0.014999995939433575
+        },
+        "distance_along_normal_m/right_middle_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.00522666468489893,
+          "maximum": 0.004255783278495073
+        },
+        "distance_along_normal_m/right_pinky_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.00392115454485401,
+          "maximum": 0.004604010842740536
+        },
+        "distance_along_normal_m/right_ring_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.0014549684568635223,
+          "maximum": 0.0033748180139809847
+        },
+        "distance_along_normal_m/right_thumb_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.05930217003567182,
+          "maximum": 0.003111743601039052
+        },
+        "meta/correction_scale": {
+          "shape": [],
+          "dtype": "float64"
+        },
+        "meta/dataset_key": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/flip_normals": {
+          "shape": [],
+          "dtype": "bool"
+        },
+        "meta/image_size": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/max_distance_m": {
+          "shape": [],
+          "dtype": "float64"
+        },
+        "meta/native_resolution": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/resolution_step": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/robot_key": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/sensor_map_dir": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/sensor_type": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/site_names": {
+          "shape": [
+            10
+          ],
+          "dtype": "object"
+        },
+        "tacmap/left_index_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.03538718787158145,
+          "maximum": 232.0
+        },
+        "tacmap/left_middle_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.018112696525300568,
+          "maximum": 246.0
+        },
+        "tacmap/left_pinky_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.010881762782401902,
+          "maximum": 255.0
+        },
+        "tacmap/left_ring_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.008307074910820451,
+          "maximum": 232.0
+        },
+        "tacmap/left_thumb_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.05497052120491478,
+          "maximum": 214.0
+        },
+        "tacmap/right_index_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.08488383950984278,
+          "maximum": 255.0
+        },
+        "tacmap/right_middle_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.005708151671290791,
+          "maximum": 224.0
+        },
+        "tacmap/right_pinky_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.00452749289866561,
+          "maximum": 227.0
+        },
+        "tacmap/right_ring_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.0015771361804729819,
+          "maximum": 195.0
+        },
+        "tacmap/right_thumb_elastomer": {
+          "shape": [
+            841,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.06481823474038842,
+          "maximum": 186.0
+        }
+      },
+      "recomputed_current_source_success": {
+        "before_homing_pass_frames": 14,
+        "last_before_homing_pass": true,
+        "longest_consecutive_pass_frames": 10,
+        "threshold_xy_m": 0.02,
+        "threshold_z_m": 0.01,
+        "uses_recorded_velocities": true,
+        "checks_orientation": false,
+        "targets_absolute_world_xy": true
+      }
+    },
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/runs/bench2dex_review/episode_000049/replay.hdf5",
+      "metadata": {
+        "collection_mode": "scripted_hold",
+        "demo_eligible": false,
+        "success": false,
+        "success_available": true,
+        "instruction": "Arrange the 8 Tetris building blocks into a compact cluster, then separate them again.",
+        "robot_key": "multi_iiwa7_with_sharpa",
+        "frame_count": 796,
+        "fps": 20,
+        "physics_dt": 0.016666666666666666,
+        "step_stride": 3
+      },
+      "before_homing_frames": 767,
+      "usable_action_frames_before_home": 766,
+      "nonfinite_action_rows": [
+        0
+      ],
+      "nonfinite_action_rows_marked_valid": 0,
+      "action_sources": {
+        "none": 1,
+        "teleop": 795
+      },
+      "qpos_all_finite": true,
+      "qpos_max_range_rad": 2.0901355743408203,
+      "sim_step_delta_counts": {
+        "3": 795
+      },
+      "objects": {
+        "distractor_00_clutter_008_pudding_box": {
+          "initial_xyz": [
+            0.5852342844009399,
+            0.30447277426719666,
+            0.7554359436035156
+          ],
+          "final_before_home_xyz": [
+            0.5852342844009399,
+            0.30447283387184143,
+            0.7554320096969604
+          ],
+          "max_position_range_before_home_m": 6.794929504394531e-06
+        },
+        "obj_326_piece_0": {
+          "initial_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7641981244087219
+          ],
+          "final_before_home_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7641981244087219
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_1": {
+          "initial_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7641981244087219
+          ],
+          "final_before_home_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7641981244087219
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_2": {
+          "initial_xyz": [
+            0.24595728516578674,
+            0.3420419991016388,
+            0.7641980051994324
+          ],
+          "final_before_home_xyz": [
+            -0.06625394523143768,
+            0.296439528465271,
+            0.7642325758934021
+          ],
+          "max_position_range_before_home_m": 0.3177642822265625
+        },
+        "obj_326_piece_3": {
+          "initial_xyz": [
+            -0.21204277873039246,
+            0.19946454465389252,
+            0.7641985416412354
+          ],
+          "final_before_home_xyz": [
+            -0.1484839767217636,
+            0.2664627730846405,
+            0.7642405033111572
+          ],
+          "max_position_range_before_home_m": 0.06783896684646606
+        },
+        "obj_326_piece_4": {
+          "initial_xyz": [
+            -0.3773289620876312,
+            0.16795073449611664,
+            0.7641981840133667
+          ],
+          "final_before_home_xyz": [
+            -0.1458950936794281,
+            0.18369856476783752,
+            0.7641546130180359
+          ],
+          "max_position_range_before_home_m": 0.23779316246509552
+        },
+        "obj_326_piece_5": {
+          "initial_xyz": [
+            0.1641157567501068,
+            0.16272497177124023,
+            0.7641962170600891
+          ],
+          "final_before_home_xyz": [
+            -0.06407354772090912,
+            0.21333272755146027,
+            0.764198362827301
+          ],
+          "max_position_range_before_home_m": 0.22954535484313965
+        }
+      },
+      "cameras": {
+        "cam_chest": {
+          "camera_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "clipping_range": {
+            "shape": [
+              2
+            ],
+            "dtype": "float32"
+          },
+          "depth": {
+            "shape": [
+              796,
+              480,
+              640
+            ],
+            "dtype": "float32"
+          },
+          "extrinsic_world_from_cam": {
+            "shape": [
+              796,
+              4,
+              4
+            ],
+            "dtype": "float32"
+          },
+          "intrinsic": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "rgb": {
+            "shape": [
+              796
+            ],
+            "dtype": "object"
+          },
+          "depth_valid_fraction_sampled": 1.0,
+          "depth_range_m_sampled": [
+            0.3672345280647278,
+            2.9510483741760254
+          ]
+        },
+        "cam_wrist_right": {
+          "camera_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "clipping_range": {
+            "shape": [
+              2
+            ],
+            "dtype": "float32"
+          },
+          "depth": {
+            "shape": [
+              796,
+              480,
+              640
+            ],
+            "dtype": "float32"
+          },
+          "distortion_coefficients": {
+            "shape": [
+              4
+            ],
+            "dtype": "float32"
+          },
+          "distortion_model": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "extrinsic_world_from_cam": {
+            "shape": [
+              796,
+              4,
+              4
+            ],
+            "dtype": "float32"
+          },
+          "fisheye_camera_matrix": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "fisheye_valid_mask": {
+            "shape": [
+              480,
+              640
+            ],
+            "dtype": "bool"
+          },
+          "intrinsic": {
+            "shape": [
+              3,
+              3
+            ],
+            "dtype": "float32"
+          },
+          "raw_image_semantics": {
+            "shape": [],
+            "dtype": "object"
+          },
+          "rgb": {
+            "shape": [
+              796
+            ],
+            "dtype": "object"
+          },
+          "depth_valid_fraction_sampled": 0.48934244791666665,
+          "depth_range_m_sampled": [
+            1.6093254089355469e-06,
+            19.934900283813477
+          ]
+        }
+      },
+      "tactile": {
+        "contact_mask/left_index_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_middle_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_pinky_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_ring_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/left_thumb_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_index_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_middle_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_pinky_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_ring_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "contact_mask/right_thumb_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "bool"
+        },
+        "distance_along_normal_m/left_index_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.04797810667922948,
+          "maximum": 0.01499998103827238
+        },
+        "distance_along_normal_m/left_middle_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.016938119416527078,
+          "maximum": 0.00606813607737422
+        },
+        "distance_along_normal_m/left_pinky_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.001979864600781686,
+          "maximum": 0.014999211765825748
+        },
+        "distance_along_normal_m/left_ring_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.005369665166108319,
+          "maximum": 0.013721230439841747
+        },
+        "distance_along_normal_m/left_thumb_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.03645547616554997,
+          "maximum": 0.014997551217675209
+        },
+        "distance_along_normal_m/right_index_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.09850286589195979,
+          "maximum": 0.014999998733401299
+        },
+        "distance_along_normal_m/right_middle_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.006809241520100502,
+          "maximum": 0.006213376298546791
+        },
+        "distance_along_normal_m/right_pinky_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.004812452017029592,
+          "maximum": 0.014999940991401672
+        },
+        "distance_along_normal_m/right_ring_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.0027325429229480736,
+          "maximum": 0.004674220457673073
+        },
+        "distance_along_normal_m/right_thumb_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "float32",
+          "finite": true,
+          "nonzero_fraction": 0.0608578264586823,
+          "maximum": 0.003462256630882621
+        },
+        "meta/correction_scale": {
+          "shape": [],
+          "dtype": "float64"
+        },
+        "meta/dataset_key": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/flip_normals": {
+          "shape": [],
+          "dtype": "bool"
+        },
+        "meta/image_size": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/max_distance_m": {
+          "shape": [],
+          "dtype": "float64"
+        },
+        "meta/native_resolution": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/resolution_step": {
+          "shape": [],
+          "dtype": "int64"
+        },
+        "meta/robot_key": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/sensor_map_dir": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/sensor_type": {
+          "shape": [],
+          "dtype": "object"
+        },
+        "meta/site_names": {
+          "shape": [
+            10
+          ],
+          "dtype": "object"
+        },
+        "tacmap/left_index_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.052014259666387494,
+          "maximum": 255.0
+        },
+        "tacmap/left_middle_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.018102448003908433,
+          "maximum": 255.0
+        },
+        "tacmap/left_pinky_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.00246588847012842,
+          "maximum": 255.0
+        },
+        "tacmap/left_ring_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.0059868134073143495,
+          "maximum": 255.0
+        },
+        "tacmap/left_thumb_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.0401140904173646,
+          "maximum": 224.0
+        },
+        "tacmap/right_index_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.10793865159128978,
+          "maximum": 255.0
+        },
+        "tacmap/right_middle_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.007551210915689559,
+          "maximum": 255.0
+        },
+        "tacmap/right_pinky_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.0054828177345058625,
+          "maximum": 255.0
+        },
+        "tacmap/right_ring_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.002931759491903964,
+          "maximum": 237.0
+        },
+        "tacmap/right_thumb_elastomer": {
+          "shape": [
+            796,
+            240,
+            240
+          ],
+          "dtype": "uint8",
+          "finite": true,
+          "nonzero_fraction": 0.06673497696817421,
+          "maximum": 198.0
+        }
+      },
+      "recomputed_current_source_success": {
+        "before_homing_pass_frames": 22,
+        "last_before_homing_pass": true,
+        "longest_consecutive_pass_frames": 20,
+        "threshold_xy_m": 0.02,
+        "threshold_z_m": 0.01,
+        "uses_recorded_velocities": true,
+        "checks_orientation": false,
+        "targets_absolute_world_xy": true
+      }
+    }
+  ],
+  "caveat": "Stored success/demo_eligible flags are reported, not independently verified task outcomes.",
+  "anchor_initial_xyz_range_m": {
+    "obj_326_piece_0": [
+      0.0,
+      0.0,
+      0.0014615654945373535
+    ],
+    "obj_326_piece_1": [
+      0.0,
+      0.0,
+      0.0014615654945373535
+    ]
+  }
+}

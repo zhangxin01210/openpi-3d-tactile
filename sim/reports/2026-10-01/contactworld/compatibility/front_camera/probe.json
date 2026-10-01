@@ -1,0 +1,112 @@
+{
+  "physics_requested": "gpu",
+  "python": "3.8.20 (default, Oct  3 2024, 15:24:27) \n[GCC 11.2.0]",
+  "status": "failed",
+  "stages": [
+    {
+      "stage": "import_isaacgym_begin"
+    },
+    {
+      "stage": "import_isaacgym_pass",
+      "native_tactile_api": [
+        "acquire_sdf_view_tensor",
+        "refresh_sdf_view_tensor"
+      ]
+    },
+    {
+      "stage": "create_sim_begin"
+    },
+    {
+      "stage": "create_sim_pass"
+    },
+    {
+      "stage": "physics_begin"
+    },
+    {
+      "stage": "physics_pass",
+      "box_position": [
+        0.5000010132789612,
+        -1.3149751794117037e-06,
+        0.05199979245662689
+      ]
+    },
+    {
+      "stage": "camera_begin"
+    },
+    {
+      "stage": "camera_pass",
+      "valid_depth_fraction": 0.875
+    },
+    {
+      "stage": "camera_geometry_failed",
+      "rotation_max_error": 1.5567835687235743e-08,
+      "translation_max_error_m": 7.152557324197062e-09,
+      "focal_px": [
+        166.81285095214844,
+        166.81285095214844
+      ],
+      "expected_focal_px": 166.81284772367434,
+      "corrected_vs_live_world_max_error_m": 6.609084049757907e-07,
+      "known_surface_error_p99_m": 0.02670494860653072,
+      "point_count": 57344,
+      "view": [
+        [
+          0.0,
+          -0.5,
+          0.8660253882408142,
+          0.0
+        ],
+        [
+          1.0,
+          0.0,
+          -0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.8660253882408142,
+          0.5,
+          0.0
+        ],
+        [
+          -0.0,
+          0.21009619534015656,
+          -0.6638972759246826,
+          1.0
+        ]
+      ],
+      "projection": [
+        [
+          1.3032253980636597,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.3032253980636597,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          -1.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0010000000474974513,
+          0.0
+        ]
+      ]
+    },
+    {
+      "stage": "exception",
+      "type": "RuntimeError",
+      "message": "Live camera/known geometry checks failed"
+    }
+  ],
+  "pid": 432877
+}

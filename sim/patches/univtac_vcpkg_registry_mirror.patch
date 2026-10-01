@@ -1,0 +1,35 @@
+diff --git a/third_party/TacEx/source/tacex_uipc/libuipc/scripts/gen_vcpkg_json.py b/third_party/TacEx/source/tacex_uipc/libuipc/scripts/gen_vcpkg_json.py
+index 60c1f6a..f8bdfb1 100644
+--- a/third_party/TacEx/source/tacex_uipc/libuipc/scripts/gen_vcpkg_json.py
++++ b/third_party/TacEx/source/tacex_uipc/libuipc/scripts/gen_vcpkg_json.py
+@@ -1,6 +1,7 @@
+ import json
+ import argparse
+ import os
++from pathlib import Path
+ 
+ VCPKG_TAG = '2025.7.25'
+ VCPKG_BASE_LINE = 'dd3097e305afa53f7b4312371f62058d2e665320'
+@@ -105,6 +106,15 @@ base_vcpkg_configuration = {
+     ]
+ }
+ 
++# An optional local mirror avoids live registry fetches on machines where the
++# pinned Git objects are already cached but GitHub is intermittently unreachable.
++registry_mirror = os.environ.get('OPENPI_VCPKG_REGISTRY_MIRROR')
++if registry_mirror:
++    registry_uri = Path(registry_mirror).expanduser().resolve().as_uri()
++    base_vcpkg_configuration['default-registry']['repository'] = registry_uri
++    base_vcpkg_configuration['registries'][0]['repository'] = registry_uri
++    base_vcpkg_configuration['registries'][0]['reference'] = 'spiri-pinned'
++
+ def is_enabled(arg):
+     ARG = str(arg).upper()
+     if ARG == 'ON' or ARG == '1':
+@@ -257,4 +267,4 @@ if __name__ == '__main__':
+     if config_change or deps_change:
+         ret_code = 1
+     
+-    exit(ret_code)
+\ No newline at end of file
++    exit(ret_code)

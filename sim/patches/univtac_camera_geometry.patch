@@ -1,0 +1,17 @@
+diff --git a/envs/sensors/camera.py b/envs/sensors/camera.py
+index dbbe3a9..9c3fccb 100644
+--- a/envs/sensors/camera.py
++++ b/envs/sensors/camera.py
+@@ -43,4 +43,12 @@ class CameraManager:
+                     obs[name]['rgba'] = cam.data.output['rgba'].squeeze(0)
+                 elif data_type == 'depth':
+                     obs[name]['depth'] = cam.data.output['depth'].squeeze(0)
++                elif data_type == 'intrinsic':
++                    obs[name]['intrinsic'] = cam.data.intrinsic_matrices.squeeze(0)
++                elif data_type == 'pose_w_opengl':
++                    obs[name]['pose_w_opengl'] = torch.cat(
++                        (cam.data.pos_w, cam.data.quat_w_opengl), dim=-1
++                    ).squeeze(0)
++                else:
++                    raise ValueError(f"Unsupported camera observation type: {data_type}")
+         return obs

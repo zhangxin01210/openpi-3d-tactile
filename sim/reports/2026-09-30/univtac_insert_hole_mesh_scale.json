@@ -1,0 +1,22 @@
+{
+  "source_usd_paths": [
+    "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/assets/objects/TestTubeHoleSlot.usd",
+    "/home/sai/zx/openpi-sim-runtime/third_party/UniVTAC-full/assets/objects/TestTube.usd"
+  ],
+  "measurement": "Euclidean XY radius of top-surface mesh vertices; hole only vertices with r<0.02 m. This is a geometric scale estimate, not a collision clearance or tolerance guarantee.",
+  "meshes": {
+    "TestTubeHoleSlot": {
+      "selected_vertex_count": 96,
+      "selected_z_m": 0.1,
+      "radius_min_m": 0.01094494381110098,
+      "radius_max_m": 0.013336550444364562
+    },
+    "TestTube": {
+      "selected_vertex_count": 96,
+      "selected_z_m": 0.13,
+      "radius_min_m": 0.009999999253082486,
+      "radius_max_m": 0.010000000038596916
+    }
+  },
+  "radial_min_gap_m": 0.0009449437725040644
+}

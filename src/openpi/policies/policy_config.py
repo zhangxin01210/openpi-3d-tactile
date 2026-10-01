@@ -101,6 +101,27 @@ def create_trained_policy(
                 keys=("spatial",),
             )
         ]
+    elif data_config.univtac_pointcloud is not None:
+        # The live UniVTAC client supplies the same world visual point schema as
+        # the HDF5-backed training dataset. Repacking images/state drops unknown
+        # fields, so carry spatial through the standard policy transforms.
+        input_transforms = [
+            transforms.PreserveKeysTransform(
+                transform=transforms.compose(input_transforms),
+                keys=("spatial",),
+            )
+        ]
+    elif data_config.contactworld is not None and (
+        data_config.contactworld.visual or data_config.contactworld.force
+    ):
+        # The ContactWorld simulator client supplies the same spatial schema as
+        # the converted LeRobot sidecar; ordinary transforms repack image/state.
+        input_transforms = [
+            transforms.PreserveKeysTransform(
+                transform=transforms.compose(input_transforms),
+                keys=("spatial",),
+            )
+        ]
 
     return _policy.Policy(
         model,

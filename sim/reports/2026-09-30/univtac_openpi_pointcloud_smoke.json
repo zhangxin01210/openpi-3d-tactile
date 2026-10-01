@@ -1,0 +1,12 @@
+{
+  "sample_npz": "/home/sai/zx/openpi-sim-runtime/runs/univtac_seed0_row100_sample.npz",
+  "source_row": 100,
+  "world_frame_point_count": 2048,
+  "head_points": 1024,
+  "wrist_points": 1024,
+  "model": "StructuredSpatialPi0Config(dummy, dummy), visual only, random initialization",
+  "loss": 1.3420608043670654,
+  "spatial_gradient_leaf_count": 39,
+  "nonzero_spatial_gradient_leaves": 15,
+  "pass": true
+}

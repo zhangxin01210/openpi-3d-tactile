@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import dataclasses
 import difflib
 import logging
+import os
 import pathlib
 from typing import Any, Literal, Protocol, TypeAlias
 
@@ -15,6 +16,7 @@ import tyro
 
 import openpi.models.model as _model
 import openpi.models.pi0_config as pi0_config
+import openpi.models.contactworld_pi0_config as contactworld_pi0_config
 import openpi.models.pi0_fast as pi0_fast
 import openpi.models.spatial_pi0_config as spatial_pi0_config
 import openpi.models.tokenizer as _tokenizer
@@ -23,8 +25,10 @@ import openpi.models.spatial_encoders.joint_pointnet as spatial_joint_pointnet
 import openpi.models.spatial_encoders.structured_spatial_encoder as structured_spatial_encoder
 import openpi.models.spatial_encoders.transforms as spatial_encoder_transforms
 import openpi.policies.aloha_policy as aloha_policy
+import openpi.policies.contactworld_policy as contactworld_policy
 import openpi.policies.droid_policy as droid_policy
 import openpi.policies.libero_policy as libero_policy
+import openpi.policies.univtac_policy as univtac_policy
 import openpi.policies.xhand_policy as xhand_policy
 import openpi.shared.download as _download
 import openpi.shared.nnx_utils as nnx_utils
@@ -123,6 +127,26 @@ class SpatialDataConfig:
 
 
 @dataclasses.dataclass(frozen=True)
+class UniVTACPointcloudDataConfig:
+    """Visual-only world RGB-D join for the local UniVTAC LeRobot set."""
+
+    dataset_root: str
+    points_per_camera: int = 1024
+    stride: int = 4
+
+
+@dataclasses.dataclass(frozen=True)
+class ContactWorldSidecarConfig:
+    root: str
+    action_horizon: int = 16
+    visual: bool = False
+    force: bool = False
+    depth: bool = False
+    cloud_noise_m: float = 0.0
+    force_ee3d_proxy: bool = False
+
+
+@dataclasses.dataclass(frozen=True)
 class DataConfig:
     # LeRobot repo id. If None, fake data will be created.
     repo_id: str | None = None
@@ -133,6 +157,8 @@ class DataConfig:
 
     # 可选 derived spatial sidecar；None 时保持 upstream OpenPI 行为不变。
     spatial: SpatialDataConfig | None = None
+    univtac_pointcloud: UniVTACPointcloudDataConfig | None = None
+    contactworld: ContactWorldSidecarConfig | None = None
 
     # Used to adopt the inputs from a dataset specific format to a common format
     # which is expected by the data transforms.
@@ -589,6 +615,80 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
             repack_transforms=repack_transform,
             data_transforms=data_transforms,
             model_transforms=model_transforms,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotContactWorldDataConfig(DataConfigFactory):
+    """ContactWorld USB LeRobot dataset, with a separate optional spatial join."""
+
+    sidecar: ContactWorldSidecarConfig | None = None
+    tactile_image: Literal["none", "rgb", "depth"] = "none"
+    action_sequence_keys: Sequence[str] = ("action",)
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        mapping = {
+            "observation/front_rgb": "observation.images.front",
+            "observation/wrist_rgb": "observation.images.wrist",
+            "observation/tactile_rgb": "observation.images.tactile",
+            "observation/state": "observation.state", "actions": "action", "prompt": "prompt",
+        }
+        if self.tactile_image == "depth":
+            mapping["observation/tactile_depth"] = "observation.tactile_depth"
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=_transforms.Group(inputs=[_transforms.RepackTransform(mapping)]),
+            data_transforms=_transforms.Group(
+                inputs=[contactworld_policy.ContactWorldInputs(model_config.model_type, self.tactile_image)],
+                outputs=[contactworld_policy.ContactWorldOutputs()],
+            ),
+            model_transforms=ModelTransformFactory()(model_config),
+            action_sequence_keys=self.action_sequence_keys,
+            prompt_from_task=True,
+            contactworld=self.sidecar,
+        )
+
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotUniVTACDataConfig(DataConfigFactory):
+    """UniVTAC RGB/joint baseline with optional visual cloud and tactile RGB."""
+
+    pointcloud: UniVTACPointcloudDataConfig | None = None
+    tactile_rgb: bool = False
+
+    @override
+    def create(self, assets_dirs: pathlib.Path, model_config: _model.BaseModelConfig) -> DataConfig:
+        repack = _transforms.Group(inputs=[_transforms.RepackTransform({
+            "observation/head_rgb": "observation.images.head",
+            "observation/wrist_rgb": "observation.images.wrist",
+            "observation/left_tactile_rgb": "observation.images.left_tactile",
+            "observation/right_tactile_rgb": "observation.images.right_tactile",
+            "observation/state": "observation.state",
+            "actions": "action",
+            "prompt": "prompt",
+        })])
+        delta_mask = _transforms.make_bool_mask(7, -1)
+        data = _transforms.Group(
+            inputs=[
+                univtac_policy.UniVTACInputs(
+                    model_type=model_config.model_type, use_tactile_rgb=self.tactile_rgb,
+                ),
+                _transforms.DeltaActions(delta_mask),
+            ],
+            outputs=[
+                _transforms.AbsoluteActions(delta_mask),
+                univtac_policy.UniVTACOutputs(),
+            ],
+        )
+        return dataclasses.replace(
+            self.create_base_config(assets_dirs, model_config),
+            repack_transforms=repack,
+            data_transforms=data,
+            model_transforms=ModelTransformFactory()(model_config),
+            action_sequence_keys=("action",),
+            prompt_from_task=True,
+            univtac_pointcloud=self.pointcloud,
         )
 
 
@@ -1565,6 +1665,77 @@ _CONFIGS.extend(
         ),
     ]
 )
+
+
+# ContactWorld USB: all paths move with this checkout, so syncing code + data is sufficient.
+_CONTACTWORLD_ROOT = pathlib.Path(__file__).resolve().parents[3]
+_CONTACTWORLD_DATA = _CONTACTWORLD_ROOT / "data/contactworld_usb_positive_all"
+_CONTACTWORLD_WEIGHT_CANDIDATES = (
+    _CONTACTWORLD_ROOT / "checkpoints/pi0_base/params",
+    pathlib.Path("/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"),
+)
+_CONTACTWORLD_WEIGHTS = os.environ.get(
+    "OPENPI_CONTACTWORLD_BASE_WEIGHTS",
+    str(next((p for p in _CONTACTWORLD_WEIGHT_CANDIDATES if p.exists()),
+             _CONTACTWORLD_WEIGHT_CANDIDATES[0])),
+)
+
+
+def _contactworld_train_config(name: str, *, visual: bool = False, force: bool = False,
+                               tactile_representation: str = "none", tactile_image: str = "none",
+                               target: str = "suffix", split_route: bool = False,
+                               cloud_noise_m: float = 0.0) -> TrainConfig:
+    common_model = dict(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+                        action_horizon=16)
+    if visual or force:
+        model = contactworld_pi0_config.ContactWorldPi0Config(
+            **common_model, use_visual=visual, use_tactile=force,
+            tactile_representation=tactile_representation,
+            conditioning=spatial_conditioning.SpatialConditioningConfig(target=target),
+            split_route=split_route,
+        )
+        loader = spatial_weight_loaders.SpatialCheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    else:
+        model = pi0_config.Pi0Config(**common_model)
+        loader = weight_loaders.CheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    sidecar = ContactWorldSidecarConfig(
+        root=str(_CONTACTWORLD_DATA), action_horizon=16, visual=visual, force=force,
+        depth=tactile_image == "depth", cloud_noise_m=cloud_noise_m,
+        force_ee3d_proxy=tactile_representation == "ee3d",
+    )
+    return TrainConfig(
+        name=name, model=model,
+        data=LeRobotContactWorldDataConfig(
+            repo_id=str(_CONTACTWORLD_DATA), sidecar=sidecar, tactile_image=tactile_image,
+            assets=AssetsConfig(assets_dir=str(_CONTACTWORLD_DATA / "assets"),
+                                asset_id="norm"),
+        ),
+        weight_loader=loader, freeze_filter=model.get_freeze_filter(),
+        ema_decay=None, seed=42, batch_size=8, num_workers=0,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
+        num_train_steps=20_000, save_interval=5_000, keep_period=5_000,
+    )
+
+
+_CONFIGS.extend([
+    _contactworld_train_config("pi0_cw_usb_01_rgb"),
+    _contactworld_train_config("pi0_cw_usb_02_rgb_pc", visual=True),
+    _contactworld_train_config("pi0_cw_usb_03_rgb_ff", force=True, tactile_representation="grid"),
+    _contactworld_train_config("pi0_cw_usb_04_rgb_pc_ff", visual=True, force=True,
+                               tactile_representation="grid"),
+    _contactworld_train_config("pi0_cw_usb_05_ff_summary", visual=True, force=True,
+                               tactile_representation="summary"),
+    _contactworld_train_config("pi0_cw_usb_06_ff_ee3d_proxy", visual=True, force=True,
+                               tactile_representation="ee3d"),
+    _contactworld_train_config("pi0_cw_usb_07_tacrgb", visual=True, tactile_image="rgb"),
+    _contactworld_train_config("pi0_cw_usb_08_tacdepth", visual=True, tactile_image="depth"),
+    _contactworld_train_config("pi0_cw_usb_09_prefix", visual=True, force=True,
+                               tactile_representation="grid", target="prefix"),
+    _contactworld_train_config("pi0_cw_usb_10_split", visual=True, force=True,
+                               tactile_representation="grid", target="both", split_route=True),
+    _contactworld_train_config("pi0_cw_usb_11_pcnoise", visual=True, force=True,
+                               tactile_representation="grid", cloud_noise_m=0.002),
+])
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")

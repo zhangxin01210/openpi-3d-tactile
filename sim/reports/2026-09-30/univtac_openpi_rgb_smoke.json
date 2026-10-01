@@ -1,0 +1,30 @@
+{
+  "dataset_root": "/home/sai/zx/openpi-sim-runtime/data_lerobot/univtac_insert_hole_depth_3seed",
+  "dataset_frames": 666,
+  "sample_indices": [
+    100,
+    101
+  ],
+  "batch_size": 2,
+  "action_horizon": 4,
+  "model": "Pi0Config(dummy, dummy), random initialization, no normalization",
+  "rgb_image_shape": [
+    2,
+    224,
+    224,
+    3
+  ],
+  "joint_state_shape": [
+    2,
+    32
+  ],
+  "action_shape": [
+    2,
+    4,
+    32
+  ],
+  "loss": 1.7582988739013672,
+  "gradient_leaf_count": 50,
+  "action_delta_roundtrip": true,
+  "pass": true
+}
