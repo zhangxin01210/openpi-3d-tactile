@@ -46,6 +46,8 @@ def main():
     for required in (data / "meta/info.json", data / "spatial/manifest.json", stats, weights):
         if not required.exists():
             parser.error(f"Missing required training input: {required}")
+    if not weights.is_dir() or not (weights / "_METADATA").is_file():
+        parser.error(f"Expected an Orbax params directory containing _METADATA: {weights}")
     subprocess.run([sys.executable, "sim/scripts/verify_contactworld_lerobot.py", str(data)],
                    cwd=repo, check=True)
     log_dir = repo / "runs/contactworld_usb_train" / args.label

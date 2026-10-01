@@ -6,11 +6,11 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import shutil
 import subprocess
 
 import numpy as np
 import pyarrow.parquet as pq
-import zarr
 
 
 def main():
@@ -18,11 +18,18 @@ def main():
     parser.add_argument("root", type=Path)
     parser.add_argument("--source", type=Path, help="Optional source Zarr for action/state/force alignment checks")
     args = parser.parse_args()
+    if shutil.which("ffprobe") is None:
+        parser.error("ffprobe is required to verify exported MP4 files; install FFmpeg or add ffprobe to PATH")
     root = args.root
     info = json.loads((root / "meta/info.json").read_text())
     manifest = json.loads((root / "spatial/manifest.json").read_text())
     episodes = manifest["episodes"]
-    source = zarr.open_group(str(args.source / "insertion_usb"), mode="r")["data"] if args.source else None
+    if args.source:
+        import zarr
+
+        source = zarr.open_group(str(args.source / "insertion_usb"), mode="r")["data"]
+    else:
+        source = None
     if info["total_episodes"] != len(episodes):
         raise ValueError("Episode count mismatch")
     total = 0

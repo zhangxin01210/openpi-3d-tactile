@@ -21,13 +21,25 @@ if needed.
 From the repository root on the A800 machine:
 
 ```bash
+command -v ffprobe
 cd data/contactworld_usb_positive_all && sha256sum -c SHA256SUMS --status && cd ../..
 uv run --no-sync python sim/scripts/verify_contactworld_lerobot.py data/contactworld_usb_positive_all
 uv run --no-sync python sim/scripts/launch_contactworld_matrix.py --label cw_usb_first --gpus 0,1,2,3,4,5,6,7 --check-only
 uv run --no-sync python sim/scripts/launch_contactworld_matrix.py --label cw_usb_first --gpus 0,1,2,3,4,5,6,7
 ```
 
+`ffprobe` (the FFmpeg command, not just shared libraries) is required for the
+video integrity check and matrix preflight. Ordinary verification and training
+do not read the original ContactWorld Zarr and do not import `zarr` in the
+verifier. `verify_contactworld_lerobot.py --source /path/to/source` additionally
+requires Zarr; it is declared in the optional `contactworld-source` dependency
+group. The current LeRobot lock already installs Zarr 3, which was used to read
+the source during the local export. ManiFeel's older 2.16.1 pin is specific to
+its environment; do not downgrade the working OpenPI training environment just
+to run the ordinary preflight.
+
 The launcher checks required inputs and existing output names before starting.
+The base weights path must be an Orbax `params/` directory containing `_METADATA`.
 It runs one config per GPU and fills freed GPUs until all 11 are complete. Each
 process writes a log under `runs/contactworld_usb_train/cw_usb_first/` and a
 checkpoint under `checkpoints/<config>/cw_usb_first/`. W&B is off by default;
