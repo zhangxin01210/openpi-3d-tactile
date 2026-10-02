@@ -1847,8 +1847,8 @@ def _contactworld_v3_train_config(name: str, *, cloud_mode: str = "none",
         ),
         weight_loader=loader, freeze_filter=model.get_freeze_filter(),
         ema_decay=None, seed=42, batch_size=8, num_workers=0,
-        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
-        num_train_steps=20_000, save_interval=5_000, keep_period=5_000,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=30_000),
+        num_train_steps=30_000, save_interval=5_000, keep_period=5_000,
     )
 
 

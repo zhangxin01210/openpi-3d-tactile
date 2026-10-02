@@ -100,9 +100,10 @@ models materially degrade under a fixed perturbation protocol.
 ## Interpretation and evaluation gates
 
 - The 95 training episodes produce 5,064 valid 16-step windows. With batch 8,
-  20,000 steps are about 31.6 passes over these windows. Keep the 5k/10k/15k/20k
-  checkpoints and compare paired validation rollouts; the training loss alone
-  is not a model-selection criterion.
+  30,000 steps are about 47.4 passes over these windows. The cosine learning-rate
+  decay also runs to 30,000 steps. Keep the 5k/10k/15k/20k/25k and final
+  29,999-step checkpoints and compare paired validation rollouts; the training
+  loss alone is not a model-selection criterion. The longer run may overfit.
 - The 120 exported episodes are successful replays. They do not supply a
   controlled set of left/right offset recoveries. A tactile gain on ordinary
   insertion cannot by itself establish directional jam recovery; that claim
@@ -143,8 +144,9 @@ actual normalized LeRobot/OpenPI input path before creating training jobs.
 It schedules at most one model per listed GPU. Its log and checkpoint paths
 require a new label for each run. Local data and model-input preflight passes;
 full base-weight restoration and A800 first-step memory/time still require
-the server checkpoint and hardware. The 5-hour estimate from the earlier
-one-token encoder has not been measured for these local-token models.
+the server checkpoint and hardware. Going from 20k to 30k steps adds roughly
+50% optimizer updates per model; the earlier 5-hour, one-token estimate has
+not been measured for these local-token models.
 
 `--exclude 01` (or `--exclude pi0_cw3_usb_01_rgb`) omits that configuration
 from training; several IDs can follow the flag. `--configs` remains available
