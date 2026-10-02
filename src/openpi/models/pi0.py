@@ -140,8 +140,12 @@ class Pi0(_model.BaseModel):
                             else None
                         ),
                         rngs=rngs,
-                        prefix_token_indices=(0,) if getattr(config, "split_route", False) else None,
-                        suffix_token_indices=(1,) if getattr(config, "split_route", False) else None,
+                        prefix_token_indices=(getattr(config, "spatial_prefix_token_indices", None)
+                                              or ((0,) if getattr(config, "split_route", False) else None)),
+                        suffix_token_indices=(getattr(config, "spatial_suffix_token_indices", None)
+                                              or ((1,) if getattr(config, "split_route", False) else None)),
+                        compact_token_selection=(getattr(config, "spatial_route", "shared") ==
+                                                 "visual_prefix_tactile_suffix"),
                     )
                 )
 

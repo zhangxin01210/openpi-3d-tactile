@@ -213,18 +213,31 @@ def create_torch_dataset(
         tasks = _lerobot_tasks_to_dict(dataset_meta.tasks)
         dataset = TransformedDataset(dataset, [_transforms.PromptFromLeRobotTask(tasks)])
     if data_config.contactworld is not None:
-        from openpi.spatial_dataset.contactworld_lerobot import ContactWorldLeRobotSpatial
-
         settings = data_config.contactworld
         if settings.visual != bool(getattr(model_config, "use_visual", False)):
             raise ValueError("ContactWorld visual sidecar and model spec disagree")
         if settings.force != bool(getattr(model_config, "use_tactile", False)):
             raise ValueError("ContactWorld force sidecar and model spec disagree")
-        dataset = ContactWorldLeRobotSpatial(
-            dataset, settings.root, visual=settings.visual, force=settings.force,
-            depth=settings.depth, cloud_noise_m=settings.cloud_noise_m,
-            force_ee3d_proxy=settings.force_ee3d_proxy, action_horizon=settings.action_horizon,
-        )
+        if settings.dataset_version in {"v2", "v3"}:
+            from openpi.spatial_dataset.contactworld_v2_lerobot import ContactWorldV2LeRobotSpatial
+
+            if settings.visual != (settings.cloud_mode != "none") or settings.force != (settings.force_mode != "none"):
+                raise ValueError("ContactWorld replayed cloud/force mode differs from model modality switches")
+            dataset = ContactWorldV2LeRobotSpatial(
+                dataset, settings.root, cloud_mode=settings.cloud_mode,
+                force_mode=settings.force_mode, depth=settings.depth,
+                action_horizon=settings.action_horizon,
+            )
+        elif settings.dataset_version == "v1":
+            from openpi.spatial_dataset.contactworld_lerobot import ContactWorldLeRobotSpatial
+
+            dataset = ContactWorldLeRobotSpatial(
+                dataset, settings.root, visual=settings.visual, force=settings.force,
+                depth=settings.depth, cloud_noise_m=settings.cloud_noise_m,
+                force_ee3d_proxy=settings.force_ee3d_proxy, action_horizon=settings.action_horizon,
+            )
+        else:
+            raise ValueError("Unknown ContactWorld dataset version: " + settings.dataset_version)
     if data_config.univtac_pointcloud is not None:
         from openpi.spatial_dataset.univtac import UniVTACVisualDataset
 

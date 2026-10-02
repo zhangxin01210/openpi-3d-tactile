@@ -9,7 +9,7 @@ import torch
 from isaacgym import gymapi, gymtorch
 
 
-def replay(env, demo_path, output, clear_actuation=False, staged_reset=False, restore_dt=None, start_frame=0, white_gel=False, white_mounts=False, socket_away=False, estimated_velocity=False, pose_feedback=False, hold_after=0):
+def replay(env, demo_path, output, clear_actuation=False, staged_reset=False, restore_dt=None, start_frame=0, white_gel=False, white_mounts=False, socket_away=False, estimated_velocity=False, pose_feedback=False, hold_after=0, capture_dense=False, capture_v2=False, capture_dual=False):
     archive = np.load(demo_path)
     demo = {k:archive[k][start_frame:] for k in archive.files}
     if white_gel:
@@ -91,10 +91,25 @@ def replay(env, demo_path, output, clear_actuation=False, staged_reset=False, re
         properties[actor] = [{k:float(getattr(q,k)) for k in ['friction','rolling_friction','torsion_friction','restitution','compliance','compliant_damping']} for q in props]
     (output/'contact_properties.json').write_text(json.dumps(properties,indent=2)+'\n')
     frames = []
+    dense = None
+    if capture_dense and capture_v2:
+        raise ValueError('Only one capture mode is allowed')
+    if capture_v2:
+        from contactworld_v2_capture import ContactWorldV2Capture
+        dense = ContactWorldV2Capture(int(demo_path.stem.split('_')[-1]))
+    elif capture_dense:
+        from contactworld_dense_capture import DenseCapture
+        dense = DenseCapture(int(demo_path.stem.split('_')[-1]))
+    dual = None
+    if capture_dual:
+        from contactworld_bilateral_capture import BilateralTactileCapture
+        dual = BilateralTactileCapture()
     dt = float(env.gym.get_sim_params(env.sim).dt)*env.control_freq_inv
     for i in range(n):
         # Dataset row i is compared to pre-action observation; post-action to i+1.
         pre = snapshot()
+        if dual is not None:
+            dual.add(env, pre, i)
         pre_states.append({k:pre[k] for k in ['ee_pos','ee_quat','plug_pos','plug_quat','dof_pos','tactile_force_field_right']})
         executed = demo['action'][i].copy()
         if pose_feedback:
@@ -105,6 +120,8 @@ def replay(env, demo_path, output, clear_actuation=False, staged_reset=False, re
             target_rotation=Rotation.from_rotvec(demo['action'][i,3:6]*rs)*Rotation.from_quat(demo['ee_quat'][i])
             executed[:3]=(target_position-pre['ee_pos'])/ps
             executed[3:6]=(target_rotation*Rotation.from_quat(pre['ee_quat']).inv()).as_rotvec()/rs
+        if dense is not None:
+            dense.add(env, pre, demo, executed, i)
         action = torch.tensor(executed[None], device=env.device)
         obs, _, _, _ = env.step(action)
         current = snapshot()
@@ -163,6 +180,10 @@ def replay(env, demo_path, output, clear_actuation=False, staged_reset=False, re
     proc.stdin.close()
     if proc.wait()!=0:raise RuntimeError('ffmpeg failed')
     np.savez_compressed(output/'replay_states.npz',**{k:np.stack([s[k] for s in states]) for k in states[0]},**{k:np.stack([m[k] for m in matrices]) for k in matrices[0]})
+    if dense is not None:
+        dense.save(output, demo_path)
+    if dual is not None:
+        dual.save(output)
     post_hold = []
     if hold_after:
         from scipy.spatial.transform import Rotation
@@ -193,6 +214,9 @@ def replay(env, demo_path, output, clear_actuation=False, staged_reset=False, re
         final_ee_error_mm=float(np.linalg.norm(states[-1]['ee_pos']-demo['ee_pos'][-1])*1000),
         final_plug_error_mm=float(np.linalg.norm(states[-1]['plug_pos']-demo['plug_pos'][-1])*1000),
         source_pointcloud_alignment_passed=all(r['cloud_valid_count']==1024 and r['cloud_rgb_mae']<1e-5 and r['cloud_depth_error_m']<1e-5 for r in rows),
+        dense_capture=bool(dense),
+        v2_capture=capture_v2,
+        bilateral_tactile_capture=capture_dual,
         limitations=['Initial restore advances physics one step; object velocities and contact solver history unavailable',
                      'Source pointcloud convention remains incorrect as a world/base metric cloud; matching RGB does not fix that',
                      'One episode only; no success-rate or tactile recovery claim'],rows=rows)

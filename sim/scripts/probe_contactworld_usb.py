@@ -28,9 +28,17 @@ def main():
     p.add_argument('--socket-away', action='store_true')
     p.add_argument('--estimated-velocity', action='store_true')
     p.add_argument('--pose-feedback', action='store_true')
+    p.add_argument('--capture-dense', action='store_true',
+                   help='Save full front depth and fixed-workspace 1024-point pilot cloud per pre-action frame')
+    p.add_argument('--capture-v2', action='store_true',
+                   help='Save both approved 4096-point clouds and base-frame right tactile vectors')
+    p.add_argument('--dual-tactile', action='store_true',
+                   help='Expose both TacFF pads from an isolated patched ContactWorld source')
     p.add_argument('--hold-after', type=int, default=0, help='Zero-action hold steps after a demo replay')
     p.add_argument('--seed', type=int, default=0)
     args = p.parse_args()
+    if args.capture_dense and args.capture_v2:
+        p.error('--capture-dense and --capture-v2 are mutually exclusive')
     args.output.mkdir(parents=True, exist_ok=True)
     report = {'status': 'running', 'scope': f'single {args.task} smoke; no policy evaluation', 'stages': []}
     start = time.monotonic()
@@ -75,6 +83,10 @@ def main():
             cfg.capture_video = False
             cfg.force_render = False
             task_cfg = OmegaConf.to_container(cfg.task, resolve=True)
+            if args.dual_tactile:
+                if args.task != 'usb':
+                    p.error('--dual-tactile currently supports USB only')
+                task_cfg['env']['obsDims']['tactile_force_field_left'] = [10, 14, 3]
             (args.output/'task_config.json').write_text(json.dumps(task_cfg, indent=2)+'\n')
             np.random.seed(args.seed)
             torch.manual_seed(args.seed)
@@ -87,7 +99,7 @@ def main():
             stage('reset_idx_passed')
             if args.demo:
                 from replay_contactworld_episode import replay
-                replay(env, args.demo, args.output, clear_actuation=args.clear_reset_actuation, staged_reset=args.staged_reset, restore_dt=args.restore_dt, start_frame=args.start_frame, white_gel=args.white_gel, white_mounts=args.white_mounts, socket_away=args.socket_away, estimated_velocity=args.estimated_velocity, pose_feedback=args.pose_feedback, hold_after=args.hold_after)
+                replay(env, args.demo, args.output, clear_actuation=args.clear_reset_actuation, staged_reset=args.staged_reset, restore_dt=args.restore_dt, start_frame=args.start_frame, white_gel=args.white_gel, white_mounts=args.white_mounts, socket_away=args.socket_away, estimated_velocity=args.estimated_velocity, pose_feedback=args.pose_feedback, hold_after=args.hold_after, capture_dense=args.capture_dense, capture_v2=args.capture_v2, capture_dual=args.dual_tactile)
                 report['status'] = 'completed_execution_not_validated_reproduction'
                 stage('complete_episode_executed', caveat='See replay.json for trajectory agreement; not a success-rate evaluation')
                 return
@@ -109,6 +121,13 @@ def main():
             for name, handle in env.camera_handles_list[0].items():
                 snapshots['view_'+name] = np.array(env.gym.get_camera_view_matrix(env.sim, env.env_ptrs[0], handle))
                 snapshots['projection_'+name] = np.array(env.gym.get_camera_proj_matrix(env.sim, env.env_ptrs[0], handle))
+            if args.dual_tactile:
+                for side in ('left', 'right'):
+                    key = 'tactile_force_field_' + side
+                    if key not in snapshots:
+                        raise ValueError('Missing dual tactile observation: ' + key)
+                    snapshots['taxel_xyz_' + side] = env.tactile_pos_world_dict[key][0].detach().cpu().numpy()
+                    snapshots['taxel_quat_' + side] = env.tactile_quat_world_dict[key][0].detach().cpu().numpy()
             np.savez_compressed(args.output/'sensors.npz', **snapshots)
             stats = {}
             for key, array in snapshots.items():

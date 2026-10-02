@@ -37,6 +37,7 @@ class StructuredSpatialEncoderConfig:
     num_fingers: int = 5
     tactile_knn: int = 8
     tactile_local_tokens_per_finger: int = 4
+    tactile_summary_tokens_per_finger: int = 1
 
     hidden_dim: int = 128
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
@@ -49,6 +50,7 @@ class StructuredSpatialEncoderConfig:
             "num_fingers",
             "tactile_knn",
             "tactile_local_tokens_per_finger",
+            "tactile_summary_tokens_per_finger",
             "hidden_dim",
         ):
             if getattr(self, name) <= 0:
@@ -62,7 +64,7 @@ class StructuredSpatialEncoderConfig:
         return (
             self.visual_num_centers
             + 1
-            + self.num_fingers * (self.tactile_local_tokens_per_finger + 1)
+            + self.num_fingers * (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
         )
 
 
@@ -106,7 +108,9 @@ class StructuredSpatialEncoder(nnx.Module):
             * 0.02
         )
         self.tactile_summary_queries = nnx.Param(
-            jax.random.normal(rngs.params(), (config.num_fingers, 1, d), dtype=jnp.float32) * 0.02
+            jax.random.normal(rngs.params(),
+                              (config.num_fingers, config.tactile_summary_tokens_per_finger, d),
+                              dtype=jnp.float32) * 0.02
         )
 
     def __call__(self, inputs: SpatialEncoderInput) -> SpatialEncoderOutput:

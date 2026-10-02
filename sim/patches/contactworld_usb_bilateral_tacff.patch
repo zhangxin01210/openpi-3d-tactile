@@ -1,0 +1,127 @@
+--- a/thirdparty/manifeel-isaacgymenvs/isaacgymenvs/tasks/tacsl/tacsl_env_insertion.py
++++ b/thirdparty/manifeel-isaacgymenvs/isaacgymenvs/tasks/tacsl/tacsl_env_insertion.py
+@@ -98,9 +98,7 @@
+         tactile_shear_field_config_right['elastomer_link_name'] = 'elastomer_right'
+         tactile_shear_field_config_right['elastomer_tip_link_name'] = 'elastomer_tip_right'
+ 
+-        # tactile_shear_field_configs = [tactile_shear_field_config_left, tactile_shear_field_config_right]
+-        tactile_shear_field_configs = [tactile_shear_field_config_right]
+-        # tactile_shear_field_configs = [tactile_shear_field_config_left]
++        tactile_shear_field_configs = [tactile_shear_field_config, tactile_shear_field_config_right]
+         return tactile_shear_field_configs
+ 
+     def get_tactile_force_field_tensors_dict(self):
+--- a/thirdparty/manifeel-isaacgymenvs/isaacgymenvs/tasks/tacsl/tacsl_task_usb.py
++++ b/thirdparty/manifeel-isaacgymenvs/isaacgymenvs/tasks/tacsl/tacsl_task_usb.py
+@@ -416,7 +416,7 @@
+         if self.cfg_task.env.use_shear_force:
+             tactile_force_field_dict, tactile_depth_dict = self.get_tactile_force_field_tensors_dict()
+             if self.cfg_task.env.use_tactile_field_obs:
+-                force_keys = ['tactile_force_field_right']
++                force_keys = ['tactile_force_field_left', 'tactile_force_field_right']
+                 for force_field_key in force_keys:
+                     self.obs_dict[force_field_key][:] = tactile_force_field_dict[force_field_key]
+                     if self.cfg_task.env.zero_out_normal_force_field_obs:
+--- a/thirdparty/manifeel-isaacgymenvs/isaacgymenvs/tacsl_sensors/tacsl_sensors.py
++++ b/thirdparty/manifeel-isaacgymenvs/isaacgymenvs/tacsl_sensors/tacsl_sensors.py
+@@ -994,8 +994,8 @@
+                 elastomer_tip_link_name=sensor_config['elastomer_tip_link_name'],
+                 elastomer_actor_name=sensor_config['elastomer_actor_name'],
+                 num_divs=num_divs, visualize=False)
+-            self.tactile_pos_local_dict[indenter_link_rb_id] = tactile_pos_local
+-            self.tactile_quat_local_dict[indenter_link_rb_id] = tactile_quat_local
++            self.tactile_pos_local_dict[key] = tactile_pos_local
++            self.tactile_quat_local_dict[key] = tactile_quat_local
+             
+             print(f"🏓Indenter link {indenter_link_rb_id} has {tactile_pos_local.shape[0]} tactile points.")
+ 
+@@ -1004,10 +1004,10 @@
+                 indenter_urdf_path=sensor_config['indenter_urdf_path'],
+                 indenter_actor_name=sensor_config['indenter_actor_name'],
+                 indenter_rb_name=sensor_config['indenter_link_name'])
+-            self.sdf_dict[indenter_link_rb_id] = sdf
+-            self.indenter_mesh_dict[indenter_link_rb_id] = indenter_mesh
+-            self.indenter_mesh_local_tf_dict[indenter_link_rb_id] = indenter_mesh_local_tf
+-            self.sdf_shape_global_ids_per_env_dict[indenter_link_rb_id] = sdf_shape_global_ids_per_env
++            self.sdf_dict[key] = sdf
++            self.indenter_mesh_dict[key] = indenter_mesh
++            self.indenter_mesh_local_tf_dict[key] = indenter_mesh_local_tf
++            self.sdf_shape_global_ids_per_env_dict[key] = sdf_shape_global_ids_per_env
+ 
+         # Optionally, set a default (for backward compatibility)
+         if self.tactile_pos_local_dict:
+@@ -1035,7 +1035,8 @@
+ 
+         self.load_vt_lookup_table(LOOKUP_TABLE_PATH)
+ 
+-    def query_collision(self, sdf, tf_sdf, sdf_linvel_world, sdf_angvel_world, points_world, velocity_world):
++    def query_collision(self, sdf, tf_sdf, sdf_linvel_world, sdf_angvel_world, points_world, velocity_world,
++                        elastomer_link_id):
+         """
+         Query collisions in the SDF.
+ 
+@@ -1116,7 +1117,6 @@
+             
+             
+             # Compute the norm for each tactile point (shape: [1, 140])
+-            elastomer_link_id = 16
+             elastomer_angvel_world = self.body_angvel[:, elastomer_link_id]
+             # Example usage inside a method of TactileFieldSensor
+             y_angvel = elastomer_angvel_world[0, 1].cpu().item()
+@@ -1290,7 +1290,7 @@
+             indenter_link_id = config['indenter_link_rb_id']
+             elastomer_link_id = config['elastomer_link_rb_id']
+             # print(f"indenter_link_id: {indenter_link_id}, elastomer_link_id: {elastomer_link_id}")
+-            result = self.get_penalty_based_tactile_forces(indenter_link_id, elastomer_link_id)
++            result = self.get_penalty_based_tactile_forces(key, indenter_link_id, elastomer_link_id)
+             tactile_force_field[key] = result
+         return tactile_force_field
+ 
+@@ -1306,7 +1306,7 @@
+                                  + elastomer_linvel_world.unsqueeze(1).expand((self.num_envs, num_tactile_points, 3))
+         return tactile_velocity_world
+ 
+-    def get_penalty_based_tactile_forces(self, indenter_link_id, elastomer_link_id):
++    def get_penalty_based_tactile_forces(self, sensor_key, indenter_link_id, elastomer_link_id):
+         """
+         Get the penalty-based tactile forces.
+ 
+@@ -1321,12 +1321,12 @@
+         """
+ 
+         # print(f"indenter_link_id: {indenter_link_id}, elastomer_link_id: {elastomer_link_id}")
+-        self.tactile_pos_local = self.tactile_pos_local_dict[indenter_link_id]
+-        self.tactile_quat_local = self.tactile_quat_local_dict[indenter_link_id]
+-        self.sdf = self.sdf_dict[indenter_link_id]
+-        self.indenter_mesh = self.indenter_mesh_dict[indenter_link_id]
+-        self.indenter_mesh_local_tf = self.indenter_mesh_local_tf_dict[indenter_link_id]
+-        self.sdf_shape_global_ids_per_env = self.sdf_shape_global_ids_per_env_dict[indenter_link_id]
++        self.tactile_pos_local = self.tactile_pos_local_dict[sensor_key]
++        self.tactile_quat_local = self.tactile_quat_local_dict[sensor_key]
++        self.sdf = self.sdf_dict[sensor_key]
++        self.indenter_mesh = self.indenter_mesh_dict[sensor_key]
++        self.indenter_mesh_local_tf = self.indenter_mesh_local_tf_dict[sensor_key]
++        self.sdf_shape_global_ids_per_env = self.sdf_shape_global_ids_per_env_dict[sensor_key]
+ 
+         # acquire sdf related variables
+         sdf_tf = tf_combine(self.body_quat[:, indenter_link_id],
+@@ -1340,12 +1340,18 @@
+         self.tactile_pos_world, self.tactile_quat_world = self.get_tactile_points_in_world(
+             self.tactile_pos_local, self.tactile_quat_local, elastomer_link_id
+         )
++        if not hasattr(self, 'tactile_pos_world_dict'):
++            self.tactile_pos_world_dict = {}
++            self.tactile_quat_world_dict = {}
++        self.tactile_pos_world_dict[sensor_key] = self.tactile_pos_world
++        self.tactile_quat_world_dict[sensor_key] = self.tactile_quat_world
+         # tactile_velocity_world = torch.zeros_like(self.tactile_pos_world) # NOTE [Jie]: now assume fingers are fixed
+         tactile_velocity_world = self.get_tactile_points_velocities(elastomer_link_id)
+         # print(tactile_velocity_world.abs().sum())
+         
+         depth, depth_dot, normal_world, vt_world = self.query_collision(self.sdf, sdf_tf, sdf_linvel_world, sdf_angvel_world,
+-                                                                        self.tactile_pos_world, tactile_velocity_world)
++                                                                        self.tactile_pos_world, tactile_velocity_world,
++                                                                        elastomer_link_id)
+ 
+         # tactile_points_displace = tactile_points_displace
+         # print(f"tactile_points_displace: {tactile_points_displace}, {tactile_points_displace.shape}")

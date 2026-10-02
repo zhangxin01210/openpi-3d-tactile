@@ -144,6 +144,9 @@ class ContactWorldSidecarConfig:
     depth: bool = False
     cloud_noise_m: float = 0.0
     force_ee3d_proxy: bool = False
+    dataset_version: str = "v1"
+    cloud_mode: str = "none"
+    force_mode: str = "none"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -631,9 +634,10 @@ class LeRobotContactWorldDataConfig(DataConfigFactory):
         mapping = {
             "observation/front_rgb": "observation.images.front",
             "observation/wrist_rgb": "observation.images.wrist",
-            "observation/tactile_rgb": "observation.images.tactile",
             "observation/state": "observation.state", "actions": "action", "prompt": "prompt",
         }
+        if self.tactile_image == "rgb":
+            mapping["observation/tactile_rgb"] = "observation.images.tactile"
         if self.tactile_image == "depth":
             mapping["observation/tactile_depth"] = "observation.tactile_depth"
         return dataclasses.replace(
@@ -1735,6 +1739,155 @@ _CONFIGS.extend([
                                tactile_representation="grid", target="both", split_route=True),
     _contactworld_train_config("pi0_cw_usb_11_pcnoise", visual=True, force=True,
                                tactile_representation="grid", cloud_noise_m=0.002),
+])
+
+
+# Version 2 uses replayed, same-frame RGB-D/actions and true simulated right
+# taxel geometry. These names and the dataset root are isolated from v1.
+_CONTACTWORLD_V2_DATA = _CONTACTWORLD_ROOT / "data/contactworld_usb_v2"
+
+
+def _contactworld_v2_train_config(name: str, *, cloud_mode: str = "none",
+                                  force_mode: str = "none",
+                                  tactile_representation: str | None = None) -> TrainConfig:
+    visual = cloud_mode != "none"
+    force = force_mode != "none"
+    common_model = dict(paligemma_variant="gemma_2b_lora",
+                        action_expert_variant="gemma_300m_lora", action_horizon=16)
+    if visual or force:
+        model = contactworld_pi0_config.ContactWorldPi0Config(
+            **common_model, use_visual=visual, use_tactile=force,
+            visual_points=4096,
+            tactile_representation=tactile_representation or (
+                "base3d" if force_mode in {"base3d", "local_at_base"} else (
+                    "grid" if force_mode == "local" else "none")),
+            conditioning=spatial_conditioning.SpatialConditioningConfig(target="suffix"),
+        )
+        loader = spatial_weight_loaders.SpatialCheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    else:
+        model = pi0_config.Pi0Config(**common_model)
+        loader = weight_loaders.CheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    sidecar = ContactWorldSidecarConfig(
+        root=str(_CONTACTWORLD_V2_DATA), action_horizon=16, visual=visual,
+        force=force, dataset_version="v2", cloud_mode=cloud_mode,
+        force_mode=force_mode,
+    )
+    return TrainConfig(
+        name=name, model=model,
+        data=LeRobotContactWorldDataConfig(
+            repo_id=str(_CONTACTWORLD_V2_DATA), sidecar=sidecar,
+            assets=AssetsConfig(assets_dir=str(_CONTACTWORLD_V2_DATA / "assets"),
+                                asset_id="norm"),
+        ),
+        weight_loader=loader, freeze_filter=model.get_freeze_filter(),
+        ema_decay=None, seed=42, batch_size=8, num_workers=0,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
+        num_train_steps=20_000, save_interval=5_000, keep_period=5_000,
+    )
+
+
+_CONFIGS.extend([
+    _contactworld_v2_train_config("pi0_cw2_usb_01_rgb"),
+    _contactworld_v2_train_config("pi0_cw2_usb_02_front_pc", cloud_mode="front"),
+    _contactworld_v2_train_config("pi0_cw2_usb_03_fused_pc", cloud_mode="fused"),
+    _contactworld_v2_train_config("pi0_cw2_usb_04_base_ff", force_mode="base3d"),
+    _contactworld_v2_train_config("pi0_cw2_usb_05_front_pc_base_ff",
+                                  cloud_mode="front", force_mode="base3d"),
+    _contactworld_v2_train_config("pi0_cw2_usb_06_fused_pc_base_ff",
+                                  cloud_mode="fused", force_mode="base3d"),
+    _contactworld_v2_train_config("pi0_cw2_usb_07_fused_pc_local_ff",
+                                  cloud_mode="fused", force_mode="local"),
+    _contactworld_v2_train_config("pi0_cw2_usb_08_fused_pc_ff_summary",
+                                  cloud_mode="fused", force_mode="base3d",
+                                  tactile_representation="summary"),
+    _contactworld_v2_train_config("pi0_cw2_usb_09_fused_pc_basepos_localvec",
+                                  cloud_mode="fused", force_mode="local_at_base"),
+])
+
+
+# Version 3 replays the same source selection in an isolated patched simulator
+# and records both elastomer pads. The released dataset itself remains right-only.
+_CONTACTWORLD_V3_DATA = _CONTACTWORLD_ROOT / "data/contactworld_usb_v3_bilateral"
+
+
+def _contactworld_v3_train_config(name: str, *, cloud_mode: str = "none",
+                                  force_mode: str = "none", separate_fingers: bool = False,
+                                  tactile_representation: str | None = None,
+                                  target: str = "suffix", spatial_route: str = "shared") -> TrainConfig:
+    visual = cloud_mode != "none"
+    force = force_mode != "none"
+    common_model = dict(paligemma_variant="gemma_2b_lora",
+                        action_expert_variant="gemma_300m_lora", action_horizon=16)
+    if visual or force:
+        model = contactworld_pi0_config.ContactWorldPi0Config(
+            **common_model, use_visual=visual, use_tactile=force,
+            visual_points=4096,
+            tactile_points=280 if force_mode in {"both_base3d", "both_local_grid"} else 140,
+            tactile_representation=(tactile_representation or "base3d") if force else "none",
+            tactile_pool_per_finger=separate_fingers,
+            structured=True,
+            spatial_route=spatial_route,
+            conditioning=spatial_conditioning.SpatialConditioningConfig(target=target),
+        )
+        loader = spatial_weight_loaders.SpatialCheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    else:
+        model = pi0_config.Pi0Config(**common_model)
+        loader = weight_loaders.CheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    sidecar = ContactWorldSidecarConfig(
+        root=str(_CONTACTWORLD_V3_DATA), action_horizon=16, visual=visual,
+        force=force, dataset_version="v3", cloud_mode=cloud_mode,
+        force_mode=force_mode,
+    )
+    return TrainConfig(
+        name=name, model=model,
+        data=LeRobotContactWorldDataConfig(
+            repo_id=str(_CONTACTWORLD_V3_DATA), sidecar=sidecar,
+            assets=AssetsConfig(assets_dir=str(_CONTACTWORLD_V3_DATA / "assets"),
+                                asset_id="norm"),
+        ),
+        weight_loader=loader, freeze_filter=model.get_freeze_filter(),
+        ema_decay=None, seed=42, batch_size=8, num_workers=0,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
+        num_train_steps=20_000, save_interval=5_000, keep_period=5_000,
+    )
+
+
+_CONFIGS.extend([
+    _contactworld_v3_train_config("pi0_cw3_usb_01_rgb"),
+    _contactworld_v3_train_config("pi0_cw3_usb_02_fused_pc", cloud_mode="fused"),
+    _contactworld_v3_train_config("pi0_cw3_usb_03_rgb_local_map",
+                                  force_mode="both_local_grid", separate_fingers=True,
+                                  tactile_representation="map_local"),
+    _contactworld_v3_train_config("pi0_cw3_usb_04_fused_pc_local_map",
+                                  cloud_mode="fused", force_mode="both_local_grid",
+                                  separate_fingers=True, tactile_representation="map_local"),
+    _contactworld_v3_train_config("pi0_cw3_usb_05_fused_pc_local_summary",
+                                  cloud_mode="fused", force_mode="both_local_grid",
+                                  separate_fingers=True, tactile_representation="summary"),
+    _contactworld_v3_train_config("pi0_cw3_usb_06_fused_pc_base_structured",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True),
+    _contactworld_v3_train_config("pi0_cw3_usb_07_fused_pc_base_pooled",
+                                  cloud_mode="fused", force_mode="both_base3d"),
+    _contactworld_v3_train_config("pi0_cw3_usb_08_fused_pc_base_map",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True, tactile_representation="map_coupled"),
+    _contactworld_v3_train_config("pi0_cw3_usb_09_fused_pc_base_map_split",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True, tactile_representation="map_split"),
+    _contactworld_v3_train_config("pi0_cw3_usb_10_fused_pc_base_map_matched",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True, tactile_representation="map_coupled_matched"),
+    _contactworld_v3_train_config("pi0_cw3_usb_11_fused_pc_base_structured_prefix",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True, target="prefix"),
+    _contactworld_v3_train_config("pi0_cw3_usb_12_fused_pc_base_structured_split_route",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True, target="both",
+                                  spatial_route="visual_prefix_tactile_suffix"),
+    _contactworld_v3_train_config("pi0_cw3_usb_13_fused_pc_local_map_3tok",
+                                  cloud_mode="fused", force_mode="both_local_grid",
+                                  separate_fingers=True, tactile_representation="map_local_multiquery"),
 ])
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):

@@ -16,6 +16,8 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--white-gel", action="store_true", help="Match released pale gel appearance (visual only)")
     p.add_argument("--white-mounts", action="store_true", help="Match released pale finger mounts (visual only)")
+    p.add_argument("--usb-only", action="store_true", help="Run only the five fixed USB demonstrations")
+    p.add_argument("--capture-dense", action="store_true", help="Collect a pre-action RGB-D/cloud pilot")
     args = p.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     project = Path(__file__).resolve().parents[2]
@@ -24,6 +26,8 @@ def main():
     report = args.output / "batch_result.json"
     for item in manifest["episodes"]:
         task, episode = item["task"], item["episode"]
+        if args.usb_only and task != "insertion_usb":
+            continue
         demo = Path(item["file"])
         if hashlib.sha256(demo.read_bytes()).hexdigest() != item["sha256"]:
             raise ValueError(f"Exported demo checksum differs from manifest: {demo}")
@@ -37,7 +41,9 @@ def main():
                 row.get("white_gel") != args.white_gel or
                 row.get("white_mounts") != args.white_mounts or
                 row.get("demo_sha256") != item["sha256"] or
-                Path(row.get("demo", "")) != demo):
+                Path(row.get("demo", "")) != demo or
+                row.get("dense_capture", False) != args.capture_dense or
+                (args.capture_dense and not (path / "dense_capture.npz").is_file())):
                 raise ValueError(f"Existing replay does not match requested configuration: {path}")
             exit_code = 0
         else:
@@ -46,6 +52,8 @@ def main():
                    "--task", "usb" if task == "insertion_usb" else "peg",
                    "--source", str(args.source), "--output", str(path),
                    "--demo", str(demo), "--seed", str(args.seed), "--pose-feedback"]
+            if args.capture_dense:
+                cmd.append("--capture-dense")
             if args.white_gel:
                 cmd.append("--white-gel")
             if args.white_mounts:
@@ -54,7 +62,7 @@ def main():
             try:
                 with log.open("w") as stream:
                     completed = subprocess.run(cmd, stdout=stream, stderr=subprocess.STDOUT,
-                                               timeout=300, check=False)
+                                               timeout=600 if args.capture_dense else 300, check=False)
                 exit_code = completed.returncode
             except subprocess.TimeoutExpired:
                 exit_code = 124
@@ -67,6 +75,7 @@ def main():
                   "final_plug_error_mm": row.get("final_plug_error_mm"),
                   "max_pre_action_plug_error_mm": max((x["plug_pre_error_mm"] for x in row.get("rows", [])), default=None),
                   "pointcloud_rgb_depth_agreement": row.get("source_pointcloud_alignment_passed"),
+                  "dense_capture": row.get("dense_capture"),
                   "initial_errors": row.get("initial_errors"), "log": str(log),
                   "output": str(path), "process_elapsed_s": row.get("process_elapsed_s")}
         results.append(result)

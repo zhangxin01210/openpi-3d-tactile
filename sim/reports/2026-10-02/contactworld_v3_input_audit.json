@@ -1,0 +1,179 @@
+{
+  "status": "passed",
+  "dataset": "/home/sai/zx/openpi-3d-tactile/data/contactworld_usb_v3_bilateral",
+  "configs": [
+    {
+      "config": "pi0_cw3_usb_01_rgb",
+      "frame": 20,
+      "cloud_points": 0,
+      "left_taxels": 0,
+      "right_taxels": 0,
+      "preview_image_masked": true
+    },
+    {
+      "config": "pi0_cw3_usb_02_fused_pc",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 0,
+      "right_taxels": 0,
+      "preview_image_masked": true,
+      "encoder_tokens": 17,
+      "active_encoder_tokens": 17
+    },
+    {
+      "config": "pi0_cw3_usb_03_rgb_local_map",
+      "frame": 20,
+      "cloud_points": 0,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 2,
+      "active_encoder_tokens": 2,
+      "independent_finger_tokens": true
+    },
+    {
+      "config": "pi0_cw3_usb_04_fused_pc_local_map",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 19,
+      "active_encoder_tokens": 19,
+      "independent_finger_tokens": true
+    },
+    {
+      "config": "pi0_cw3_usb_05_fused_pc_local_summary",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 19,
+      "active_encoder_tokens": 19,
+      "independent_finger_tokens": true,
+      "summary_pad_position_encoded": true
+    },
+    {
+      "config": "pi0_cw3_usb_06_fused_pc_base_structured",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 23,
+      "active_encoder_tokens": 23,
+      "route_shapes": [
+        null,
+        [
+          1,
+          23,
+          32
+        ]
+      ],
+      "independent_finger_tokens": true
+    },
+    {
+      "config": "pi0_cw3_usb_07_fused_pc_base_pooled",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 23,
+      "active_encoder_tokens": 23,
+      "six_pooled_tokens": true
+    },
+    {
+      "config": "pi0_cw3_usb_08_fused_pc_base_map",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 19,
+      "active_encoder_tokens": 19,
+      "independent_finger_tokens": true
+    },
+    {
+      "config": "pi0_cw3_usb_09_fused_pc_base_map_split",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 23,
+      "active_encoder_tokens": 23,
+      "independent_finger_tokens": true,
+      "independent_force_channels": true,
+      "tactile_vit_parameters": 811776
+    },
+    {
+      "config": "pi0_cw3_usb_10_fused_pc_base_map_matched",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 23,
+      "active_encoder_tokens": 23,
+      "independent_finger_tokens": true,
+      "tactile_vit_parameters": 849088
+    },
+    {
+      "config": "pi0_cw3_usb_11_fused_pc_base_structured_prefix",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 23,
+      "active_encoder_tokens": 23,
+      "route_shapes": [
+        [
+          1,
+          23,
+          32
+        ],
+        null
+      ],
+      "independent_finger_tokens": true
+    },
+    {
+      "config": "pi0_cw3_usb_12_fused_pc_base_structured_split_route",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 23,
+      "active_encoder_tokens": 23,
+      "route_shapes": [
+        [
+          1,
+          17,
+          32
+        ],
+        [
+          1,
+          6,
+          32
+        ]
+      ],
+      "independent_finger_tokens": true,
+      "visual_prefix_tactile_suffix": true
+    },
+    {
+      "config": "pi0_cw3_usb_13_fused_pc_local_map_3tok",
+      "frame": 20,
+      "cloud_points": 4096,
+      "left_taxels": 140,
+      "right_taxels": 140,
+      "preview_image_masked": true,
+      "encoder_tokens": 23,
+      "active_encoder_tokens": 23,
+      "independent_finger_tokens": true,
+      "three_queries_per_finger": true
+    }
+  ]
+}
