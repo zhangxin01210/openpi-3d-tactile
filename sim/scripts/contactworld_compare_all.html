@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>40 个初态 × 13 个策略 · 多模态与动态训练近邻</title>
+<style>
+:root{color-scheme:dark;--bg:#101823;--card:#182435;--line:#33445a;--muted:#b8c9dc;--accent:#8ecbff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#e9f1fa;font:16px/1.65 system-ui,sans-serif}main{max-width:1580px;margin:auto;padding:24px}h1{font-size:28px;margin:0 0 10px}h2{font-size:21px}h3{font-size:18px;margin:0}p{margin:10px 0}a{color:var(--accent)}button,select,input{font:inherit}button,select{background:#23364b;color:#eef6ff;border:1px solid #58718c;border-radius:5px;padding:6px 11px;cursor:pointer}button:hover{background:#34516e}button:disabled{opacity:.4}summary{cursor:pointer}details.case{border:1px solid var(--line);border-radius:9px;margin:18px 0;scroll-margin-top:80px}details.case>summary{padding:15px;font-size:19px;background:#203045}details.case[open]>summary{border-bottom:1px solid var(--line)}.notice{background:#1b2d40;padding:16px;border-left:4px solid #8ecbff}.small,.meta{font-size:14px;color:var(--muted)}.toolbar{position:sticky;top:0;z-index:5;background:#111d2cf2;backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap}.casecontrols{padding:12px 15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#1a2a3d;position:sticky;top:63px;z-index:4}.casecontrols input{flex:1;min-width:160px}.cards{padding:0 15px}.card{padding:20px 0;border-bottom:1px solid var(--line)}.cardhead{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}.status{padding:3px 10px;border-radius:20px;font-size:14px}.good{background:#164d39;color:#b6f9d9}.partial{background:#68491b;color:#ffe5b9}.bad{background:#612e3a;color:#ffdae2}video.composite{width:100%;aspect-ratio:1536/1080;display:block;background:#070e16;border:1px solid #34485e;margin-top:8px}video.original{width:768px;max-width:100%;display:block;margin-top:10px}.rowtools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}.columns{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-weight:600;text-align:center;margin-top:12px}.columns>div{padding:8px;background:#22354a}.live{min-height:25px;color:#d3e7ff}.seedlinks{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0}.seedlinks a{padding:3px 7px;border:1px solid #39536e;border-radius:4px;text-decoration:none}.legend{display:inline-block;width:150px;height:12px;background:linear-gradient(90deg,#379af5,#f5f5f5,#f55537);vertical-align:middle;margin:0 8px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}pre{white-space:pre-wrap;overflow-wrap:anywhere}code{background:#273549;padding:1px 4px;border-radius:4px}#progress{font-size:14px;color:#b6cfe4}@media(max-width:720px){main{padding:12px}.columns{font-size:12px}.casecontrols{position:static}.grid{grid-template-columns:1fr}h1{font-size:23px}}
+</style><style>.stagebar{position:relative;height:15px;margin:6px 0 4px}.stagebar canvas{width:100%;height:15px;display:block}.stagemarker{position:absolute;top:-3px;bottom:-3px;width:2px;background:white;box-shadow:0 0 3px #111;pointer-events:none}</style></head><body><main>
+<h1>40 个测试初态，逐条比较 13 个策略</h1>
+<p>每个初态下依次放置 13 个策略。每段对比视频从左到右是：<b>测试模型观测 → 动态训练近邻 → 同一训练示范的下一帧</b>。三列都有前视/腕视、左右指分量图、固定视角的机械臂 base 点云。</p>
+<div class="notice"><b>怎么看：</b>打开一个初态，先看 01，再往下看其它配置。暂停后用“下一观测”逐帧检查，或用该初态的同步进度条让 13 个配置停在同一个控制步。近邻每次重新搜索，来源跳变会直接标在视频上。训练中间列和右列始终是同一来源的 f 与 f+1；它们没有被做成虚假的连续训练轨迹。</div>
+<details><summary>采样频率、检索口径、颜色与模型输入说明</summary>
+<p>完整模型观测每 4 个控制步保存一次，间隔约 0.267 秒。对比视频只在这些真实快照时刻更新，并保持画面到下一快照；编码为兼容播放器的 H.264 / yuv420p / 15 fps。没有补造中间点云。最后一个完整输入快照为 step 176，最后四步后的最终画面请看各配置下方的连续原始双视图视频。</p>
+<p><b>视觉近邻（默认）：</b>只使用前视＋腕视冻结 ResNet18 特征，在实际训练划分的 95 条示范、5064 个有效帧中搜索。标准化参数也仅来自训练集。没有加入测试动作、插座真值或未来信息。“最像”是这套特征的距离定义，未必与人的视觉判断完全相同。</p>
+<p><b>输入模态诊断近邻：</b>01 用 RGB＋状态，02 再加点云，03 再加双指触觉，04–13 同时包含点云与触觉。它使用上次实验的固定诊断特征，不是各 π0 的内部 embedding，也不完全复刻 summary/map 等不同编码。两种检索距离的数值不可直接横向比较。最近帧按距离选出，不按已学习的动作权重选择。</p>
+<p><b>触觉：</b>第一组为 base Fx/Fy/Fz，左右指各三张。第二组为传感器局部 C0/C1/C2，供使用局部力输入的配置核对，不能把局部通道叫作 base Fx/Fy/Fz。<span class="legend"></span> 蓝负、白零、红正。每个坐标系/分量采用整个测试与训练数据共同的固定色阶；没有逐帧自动放大。色阶外截断会显示 clip%，最大绝对数值仍保留。TacFF 为合成单位，不能直接解释成牛顿。</p>
+<p><b>点云：</b>显示全部 4096 个 XYZ，固定相同 base 视角与范围，按高度着色；粉/橙为左/右指 taxel 位置。颜色仅用于观看，策略点云输入并无该颜色。没有 P/T 输入的配置也显示已保存的传感器诊断信息，并在视频顶部标注 not input。力图展示的是物理输入场，不是网络编码后的 token。</p>
+<p>“最终成功／仅曾成功／失败”来自原评测结果；首次成功步是记录的动作步编号。“接触”特指插件–插座接触，沿用合力大于 0.1 的分段标记；跳转到首次接触后的第一个已保存观测，不能精确到两个快照之间。夹爪与插件在初态就有接触。原始双视图的第 0 帧为初态，其后为每个动作后的画面；对比视频中的 step 是动作前观测时刻。</p>
+<p>视频上方的阶段色带只标记<b>左侧测试轨迹</b>，按当前完整观测快照的 U 盘—插座合力、XY 偏差、Z 高度与轴角计算。近轴阈值为 XY ≤ 2 mm、轴角 ≤ 5°；当前接触期间最近三帧 Z 下降 ≥ 0.5 mm 标为“正在轴向下降”，首次接触后累计下降 ≥ 3 mm但当前停住单独标记；近轴且 |Z|≤5 mm 标为“目标高度附近”，不会因停住重置为“未下插”。这些是仿真真值诊断标签，不是策略输入，也不表示触觉指尖力从此才开始出现。</p>
+<details><summary>固定色阶与原始记录</summary><pre>__SCALES__</pre><p><a href="manifest.json">所有案例、训练帧来源、检索口径与颜色参数</a></p></details>
+</details>
+<div class="toolbar"><label>跳到初态 <select id="jump"></select></label><button id="collapse">收起全部</button><span id="progress"></span></div>
+<nav class="seedlinks" id="links"></nav><div id="cases"></div>
+<script>
+'use strict';
+const DATA=__DATA__;
+const STAGE_NAMES=['未碰到插座','接触后暂时分离','孔口接触 · 对齐中','孔口接触 · 近轴待下降','近轴 · 正在轴向下降','目标位姿判据通过','接触后已下降 · 当前停顿','目标高度附近 · 判据未过'];
+const STAGE_COLORS=['#738da2','#9c9180','#df8548','#cfb85a','#55add4','#61c58d','#5c8fd7','#aa81e3'];
+const groups=new Map(), bySeed=new Map();
+for(const row of DATA){if(!bySeed.has(row.seed))bySeed.set(row.seed,[]);bySeed.get(row.seed).push(row);}
+function el(tag,props={},text=''){const node=document.createElement(tag);Object.assign(node,props);if(text)node.textContent=text;return node;}
+function status(r){return r.final?'最终成功':r.ever?'仅曾成功':'失败';}
+const progress=document.querySelector('#progress');progress.textContent=`${DATA.filter(r=>r.ready).length} / ${DATA.length} 个案例已生成；40 初态 × 13 配置`;
+function setVideoTime(v,t){if(v.readyState>=1)v.currentTime=Math.min(t,Math.max(0,v.duration-.04));else v._pending=t;}
+function showMatch(card){
+ const {row,video,kind,live}=card,t=video.currentTime||0,index=Math.min(row.steps.length-1,Math.max(0,Math.floor((t+.003)/(row.dt*row.stride))));
+ const m=row.matches[kind][index];
+ const phase=row.phase?(row.phase[index]===1?'首次接触后':'接触前'):'';
+ const stage=row.stage?.[index],label=stage?`${STAGE_NAMES[stage[0]]} · 插座接触力 ${stage[1].toFixed(2)} · XY ${stage[2].toFixed(1)} mm · Z ${stage[3].toFixed(1)} mm · 轴角 ${stage[4].toFixed(1)}°`:phase;
+ live.textContent=`左侧测试 step ${row.steps[index]}（${(row.steps[index]*row.dt).toFixed(3)} s） ${label} ↔ 训练 source ${m.source} / LeRobot ${m.episode} / frame ${m.frame} → ${m.frame+1} · 距离 ${m.distance.toPrecision(4)}`;
+ if(stage){live.style.color=STAGE_COLORS[stage[0]];if(card.stageMarker)card.stageMarker.style.left=`${(index+.5)/row.stage.length*100}%`;}
+}
+const observer=new IntersectionObserver(entries=>{for(const e of entries){const v=e.target;v._visible=e.isIntersecting;if(e.isIntersecting){if(!v.getAttribute('src'))v.src=v.dataset.src;const s=v._group;if(s.playing){setVideoTime(v,s.time);v.playbackRate=s.rate;v.play().catch(()=>{});}}else if(v._group.playing)v.pause();}},{rootMargin:'100px'});
+function seek(s,t){s.time=Math.max(0,Math.min(t,s.max));s.slider.value=s.time;s.clock.textContent=`${s.time.toFixed(2)} / ${s.max.toFixed(2)} s`;for(const c of s.cards){setVideoTime(c.video,s.time);showMatch(c);}s.last=performance.now();}
+function stop(s){if(!s.built)return;s.playing=false;s.play.textContent='同步播放';for(const c of s.cards)c.video.pause();}
+function animate(now){for(const s of groups.values())if(s.playing){s.time+=(now-s.last)/1000*s.rate;s.last=now;if(s.time>=s.max){seek(s,s.max);stop(s);continue;}s.slider.value=s.time;s.clock.textContent=`${s.time.toFixed(2)} / ${s.max.toFixed(2)} s`;for(const c of s.cards){const v=c.video;if(v._visible&&v.readyState>=1){if(Math.abs(v.currentTime-s.time)>.16)setVideoTime(v,s.time);if(v.paused)v.play().catch(()=>{});}}}requestAnimationFrame(animate);}
+requestAnimationFrame(animate);
+function changeKind(card,kind){const t=card.video.currentTime;card.kind=kind;card.video.pause();card.video.dataset.src=card.row[kind];card.video.poster=card.row[kind].replace('.mp4','.jpg');card.video.src=card.row[kind];card.video._pending=t;showMatch(card);}
+function build(s){if(s.built)return;s.built=true;const rows=bySeed.get(s.seed).sort((a,b)=>a.number-b.number);const controls=el('div',{className:'casecontrols'});
+ s.play=el('button',{},'同步播放');s.play.onclick=()=>{if(s.playing){stop(s);return;}for(const other of groups.values())if(other!==s)stop(other);if(s.time>=s.max)seek(s,0);s.playing=true;s.last=performance.now();s.play.textContent='同步暂停';for(const c of s.cards){if(c.video._visible){setVideoTime(c.video,s.time);c.video.playbackRate=s.rate;c.video.play().catch(()=>{});}}};
+ const prev=el('button',{},'上一观测'),next=el('button',{},'下一观测');prev.onclick=()=>{stop(s);seek(s,s.time-s.interval);};next.onclick=()=>{stop(s);seek(s,s.time+s.interval);};
+ s.slider=el('input',{type:'range',min:0,max:s.max,step:s.interval,value:0,ariaLabel:'同步控制步'});s.slider.oninput=()=>{stop(s);seek(s,Number(s.slider.value));};
+ s.clock=el('span',{className:'small'},`0 / ${s.max.toFixed(2)} s`);const speed=el('select');for(const v of [.25,.5,1])speed.append(el('option',{value:v,selected:v===1},v+'×'));speed.onchange=()=>{s.rate=Number(speed.value);for(const c of s.cards)c.video.playbackRate=s.rate;};
+ const kind=el('select');kind.append(el('option',{value:'visual'},'视觉近邻'),el('option',{value:'modal'},'输入模态诊断近邻'));kind.onchange=()=>{stop(s);for(const c of s.cards)changeKind(c,kind.value);};
+ controls.append(s.play,prev,next,s.slider,s.clock,speed,kind);s.details.append(controls);
+ const cards=el('div',{className:'cards'});s.details.append(cards);
+ for(const row of rows){const article=el('article',{className:'card',id:`s${s.seed}-m${row.number}`}),head=el('div',{className:'cardhead'});
+ head.append(el('h3',{},`${String(row.number).padStart(2,'0')} · ${row.config.split('_usb_')[1].slice(3)}`),el('span',{className:'status '+(row.final?'good':row.ever?'partial':'bad')},status(row)+(row.first_success===null?'':` · 首次成功步 ${row.first_success}`)));
+ article.append(head,el('p',{className:'meta'},row.input));const cols=el('div',{className:'columns'});for(const t of ['测试观测（双视图＋双指＋点云）','此刻最相近的训练帧 f','同一来源真实下一帧 f+1'])cols.append(el('div',{},t));article.append(cols);
+ if(!row.ready){article.append(el('p',{},'正在生成该案例，完成后刷新页面。'));cards.append(article);continue;}
+ const video=el('video',{className:'composite',controls:true,preload:'none',muted:true,playsInline:true,poster:row.visual.replace('.mp4','.jpg')});video.dataset.src=row.visual;video._group=s;
+ const live=el('p',{className:'live small'}),card={row,video,live,kind:'visual'};s.cards.push(card);
+ const stagebar=el('div',{className:'stagebar'}),stagecanvas=el('canvas'),stagemarker=el('div',{className:'stagemarker'});
+ if(row.stage){stagecanvas.width=row.stage.length;stagecanvas.height=15;const ctx=stagecanvas.getContext('2d');for(let i=0;i<row.stage.length;i++){ctx.fillStyle=STAGE_COLORS[row.stage[i][0]];ctx.fillRect(i,0,1,15);}stagebar.append(stagecanvas,stagemarker);card.stageMarker=stagemarker;}
+ video.addEventListener('timeupdate',()=>showMatch(card));video.addEventListener('loadedmetadata',()=>{if(video._pending!==undefined){setVideoTime(video,video._pending);delete video._pending;}else setVideoTime(video,s.time);video.playbackRate=s.rate;showMatch(card);});
+ const tools=el('div',{className:'rowtools'}),p=el('button',{},'◀ 此配置上一观测'),n=el('button',{},'此配置下一观测 ▶');
+ p.onclick=()=>{stop(s);setVideoTime(video,Math.max(0,video.currentTime-s.interval));};n.onclick=()=>{stop(s);setVideoTime(video,Math.min(s.max,video.currentTime+s.interval));};
+ const nextSource=el('button',{},'下次近邻换源');nextSource.onclick=()=>{stop(s);const mm=row.matches[card.kind],i=Math.min(mm.length-1,Math.floor((video.currentTime+.003)/s.interval));const j=mm.findIndex((m,k)=>k>i&&m.source!==mm[i].source);if(j>=0)setVideoTime(video,j*s.interval+.003);};
+ tools.append(p,n,nextSource);
+ if(row.phase?.includes(1)){const contact=el('button',{},'跳到首次接触观测');contact.onclick=()=>{stop(s);setVideoTime(video,row.phase.indexOf(1)*s.interval+.003);};tools.append(contact);}
+ tools.append(el('a',{href:row.provenance,target:'_blank'},'逐帧来源记录'),el('a',{href:row.visual,target:'_blank'},'打开视觉近邻 MP4'),el('a',{href:row.modal,target:'_blank'},'打开模态近邻 MP4'));
+ const original=el('details');original.append(el('summary',{},'从当前时刻查看连续原始双视图（可以单独播放至最终画面）'));original.addEventListener('toggle',()=>{if(original.open){let raw=original.querySelector('video');if(!raw){raw=el('video',{className:'original',src:row.original,controls:true,preload:'metadata',muted:true});original.append(raw);}const target=video.currentTime;if(raw.readyState>=1)raw.currentTime=target;else raw.addEventListener('loadedmetadata',()=>{raw.currentTime=target;},{once:true});}else original.querySelector('video')?.pause();});
+ article.append(live);if(row.stage)article.append(stagebar);article.append(video,tools,original);cards.append(article);observer.observe(video);showMatch(card);
+ }
+}
+function openSeed(seed){const s=groups.get(Number(seed));if(!s)return;s.details.open=true;s.details.scrollIntoView({behavior:'smooth',block:'start'});document.querySelector('#jump').value=seed;}
+for(const [seed,rows]of [...bySeed].sort((a,b)=>a[0]-b[0])){
+ const details=el('details',{className:'case',id:'seed'+seed}),summary=el('summary',{},`初态 ${seed} · 最终成功 ${rows.filter(r=>r.final).length}/13 · 曾成功 ${rows.filter(r=>r.ever).length}/13`);details.append(summary);document.querySelector('#cases').append(details);
+ const interval=rows[0].dt*rows[0].stride,s={seed,details,cards:[],built:false,playing:false,time:0,rate:1,interval,max:rows[0].steps.at(-1)*rows[0].dt};groups.set(seed,s);
+ details.addEventListener('toggle',()=>{if(details.open){build(s);for(const other of groups.values())if(other!==s)other.details.open=false;}else{stop(s);for(const v of details.querySelectorAll('video')){v.pause();if(v.className==='composite'&&v.getAttribute('src')){v._pending=v.currentTime;v.removeAttribute('src');v.load();}}}});
+ document.querySelector('#jump').append(el('option',{value:seed},String(seed)));const a=el('a',{href:'#seed'+seed},String(seed));a.onclick=e=>{e.preventDefault();openSeed(seed);};document.querySelector('#links').append(a);
+}
+document.querySelector('#jump').onchange=e=>openSeed(e.target.value);
+document.querySelector('#collapse').onclick=()=>{for(const s of groups.values())s.details.open=false;};
+const initial=Number(location.hash.replace('#seed',''))||[...groups.keys()][0];openSeed(initial);
+</script></main></body></html>

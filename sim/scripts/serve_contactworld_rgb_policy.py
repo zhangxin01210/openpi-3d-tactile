@@ -23,8 +23,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.socket.exists():
         parser.error(f"Socket already exists: {args.socket}")
+    config = get_config(args.config)
     policy = create_trained_policy(
-        get_config(args.config), args.checkpoint,
+        config, args.checkpoint,
         sample_kwargs={"num_steps": args.num_steps},
     )
     with Listener(str(args.socket), family="AF_UNIX", authkey=b"contactworld-rgb") as listener:
@@ -41,7 +42,15 @@ def main() -> None:
                         return
                     try:
                         start = time.monotonic()
-                        result = policy.infer(request)
+                        if isinstance(request, dict) and "__fixed_noise_seed__" in request:
+                            request = dict(request)
+                            noise_seed = int(request.pop("__fixed_noise_seed__"))
+                            noise = np.random.default_rng(noise_seed).normal(
+                                size=(config.model.action_horizon, config.model.action_dim),
+                            ).astype(np.float32)
+                            result = policy.infer(request, noise=noise)
+                        else:
+                            result = policy.infer(request)
                         actions = np.asarray(result["actions"], dtype=np.float32)
                         if actions.shape != (16, 6) or not np.isfinite(actions).all():
                             raise ValueError(f"Invalid policy actions: {actions.shape}")

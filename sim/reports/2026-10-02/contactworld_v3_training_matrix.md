@@ -3,10 +3,26 @@
 This matrix uses `data/contactworld_usb_v3_bilateral`: 120 accepted replayed
 episodes, split by source episode into 95 train, 15 validation and 10 test.
 All 13 runs use the same RGB, robot state, executed-action targets, π0 base
-weights, action horizon 16, normalization and optimizer schedule. The third
+weights, action horizon 16, normalization and optimizer schedule. The current
+model variants are `gemma_2b_lora` and `gemma_300m_lora`: their original Gemma
+weights are frozen, while LoRA adapters, the image encoder, state/action
+projections and the enabled spatial branches are trainable. `bfloat16` is the
+model computation dtype and does not imply full fine-tuning. A switch to full
+Gemma fine-tuning would need a separate A800 memory/time check. The third
 π0 image slot remains masked. The two tactile preview MP4s are rendered from
 the force fields for review; **they are never used as tactile RGB training
 inputs**. Genuine paired raw tactile RGB and deformation depth are not in V3.
+This is an intentional first-round adaptation budget for comparisons on 95
+training demonstrations: each spatial encoder and its adapter can learn in
+full, while the two large Gemma backbones use the same LoRA setup across all
+13 runs. The conclusions are conditional on this training regime. If the
+modality checkpoints appear adaptation-limited, rerun a small matched subset
+(RGB, RGB+P, and a promising RGB+P+T configuration) with full Gemma tuning
+before attributing a failure to tactile or point-cloud representation.
+In particular, the prefix and suffix Gemma variants have different LoRA ranks
+(16 and 32), so routing comparisons 06/11/12 are comparisons under those
+fixed adaptation budgets; repeat a decisive routing result under full tuning
+before treating injection location as an architecture-independent conclusion.
 The robot state is 18 values: seven Franka arm positions, two gripper
 positions, followed by their nine velocities. The six action targets are
 executed end-effector translation and axis-angle rotation displacement

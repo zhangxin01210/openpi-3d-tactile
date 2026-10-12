@@ -623,10 +623,12 @@ class LeRobotLiberoDataConfig(DataConfigFactory):
 
 @dataclasses.dataclass(frozen=True)
 class LeRobotContactWorldDataConfig(DataConfigFactory):
-    """ContactWorld USB LeRobot dataset, with a separate optional spatial join."""
+    """ContactWorld LeRobot dataset, with a separate optional spatial join."""
 
     sidecar: ContactWorldSidecarConfig | None = None
     tactile_image: Literal["none", "rgb", "depth"] = "none"
+    action_dim: int = 6
+    default_prompt: str = "Insert the USB plug into the socket."
     action_sequence_keys: Sequence[str] = ("action",)
 
     @override
@@ -644,8 +646,9 @@ class LeRobotContactWorldDataConfig(DataConfigFactory):
             self.create_base_config(assets_dirs, model_config),
             repack_transforms=_transforms.Group(inputs=[_transforms.RepackTransform(mapping)]),
             data_transforms=_transforms.Group(
-                inputs=[contactworld_policy.ContactWorldInputs(model_config.model_type, self.tactile_image)],
-                outputs=[contactworld_policy.ContactWorldOutputs()],
+                inputs=[contactworld_policy.ContactWorldInputs(
+                    model_config.model_type, self.tactile_image, self.action_dim, self.default_prompt)],
+                outputs=[contactworld_policy.ContactWorldOutputs(self.action_dim)],
             ),
             model_transforms=ModelTransformFactory()(model_config),
             action_sequence_keys=self.action_sequence_keys,
@@ -1740,6 +1743,61 @@ _CONFIGS.extend([
     _contactworld_train_config("pi0_cw_usb_11_pcnoise", visual=True, force=True,
                                tactile_representation="grid", cloud_noise_m=0.002),
 ])
+
+
+# Cross-task validation uses the reviewed bilateral V3 contract, but each task
+# owns its dataset root, language prompt and source action dimensionality.  The
+# four configurations repeat the USB comparisons that were informative: RGB,
+# RGB+cloud, base-coordinate pooled force tokens (07), and parameter-matched
+# per-pad TacFF maps (10).  They intentionally share the original pi0 base
+# weights rather than a USB task checkpoint.
+_CONTACTWORLD_CROSS_TASKS = {
+    "peg": ("contactworld_peg_v3_bilateral", 6, "Insert the peg into the matching hole."),
+    "barbed_flat": ("contactworld_barbed_flat_v3_bilateral", 7, "Remove the flat barbed plug from its socket."),
+    "valve": ("contactworld_valve_v3_bilateral", 7, "Turn the valve to complete the screwing task."),
+}
+
+
+def _contactworld_cross_task_train_config(task: str, suffix: str, *, cloud_mode: str = "none",
+                                          force_mode: str = "none", separate_fingers: bool = False,
+                                          tactile_representation: str | None = None) -> TrainConfig:
+    dataset_name, action_dim, prompt = _CONTACTWORLD_CROSS_TASKS[task]
+    root = _CONTACTWORLD_ROOT / "data" / dataset_name
+    visual, force = cloud_mode != "none", force_mode != "none"
+    common_model = dict(paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m_lora",
+                        action_horizon=16)
+    if visual or force:
+        model = contactworld_pi0_config.ContactWorldPi0Config(
+            **common_model, use_visual=visual, use_tactile=force, visual_points=4096,
+            tactile_points=280 if force_mode == "both_base3d" else 140,
+            tactile_representation=(tactile_representation or "base3d") if force else "none",
+            tactile_pool_per_finger=separate_fingers, structured=True,
+            conditioning=spatial_conditioning.SpatialConditioningConfig(target="suffix"))
+        loader = spatial_weight_loaders.SpatialCheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    else:
+        model = pi0_config.Pi0Config(**common_model)
+        loader = weight_loaders.CheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
+    sidecar = ContactWorldSidecarConfig(root=str(root), action_horizon=16, visual=visual, force=force,
+        dataset_version="v3", cloud_mode=cloud_mode, force_mode=force_mode)
+    return TrainConfig(
+        name="pi0_cw3_%s_%s" % (task, suffix), model=model,
+        data=LeRobotContactWorldDataConfig(repo_id=str(root), sidecar=sidecar, action_dim=action_dim,
+            default_prompt=prompt, assets=AssetsConfig(assets_dir=str(root / "assets"), asset_id="norm")),
+        weight_loader=loader, freeze_filter=model.get_freeze_filter(), ema_decay=None, seed=42,
+        batch_size=8, num_workers=0, lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
+        num_train_steps=20_000, save_interval=5_000, keep_period=5_000,
+    )
+
+
+for _cross_task in _CONTACTWORLD_CROSS_TASKS:
+    _CONFIGS.extend([
+        _contactworld_cross_task_train_config(_cross_task, "01_rgb"),
+        _contactworld_cross_task_train_config(_cross_task, "02_fused_pc", cloud_mode="fused"),
+        _contactworld_cross_task_train_config(_cross_task, "07_fused_pc_base_pooled", cloud_mode="fused",
+            force_mode="both_base3d"),
+        _contactworld_cross_task_train_config(_cross_task, "10_fused_pc_base_map_matched", cloud_mode="fused",
+            force_mode="both_base3d", separate_fingers=True, tactile_representation="map_coupled_matched"),
+    ])
 
 
 # Version 2 uses replayed, same-frame RGB-D/actions and true simulated right

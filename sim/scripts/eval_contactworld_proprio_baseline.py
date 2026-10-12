@@ -80,6 +80,10 @@ def prepare_environment(args, torch, np):
         cfg.capture_video = False
         cfg.force_render = False
         task_cfg = OmegaConf.to_container(cfg.task, resolve=True)
+        if getattr(args, "dual_tactile", False):
+            if args.task != "usb":
+                raise ValueError("Bilateral TacFF evaluation currently supports USB only")
+            task_cfg["env"]["obsDims"]["tactile_force_field_left"] = [10, 14, 3]
         (args.output / "task_config.json").write_text(json.dumps(task_cfg, indent=2)+"\n")
         env = TaskClass(cfg=task_cfg, rl_device="cuda:0", sim_device="cuda:0",
                         graphics_device_id=0, headless=True,

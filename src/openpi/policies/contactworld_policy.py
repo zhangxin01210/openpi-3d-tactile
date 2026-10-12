@@ -34,6 +34,8 @@ def depth_rgb(depth: np.ndarray) -> np.ndarray:
 class ContactWorldInputs(transforms.DataTransformFn):
     model_type: _model.ModelType
     tactile_image: str = "none"  # none/rgb/depth
+    action_dim: int = 6
+    default_prompt: str = "Insert the USB plug into the socket."
 
     def __call__(self, data: dict) -> dict:
         state = np.asarray(data["observation/state"], dtype=np.float32)
@@ -56,17 +58,19 @@ class ContactWorldInputs(transforms.DataTransformFn):
             "image_mask": {"base_0_rgb": np.True_, "left_wrist_0_rgb": np.True_,
                            "right_wrist_0_rgb": np.bool_(self.tactile_image != "none" or
                                                         self.model_type == _model.ModelType.PI0_FAST)},
-            "prompt": data.get("prompt", "Insert the USB plug into the socket."),
+            "prompt": data.get("prompt", self.default_prompt),
         }
         if "actions" in data:
             action = np.asarray(data["actions"], dtype=np.float32)
-            if action.shape[-1] != 6:
-                raise ValueError(f"Expected 6D source action, got {action.shape}")
+            if action.shape[-1] != self.action_dim:
+                raise ValueError(f"Expected {self.action_dim}D source action, got {action.shape}")
             result["actions"] = action
         return result
 
 
 @dataclasses.dataclass(frozen=True)
 class ContactWorldOutputs(transforms.DataTransformFn):
+    action_dim: int = 6
+
     def __call__(self, data: dict) -> dict:
-        return {"actions": np.asarray(data["actions"])[..., :6]}
+        return {"actions": np.asarray(data["actions"])[..., :self.action_dim]}

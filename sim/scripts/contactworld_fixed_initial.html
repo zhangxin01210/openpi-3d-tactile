@@ -1,0 +1,105 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>固定初态示范 · 40 × 13 连续轨迹对比</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#111925;color:#e7eef8;font:16px/1.65 system-ui,sans-serif}main{max-width:1390px;margin:auto;padding:24px}h1{font-size:28px;margin:0 0 8px}h3{margin:0;font-size:18px}p{margin:10px 0}a{color:#9dd5ff}button,select,input{font:inherit}button,select{background:#24384e;color:#edf6ff;border:1px solid #557491;border-radius:6px;padding:6px 11px;cursor:pointer}button:hover{background:#355777}input[type=range]{accent-color:#8dcaff;min-width:150px;flex:1}.intro{padding:14px 18px;background:#1c3047;border-left:4px solid #85caff}.small{font-size:14px;color:#bacbdf}.toolbar{position:sticky;top:0;z-index:10;background:#111d2cf5;padding:12px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #405069}.jumpgrid{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.jumpgrid a{border:1px solid #415d78;border-radius:5px;padding:2px 7px;text-decoration:none}details.case{border:1px solid #394c62;border-radius:9px;margin:18px 0;scroll-margin-top:70px}details.case>summary{padding:14px 17px;background:#223349;font-size:19px;cursor:pointer}.ref{padding:10px 17px;border-bottom:1px solid #36465c}.controls{padding:12px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#1a2c42f8;position:sticky;top:63px;z-index:5}.cards{padding:0 16px}.card{padding:19px 0;border-bottom:1px solid #38485e;scroll-margin-top:155px}.cardhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}.badge{border-radius:20px;padding:2px 11px;font-size:14px}.good{background:#18533e;color:#c3ffe7}.partial{background:#695022;color:#ffebc5}.bad{background:#632e3b;color:#ffdce7}.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:9px}.vtitle{padding:5px 8px;background:#24384d;font-size:15px}.view{width:100%;aspect-ratio:2;display:block;background:#080f17;cursor:pointer}.phasebar{position:relative;height:15px;margin-top:6px;cursor:pointer}.phasebar canvas{width:100%;height:15px;display:block}.phasecursor{position:absolute;top:-3px;bottom:-3px;width:2px;background:white;box-shadow:0 0 3px #111;pointer-events:none}.phaseline{font-size:14px;min-height:47px;color:#cbdff0}.phaseline strong{margin-right:10px}.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:13px;color:#bfd2e4}.legend span:before{content:' ';display:inline-block;width:11px;height:11px;margin-right:4px;background:var(--phase);border-radius:2px}.caption{font-size:14px;min-height:25px;color:#bdd4ec}.unavailable{opacity:.5}.diagnostics{font-size:14px;margin-top:9px}.diagnostics summary{cursor:pointer;color:#a9d5fb}.rowtools{display:flex;gap:12px;flex-wrap:wrap;font-size:14px;margin-top:6px}.clock{min-width:140px}details.guide{margin:12px 0}details.guide>summary{cursor:pointer}code{background:#273c52;padding:1px 4px}footer{margin:20px 0;color:#b8c9da}@media(max-width:700px){main{padding:12px}.pair{grid-template-columns:1fr}.controls{position:static}h1{font-size:23px}.toolbar{gap:7px}}
+</style></head><body><main>
+<h1>固定一条初态最近的示范，连续比较完整动作</h1>
+<p>40 个测试初态，每个初态下排列 13 个配置。每行左边是测试、右边是同一条固定训练示范；两边各自包含前视＋腕视，训练来源不会随帧跳变。</p>
+<div class="intro">先用<b>起点对齐</b>观察接近路径在哪里开始分开，再切换<b>首次插件—插座接触对齐</b>检查下插、卡住与调整。任一侧先结束就保持末帧并标注结束。点击任一视频可播放／暂停当前初态的同步对比。</div>
+<div class="legend"><span style="--phase:#738da2">未碰到插座</span><span style="--phase:#9c9180">接触后分离</span><span style="--phase:#df8548">孔口对齐中</span><span style="--phase:#cfb85a">近轴待下降</span><span style="--phase:#55add4">正在轴向下降</span><span style="--phase:#5c8fd7">下降后停顿</span><span style="--phase:#aa81e3">目标高度附近</span><span style="--phase:#61c58d">目标判据通过</span></div>
+<details class="guide"><summary>对齐方式与“初态最近”的含义</summary>
+<p>默认按<b>控制步／帧索引</b>对齐，起点为 0；接触对齐时 0 是各自首次插件—插座接触，负数是接触前、正数是接触后。不缩放轨迹长度，不做动态时间规整。播放速度只表示每秒显示多少控制步。</p>
+<p>训练数据的历史采集帧率未知，因此不能将同步理解为历史真实时间相同。训练合并视频以 15 帧/秒编码便于观看，每一帧仍来自原训练视频，未补帧。测试视频保留原始完整 181 帧，包括最后四个动作后的最终画面。</p>
+<p>每个初态沿用已完成的训练覆盖分析：只在训练划分中，按目标位置、插件相对目标位姿和相对夹爪位姿综合选取一个最近初态。13 个配置共享这条示范，未根据测试成功与否挑选。它是<b>几何初态最近</b>，不保证图像最像，也不意味着起点完全相同。D 为该分析中的无量纲加权距离，可展开每个案例查看实际毫米／角度差。</p>
+<p>接触事件沿用插件—插座合力范数超过 0.1 的记录，将动作后时刻映射到下一观测帧。无接触记录的配置在接触对齐模式中暂停并明确标识，不伪造接触锚点。手指与插件从初态就有夹持接触，不属于这里的插座接触事件。</p>
+<p>视频下方色带与逐帧标签来自已保存的<b>仿真真值诊断</b>，没有进入策略输入。孔口接触时，XY 偏差不超过 2 mm 且轴角不超过 5°称“近轴”；当前接触期间最近 3 帧 Z 高度下降至少 0.5 mm称“正在轴向下降”，首次接触后累计下降至少 3 mm但当前未下降称“下降后停顿”。近轴且 |Z|≤5 mm 时单独标记“目标高度附近”，不会因为运动停住而重置为“未下插”。这些是便于看轨迹的操作定义，不等于机械间隙已校准；“目标判据通过”指环境原有关键点判据。</p>
+<p>视频下方可以按需打开触觉、点云与动态近邻诊断。<a href="dynamic_nearest.html">之前的完整传感器页面</a>仍然保留。<a href="fixed_initial_manifest.json">固定示范、事件锚点及文件清单</a>。</p>
+</details>
+<div class="toolbar"><label>初态 <select id="jump"></select></label><button id="collapse">收起全部</button><span class="small">40 个初态 · 520 次测试 · 每初态固定一个训练来源</span></div>
+<nav class="jumpgrid" id="links"></nav><div id="cases"></div>
+<footer>建议先看 10005 与 10008 的接近差异，再看 10014 各配置的接触后分化、10034 是否出现有效调整。相似轨迹本身不能证明策略复制了示范。</footer>
+<script>
+'use strict';
+const DATA=__DATA__;
+const PHASE_NAMES=['未碰到插座','接触后暂时分离','孔口接触 · 对齐中','孔口接触 · 近轴待下降','近轴 · 正在轴向下降','目标位姿判据通过','接触后已下降 · 当前停顿','目标高度附近 · 判据未过'];
+const PHASE_COLORS=['#738da2','#9c9180','#df8548','#cfb85a','#55add4','#61c58d','#5c8fd7','#aa81e3'];
+function element(tag,props={},text=''){const e=document.createElement(tag);Object.assign(e,props);if(text)e.textContent=text;return e;}
+function phasePanel(box,trace){
+ const bar=element('div',{className:'phasebar'}),canvas=element('canvas'),marker=element('div',{className:'phasecursor'}),line=element('div',{className:'phaseline'});
+ canvas.width=trace.length;canvas.height=15;const ctx=canvas.getContext('2d');
+ for(let i=0;i<trace.length;i++){ctx.fillStyle=PHASE_COLORS[trace[i][0]];ctx.fillRect(i,0,1,15);}
+ bar.append(canvas,marker);box.append(bar,line);return {bar,marker,line};
+}
+function showPhase(panel,trace,frame){
+ const i=Math.max(0,Math.min(Math.floor(frame),trace.length-1)),[phase,force,xy,z,axis]=trace[i];
+ panel.marker.style.left=`${(i+.5)/trace.length*100}%`;
+ panel.line.innerHTML=`<strong style="color:${PHASE_COLORS[phase]}">${PHASE_NAMES[phase]}</strong><br>插座接触力 ${force.toFixed(2)} · XY ${xy.toFixed(1)} mm · Z ${z.toFixed(1)} mm · 轴角 ${axis.toFixed(1)}°`;
+}
+function sampleFrame(raw,count){const last=count-1;return {value:Math.max(0,Math.min(raw,last)),state:raw<0?'未开始，保持首帧':raw>=last?'已结束，保持末帧':'进行中'};}
+function mappedFrames(mode,cursor,test,train){if(mode==='contact'&&(test.contact===null||train.contact===null))return null;return {test:sampleFrame(cursor+(mode==='contact'?test.contact:0),test.frames),train:sampleFrame(cursor+(mode==='contact'?train.contact:0),train.frames)};}
+function bounds(info,mode){const t=info.train;if(mode==='start')return [0,Math.max(t.frames-1,...info.models.map(m=>m.frames-1))];const valid=info.models.filter(m=>m.contact!==null);if(t.contact===null||!valid.length)return [0,0];return [Math.min(-t.contact,...valid.map(m=>-m.contact)),Math.max(t.frames-1-t.contact,...valid.map(m=>m.frames-1-m.contact))];}
+const groups=new Map();
+function pauseGroup(s){s.playing=false;if(!s.built)return;s.play.textContent='同步播放';for(const card of s.cards)for(const v of [card.left,card.right])v.pause();}
+function positionVideo(video,sample,fps,s,force,visible){
+ if(video.readyState<1)return;
+ // Seek just inside a frame to avoid decoder rounding to the previous frame.
+ const nudge=(force||!s.playing||sample.state!=='进行中')?.01:0;
+ const target=Math.min((sample.value+nudge)/fps,Math.max(0,video.duration-.001));
+ if(force||Math.abs(video.currentTime-target)>1.1/fps)video.currentTime=target;
+ if(s.playing&&visible&&sample.state==='进行中'){
+  video.playbackRate=s.speed/fps;
+  if(video.paused&&!video._starting){video._starting=true;video.play().catch(()=>{}).finally(()=>{video._starting=false;});}
+ }else video.pause();
+}
+function applyCard(s,card,force=false){
+ const pair=mappedFrames(s.mode,s.cursor,card.model,s.info.train);
+ card.wrap.classList.toggle('unavailable',!pair);
+ if(!pair){card.left.pause();card.right.pause();card.caption.textContent='此例没有可用的插件—插座接触锚点；切回起点对齐查看。';return;}
+ const tt=pair.test,rt=pair.train;
+ card.caption.textContent=`测试帧 ${Math.floor(tt.value)} / ${card.model.frames-1} · ${tt.state}　｜　训练帧 ${Math.floor(rt.value)} / ${s.info.train.frames-1} · ${rt.state}`;
+ showPhase(card.leftPanel,card.model.trace,tt.value);showPhase(card.rightPanel,s.info.train.trace,rt.value);
+ positionVideo(card.left,tt,card.model.fps,s,force,true);positionVideo(card.right,rt,s.info.train.fps,s,force,true);
+}
+function updateClock(s){s.slider.value=s.cursor;s.clock.textContent=s.mode==='start'?`共同控制步 ${Math.floor(s.cursor)}`:`距首次接触 ${s.cursor>=0?'+':''}${Math.floor(s.cursor)} 步`;}
+function seek(s,value){const [low,high]=bounds(s.info,s.mode);s.cursor=Math.max(low,Math.min(value,high));s.last=performance.now();updateClock(s);for(const c of s.cards)applyCard(s,c,true);}
+function switchMode(s,mode){pauseGroup(s);s.mode=mode;s.select.value=mode;const [low,high]=bounds(s.info,mode);s.slider.min=low;s.slider.max=high;seek(s,0);}
+function togglePlay(s){if(s.playing){pauseGroup(s);return;}for(const other of groups.values())if(other!==s)pauseGroup(other);const [low,high]=bounds(s.info,s.mode);if(s.cursor>=high)seek(s,s.mode==='contact'?0:low);s.playing=true;s.last=performance.now();s.play.textContent='同步暂停';for(const c of s.cards)applyCard(s,c,true);}
+function attachMedia(s){for(const card of s.cards){for(const v of [card.left,card.right])if(!v.getAttribute('src')){v.src=v.dataset.src;v.load();}applyCard(s,card,true);}}
+function tick(now){for(const s of groups.values())if(s.playing){s.cursor+=(now-s.last)/1000*s.speed;s.last=now;const end=bounds(s.info,s.mode)[1];if(s.cursor>=end){s.cursor=end;pauseGroup(s);}updateClock(s);for(const c of s.cards)applyCard(s,c);}requestAnimationFrame(tick);}
+requestAnimationFrame(tick);
+function build(s){
+ if(s.built)return;s.built=true;
+ const info=s.info,n=info.nearest,t=info.train;
+ const ref=element('div',{className:'ref'});ref.append(element('p',{},`固定训练：source ${t.source} / LeRobot episode ${t.episode} · ${t.frames} 帧 · D=${n.distance.toFixed(2)}`));
+ const detail=element('details');detail.append(element('summary',{className:'small'},'查看初态具体差异（不是完全相同的起点）'),element('p',{className:'small'},`目标位置差 ${n.target_mm.toFixed(1)} mm；插件相对目标位置差 ${n.relative_plug_mm.toFixed(1)} mm，姿态差 ${n.relative_rotation_deg.toFixed(1)}°；夹持相对位置差 ${n.grasp_mm.toFixed(1)} mm，姿态差 ${n.grasp_rotation_deg.toFixed(1)}°。`));ref.append(detail);s.details.append(ref);
+ const controls=element('div',{className:'controls'});s.play=element('button',{},'同步播放');s.play.onclick=()=>togglePlay(s);
+ const prev=element('button',{},'◀ 上一步'),next=element('button',{},'下一步 ▶');prev.onclick=()=>{pauseGroup(s);seek(s,Math.floor(s.cursor)-1);};next.onclick=()=>{pauseGroup(s);seek(s,Math.floor(s.cursor)+1);};
+ s.select=element('select',{ariaLabel:'时间对齐方式'});s.select.append(element('option',{value:'start'},'起点对齐'),element('option',{value:'contact',disabled:t.contact===null||!info.models.some(m=>m.contact!==null)},'首次插座接触对齐'));s.select.onchange=()=>switchMode(s,s.select.value);
+ s.slider=element('input',{type:'range',min:0,max:bounds(info,'start')[1],step:1,value:0,ariaLabel:'共同控制步'});s.slider.oninput=()=>{pauseGroup(s);seek(s,Number(s.slider.value));};
+ s.clock=element('span',{className:'clock small'},'共同控制步 0');const speed=element('select',{ariaLabel:'显示速度'});for(const v of [5,10,15])speed.append(element('option',{value:v,selected:v===10},v+' 步/秒'));speed.onchange=()=>{s.speed=Number(speed.value);};controls.append(s.play,prev,next,s.select,s.slider,s.clock,speed);s.details.append(controls);
+ const cards=element('div',{className:'cards'});s.details.append(cards);
+ for(const model of info.models){
+  const article=element('article',{className:'card',id:`seed${info.seed}-model${model.number}`}),head=element('div',{className:'cardhead'});
+  const result=model.final?'最终成功':model.ever?'仅曾成功':'失败';head.append(element('h3',{},`${String(model.number).padStart(2,'0')} · ${model.config.split('_usb_')[1].slice(3)}`),element('span',{className:'badge '+(model.final?'good':model.ever?'partial':'bad')},result));article.append(head);
+  const wrap=element('div',{className:'pair'}),leftBox=element('div'),rightBox=element('div');
+  leftBox.append(element('div',{className:'vtitle'},`测试 ${info.seed} · 前视 ｜ 腕视`));rightBox.append(element('div',{className:'vtitle'},`固定训练 source ${t.source} · 前视 ｜ 腕视`));
+  const left=element('video',{className:'view',muted:true,playsInline:true,preload:'auto'}),right=element('video',{className:'view',muted:true,playsInline:true,preload:'auto',poster:t.poster});left.dataset.src=model.video;right.dataset.src=t.video;
+  leftBox.append(left);rightBox.append(right);const leftPanel=phasePanel(leftBox,model.trace),rightPanel=phasePanel(rightBox,t.trace);
+  for(const [panel,contact] of [[leftPanel,model.contact],[rightPanel,t.contact]])panel.bar.onclick=e=>{pauseGroup(s);const frame=Math.min(Math.floor(e.offsetX/panel.bar.clientWidth*(panel===leftPanel?model.frames:t.frames)),(panel===leftPanel?model.frames:t.frames)-1);seek(s,frame-(s.mode==='contact'?contact||0:0));};
+  wrap.append(leftBox,rightBox);const caption=element('p',{className:'caption'}),card={model,left,right,leftPanel,rightPanel,wrap,caption};s.cards.push(card);
+  for(const video of [left,right]){video.onclick=()=>togglePlay(s);video.addEventListener('loadedmetadata',()=>applyCard(s,card,true));}
+  const links=element('div',{className:'rowtools'});links.append(element('a',{href:model.video,target:'_blank'},'单独打开测试视频'),element('a',{href:t.video,target:'_blank'},'单独打开完整训练示范'));
+  const diagnostics=element('details',{className:'diagnostics'});diagnostics.append(element('summary',{},'需要解释差异时，再看触觉和点云'),element('p',{},`本配置首次插座接触观测：${model.contact===null?'未记录':model.contact}；训练示范首次接触帧：${t.contact===null?'未记录':t.contact}。`),element('a',{href:model.sensors,target:'_blank'},`打开初态 ${info.seed} 的传感器诊断（选择 ${String(model.number).padStart(2,'0')} 配置）`));
+  article.append(wrap,caption,links,diagnostics);cards.append(article);applyCard(s,card);
+ }
+}
+function openSeed(seed){const s=groups.get(Number(seed));if(!s)return;s.details.open=true;s.details.scrollIntoView({behavior:'smooth',block:'start'});document.querySelector('#jump').value=seed;}
+for(const info of DATA){
+ const details=element('details',{className:'case',id:'seed'+info.seed}),summary=element('summary',{},`初态 ${info.seed} → 固定 source ${info.train.source}　·　最终成功 ${info.models.filter(m=>m.final).length}/13`);details.append(summary);document.querySelector('#cases').append(details);
+ const s={info,details,cards:[],built:false,playing:false,mode:'start',cursor:0,speed:10,last:0};groups.set(info.seed,s);
+ details.addEventListener('toggle',()=>{if(details.open){build(s);attachMedia(s);for(const other of groups.values())if(other!==s)other.details.open=false;}else{pauseGroup(s);for(const c of s.cards)for(const v of [c.left,c.right]){v.pause();if(v.getAttribute('src')){v.removeAttribute('src');v.load();}}}});
+ document.querySelector('#jump').append(element('option',{value:info.seed},String(info.seed)));const link=element('a',{href:'#seed'+info.seed},String(info.seed));link.onclick=e=>{e.preventDefault();openSeed(info.seed);};document.querySelector('#links').append(link);
+}
+document.querySelector('#jump').onchange=e=>openSeed(e.target.value);document.querySelector('#collapse').onclick=()=>{for(const s of groups.values())s.details.open=false;};
+openSeed(Number(location.hash.replace('#seed',''))||DATA[0].seed);
+</script></main></body></html>
