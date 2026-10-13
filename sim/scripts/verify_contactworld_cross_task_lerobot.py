@@ -61,7 +61,13 @@ def main() -> None:
             if array.shape != (length,) + shape or not np.isfinite(array).all():
                 raise ValueError("Invalid %s episode %d" % (key, ep))
             arrays[key] = array
-        if np.array_equal(arrays["tactile_force_left_base"], arrays["tactile_force_right_base"]):
+        # Both independent pads may legitimately be all-zero throughout a
+        # free-motion demonstration.  Only an exactly identical *non-zero*
+        # field indicates that one sensor was copied into the other.
+        left_force = arrays["tactile_force_left_base"]
+        right_force = arrays["tactile_force_right_base"]
+        if (np.array_equal(left_force, right_force)
+                and (np.any(left_force != 0) or np.any(right_force != 0))):
             raise ValueError("Left/right tactile force was duplicated: episode %d" % ep)
         # A gripping pair can be closer than 5 mm.  Detect genuine duplicated
         # pad geometry (zero separation) without rejecting a valid close grip.
@@ -92,7 +98,10 @@ def main() -> None:
             if role.startswith("tacff_"):
                 side = role.split("_")[1]
                 reader = cv2.VideoCapture(str(video))
-                for frame in (0, length // 2, length - 1):
+                # One-frame demonstrations produce (0, 0, 0).  Re-seeking
+                # that H.264 stream repeatedly can make OpenCV report a false
+                # read failure even though the encoded frame is valid.
+                for frame in sorted({0, length // 2, length - 1}):
                     reader.set(cv2.CAP_PROP_POS_FRAMES, frame)
                     ok, bgr = reader.read()
                     if not ok or np.abs(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB).astype(np.int16) -
