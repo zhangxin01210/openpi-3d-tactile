@@ -109,6 +109,31 @@ def relation_canvas(cloud: np.ndarray, taxel_xyz: np.ndarray, derived: dict[str,
     return png_base64(figure)
 
 
+def relation_points(cloud: np.ndarray, taxel_xyz: np.ndarray,
+                    derived: dict[str, np.ndarray]) -> dict:
+    """Prepare compact data for the self-contained interactive 3-D viewer."""
+    query = np.asarray(derived["query_xyz_base"], dtype=np.float32)
+    retained_xyz = np.asarray(derived["candidate_xyz_base"], dtype=np.float32)
+    retained_mask = np.asarray(derived["candidate_mask"], dtype=bool)
+    local_parts = []
+    for finger in range(2):
+        distance = np.linalg.norm(cloud - query[finger], axis=-1)
+        part = np.asarray(cloud[distance <= RELATION_RADIUS_M], dtype=np.float32)
+        if len(part) > 1800:
+            part = part[np.linspace(0, len(part) - 1, 1800, dtype=np.int32)]
+        local_parts.append(part)
+    local = (np.concatenate(local_parts, axis=0) if any(len(part) for part in local_parts)
+             else np.zeros((0, 3), dtype=np.float32))
+    return {
+        "scene": np.round(np.asarray(cloud, dtype=np.float32), 5).tolist(),
+        "local": np.round(local, 5).tolist(),
+        "pads": [np.round(np.asarray(taxel_xyz[finger]), 5).tolist() for finger in range(2)],
+        "retained": [np.round(retained_xyz[finger][retained_mask[finger]], 5).tolist()
+                     for finger in range(2)],
+        "queries": np.round(query, 5).tolist(),
+    }
+
+
 def chosen_frames(force: np.ndarray, length: int) -> list[int]:
     magnitude = np.linalg.norm(force, axis=-1).sum(axis=(1, 2))
     values = {0, length // 2, length - 1, int(np.argmax(magnitude)), int(np.argmin(magnitude))}
@@ -136,6 +161,7 @@ def main() -> None:
         rows = [all_rows[index] for index in sorted(set(indices))]
     args.output.mkdir(parents=True, exist_ok=True)
     cards = []
+    cloud_data = {}
     for row in rows:
         episode = int(row["episode_index"])
         src = dataset / "spatial/episodes" / f"episode_{episode:06d}"
@@ -164,22 +190,75 @@ def main() -> None:
             local_force = local[frame]
             force_plot = force_canvas(local_force, selected, derived["anchor_uv"][frame],
                                       derived["anchor_mask"][frame])
-            relation_plot = relation_canvas(cloud[frame], xyz[frame],
-                                            {key: derived[key][frame] for key in (
-                                                "query_xyz_base", "candidate_xyz_base", "candidate_mask")})
+            cloud_id = f"cloud-{episode}-{frame}"
+            cloud_data[cloud_id] = relation_points(
+                cloud[frame], xyz[frame],
+                {key: derived[key][frame] for key in (
+                    "query_xyz_base", "candidate_xyz_base", "candidate_mask")})
             counts = derived["candidate_mask"][frame].sum(axis=-1)
             valid = derived["finger_valid"][frame].tolist()
             cards.append(f'''<details class="case"><summary>episode {episode} · frame {frame} · left/right candidate count {counts.tolist()} · contact valid {valid}</summary>
 <div class="grid"><section><h3>Front / wrist RGB</h3><img src="data:image/jpeg;base64,{base64.b64encode(packed.tobytes()).decode()}"></section>
 <section><h3>Contact-centred sparse tactile</h3><img src="data:image/png;base64,{force_plot}"></section>
-<section class="wide"><h3>Tactile-to-scene candidates</h3><img src="data:image/png;base64,{relation_plot}"></section></div>
-<p>Grey points are every cloud point within {float(RELATION_RADIUS_M):.3f} m of a tactile query. Coloured points pass the tactile-facing half-space and self-surface-margin filters. This rejects clear pad-backside geometry; it does not claim a full robot or object segmentation.</p></details>''')
+<section class="wide"><h3>Interactive tactile-to-scene point cloud</h3>
+<div class="cloud-toolbar"><button type="button" data-cloud-action="local" data-cloud="{cloud_id}">局部关系点</button><button type="button" data-cloud-action="scene" data-cloud="{cloud_id}">全部场景点</button><button type="button" data-cloud-action="reset" data-cloud="{cloud_id}">重置视角</button><span>拖动旋转 · 滚轮缩放</span></div>
+<canvas class="cloud-viewer" id="{cloud_id}" width="1100" height="560" aria-label="可旋转的机械臂 base 坐标系点云"></canvas>
+<div class="legend"><span><i class="swatch context"></i>场景点</span><span><i class="swatch left"></i>左指 taxel</span><span><i class="swatch right"></i>右指 taxel</span><span><i class="swatch left-rel"></i>左指保留候选</span><span><i class="swatch right-rel"></i>右指保留候选</span><span><i class="swatch query"></i>力中心</span></div></section></div>
+<p>默认显示查询点周围 {float(RELATION_RADIUS_M):.3f} m 的局部点；“全部场景点”显示这一帧的 4096 点云。灰色点是场景点，青色/黄色是左右指 taxel，绿色/紫色是通过触觉朝向过滤器保留的候选。候选仍不是物体分割，也不等于 USB–插座真实碰撞点。</p></details>''')
+    data_json = json.dumps(cloud_data, separators=(",", ":"))
     page = f'''<!doctype html><meta charset="utf-8"><title>ContactWorld USB contact representation audit</title>
-<style>body{{margin:0 auto;max-width:1500px;padding:24px;background:#101722;color:#e8effa;font:16px system-ui;line-height:1.5}}h1{{margin-top:0}}details{{border:1px solid #40536d;border-radius:8px;margin:16px 0;background:#172334}}summary{{padding:12px;cursor:pointer;font-weight:650}}.case>div{{padding:0 12px 12px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.wide{{grid-column:1/-1}}img{{max-width:100%;display:block;background:#081018}}p{{color:#bccce1}}.notice{{border-left:4px solid #67b7ff;background:#182a40;padding:12px}}</style>
+<style>body{{margin:0 auto;max-width:1500px;padding:24px;background:#101722;color:#e8effa;font:16px system-ui;line-height:1.5}}h1{{margin-top:0}}details{{border:1px solid #40536d;border-radius:8px;margin:16px 0;background:#172334}}summary{{padding:12px;cursor:pointer;font-weight:650}}.case>div{{padding:0 12px 12px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.wide{{grid-column:1/-1}}img{{max-width:100%;display:block;background:#081018}}p{{color:#bccce1}}.notice{{border-left:4px solid #67b7ff;background:#182a40;padding:12px}}.cloud-toolbar{{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}}button{{border:1px solid #5c7fa8;background:#23466f;color:#e8effa;border-radius:5px;padding:7px 11px;cursor:pointer}}button:hover{{background:#2f5c8e}}.cloud-toolbar span{{color:#9fb3cd;font-size:13px}}.cloud-viewer{{width:100%;height:auto;display:block;background:#0a111b;border:1px solid #40536d;touch-action:none;cursor:grab}}.cloud-viewer.dragging{{cursor:grabbing}}.legend{{display:flex;flex-wrap:wrap;gap:12px 18px;color:#c8d5e5;font-size:13px;margin-top:8px}}.legend span{{display:inline-flex;align-items:center;gap:5px}}.swatch{{width:10px;height:10px;border-radius:50%;display:inline-block}}.context{{background:#8d9bab}}.left{{background:#29d6ff}}.right{{background:#ffbd45}}.left-rel{{background:#5af29c}}.right-rel{{background:#f25ac5}}.query{{background:#ffffff}}</style>
 <h1>USB V3: contact-centred tactile and local tactile–scene relation input audit</h1>
 <p class="notice">This page must be reviewed before training 16–19. It uses the same deterministic sidecar that training and online policy evaluation read. The contact centre is a finger-pad force centre, not a USB–socket collision point. The relation filter is tactile-facing local geometry, not simulator object identity or a full robot segmentation.</p>
 <p>Each finger has up to two force-connected patches × 16 retained taxels; the model receives the two patch tokens plus one full-pad summary token. Relation models receive three learned relation tokens per finger over the coloured candidates.</p>
-{''.join(cards)}</html>'''
+{''.join(cards)}
+<script>
+const CLOUD_DATA = {data_json};
+(function() {{
+  const colours = {{context: '#8d9bab', left: '#29d6ff', right: '#ffbd45', leftRel: '#5af29c', rightRel: '#f25ac5'}};
+  const viewers = new Map();
+  function init(canvas, data) {{
+    const ctx = canvas.getContext('2d');
+    const state = {{mode: 'local', yaw: 0.72, pitch: 0.42, zoom: 1, dragging: false, lastX: 0, lastY: 0}};
+    function reset() {{ state.yaw = 0.72; state.pitch = 0.42; state.zoom = 1; draw(); }}
+    function draw() {{
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.max(1, window.devicePixelRatio || 1);
+      const width = Math.max(320, rect.width), height = Math.max(240, rect.width * 0.48);
+      canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0); ctx.fillStyle = '#0a111b'; ctx.fillRect(0, 0, width, height);
+      const cloud = state.mode === 'scene' ? data.scene : data.local;
+      const all = cloud.concat(data.pads[0], data.pads[1], data.retained[0], data.retained[1], data.queries);
+      if (!all.length) return;
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      all.forEach(p => {{ for (let i=0;i<3;i++) {{ min[i]=Math.min(min[i],p[i]); max[i]=Math.max(max[i],p[i]); }} }});
+      const center = min.map((v,i)=>(v+max[i])*0.5), span = Math.max(...max.map((v,i)=>max[i]-min[i]), 0.02);
+      const scale = Math.min(width,height)*0.78*state.zoom/span;
+      function project(p) {{
+        let x=p[0]-center[0], y=p[1]-center[1], z=p[2]-center[2];
+        const cy=Math.cos(state.yaw), sy=Math.sin(state.yaw), x1=cy*x-sy*y, y1=sy*x+cy*y;
+        const cp=Math.cos(state.pitch), sp=Math.sin(state.pitch), y2=cp*y1-sp*z, z2=sp*y1+cp*z;
+        return [width/2+x1*scale, height/2-y2*scale, z2];
+      }}
+      const drawSet = (arr, color, radius, alpha) => arr.map(p => {{ const q=project(p); return [q[2],q[0],q[1]]; }}).sort((a,b)=>a[0]-b[0]).forEach(q => {{ ctx.globalAlpha=alpha; ctx.fillStyle=color; ctx.beginPath(); ctx.arc(q[1],q[2],radius,0,Math.PI*2); ctx.fill(); }});
+      drawSet(cloud, colours.context, state.mode==='scene'?1.3:2.1, state.mode==='scene'?.35:.58);
+      drawSet(data.pads[0], colours.left, 3.2, .95); drawSet(data.pads[1], colours.right, 3.2, .95);
+      drawSet(data.retained[0], colours.leftRel, 4.4, 1); drawSet(data.retained[1], colours.rightRel, 4.4, 1);
+      data.queries.forEach((p,i) => {{ const q=project(p); ctx.strokeStyle=i===0?colours.left:colours.right; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(q[0]-7,q[1]-7); ctx.lineTo(q[0]+7,q[1]+7); ctx.moveTo(q[0]+7,q[1]-7); ctx.lineTo(q[0]-7,q[1]+7); ctx.stroke(); }});
+      ctx.globalAlpha=1; ctx.fillStyle='#dbe8f8'; ctx.font='13px system-ui'; ctx.fillText('base X →', width-78, height-15); ctx.fillText('Y ↑', 13, 25); ctx.fillText('Z depth', 13, height-15);
+      ctx.fillStyle='#9fb3cd'; ctx.fillText(state.mode==='scene'?`全部场景点：${{data.scene.length}}`:`局部点：${{data.local.length}}`, 14, height-15);
+    }}
+    canvas.addEventListener('pointerdown', e => {{ state.dragging=true; state.lastX=e.clientX; state.lastY=e.clientY; canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId); }});
+    canvas.addEventListener('pointermove', e => {{ if(!state.dragging)return; state.yaw+=(e.clientX-state.lastX)*.008; state.pitch=Math.max(-1.45,Math.min(1.45,state.pitch+(e.clientY-state.lastY)*.008)); state.lastX=e.clientX; state.lastY=e.clientY; draw(); }});
+    canvas.addEventListener('pointerup', e => {{ state.dragging=false; canvas.classList.remove('dragging'); canvas.releasePointerCapture(e.pointerId); }});
+    canvas.addEventListener('pointercancel', () => {{ state.dragging=false; canvas.classList.remove('dragging'); }});
+    canvas.addEventListener('wheel', e => {{ e.preventDefault(); state.zoom=Math.max(.25,Math.min(8,state.zoom*Math.exp(-e.deltaY*.001))); draw(); }}, {{passive:false}});
+    window.addEventListener('resize', draw); viewers.set(canvas.id, {{reset, setMode: mode => {{ state.mode=mode; draw(); }}}}); draw();
+  }}
+  document.querySelectorAll('.cloud-viewer').forEach(canvas => init(canvas, CLOUD_DATA[canvas.id]));
+  document.querySelectorAll('[data-cloud-action]').forEach(button => button.addEventListener('click', () => {{ const viewer=viewers.get(button.dataset.cloud); if(!viewer)return; if(button.dataset.cloudAction==='reset')viewer.reset(); else viewer.setMode(button.dataset.cloudAction); }}));
+}})();
+</script></html>'''
     (args.output / "index.html").write_text(page)
     (args.output / "audit.json").write_text(json.dumps({"episodes": [int(r["episode_index"]) for r in rows],
         "contact_repr_root": str(repr_root), "status": "passed"}, indent=2) + "\n")
