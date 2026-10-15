@@ -282,7 +282,59 @@ class TactileSpatialInput(
 
 
 # =============================================================================
-# 4. Encoder input
+# 4. Contact-centred tactile and tactile-to-scene relation inputs
+# =============================================================================
+
+@struct.dataclass
+class ContactCenteredTactileInput(Generic[ArrayT]):
+    """Two contact-centred local patches plus one full-pad summary per finger.
+
+    Shapes use left/right finger order and fixed Taxel-grid local coordinates:
+
+    - patch_xyz_local: [B, 2, 2, 16, 2]
+    - patch_force: [B, 2, 2, 16, 3]
+    - patch_mask: [B, 2, 2, 16]
+    - anchor_xyz_m: [B, 2, 2, 3]
+    - anchor_stats: [B, 2, 2, 10]
+    - anchor_mask: [B, 2, 2]
+    - finger_summary: [B, 2, 13]
+    - finger_center_xyz_m: [B, 2, 3]
+    - finger_valid: [B, 2]
+
+    ``patch_xyz_local`` is centred on the force-weighted contact component in
+    sensor-grid coordinates.  ``anchor_xyz_m`` preserves its absolute robot
+    base location, so translation invariance does not erase useful geometry.
+    """
+
+    patch_xyz_local: ArrayT
+    patch_force: ArrayT
+    patch_mask: ArrayT
+    anchor_xyz_m: ArrayT
+    anchor_stats: ArrayT
+    anchor_mask: ArrayT
+    finger_summary: ArrayT
+    finger_center_xyz_m: ArrayT
+    finger_valid: ArrayT
+
+
+@struct.dataclass
+class TactileSceneRelationInput(Generic[ArrayT]):
+    """Local tactile-query / non-backside visual-candidate relations.
+
+    There are two queries, one for each tactile pad.  Each query is later
+    decoded by three learned pooling queries, yielding six relation tokens.
+    Candidate points are derived without object IDs or simulator contact truth.
+    """
+
+    query_xyz_m: ArrayT
+    query_features: ArrayT
+    query_valid: ArrayT
+    candidate_xyz_m: ArrayT
+    candidate_mask: ArrayT
+
+
+# =============================================================================
+# 5. Encoder input
 # =============================================================================
 
 @struct.dataclass
@@ -323,9 +375,13 @@ class SpatialEncoderInput(
         ArrayT
     ] | None = None
 
+    contact_centered_tactile: ContactCenteredTactileInput[ArrayT] | None = None
+
+    tactile_scene_relation: TactileSceneRelationInput[ArrayT] | None = None
+
 
 # =============================================================================
-# 5. Encoder output
+# 6. Encoder output
 # =============================================================================
 
 @struct.dataclass

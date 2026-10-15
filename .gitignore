@@ -3,6 +3,7 @@ assets/
 checkpoints/
 data/
 wandb/
+runs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -170,7 +171,13 @@ cython_debug/
 # Local spatial debug / derived outputs
 /output/
 /review/
-/diagnostics/
+diagnostic*
 3D_tactile
+<<<<<<< HEAD
 contactworld_failure_comparison_offline
 configs 
+=======
+
+# Generated offline review archive (large binary artifact).
+/sim/reports/2026-10-10/contactworld_failure_comparison_offline.zip*
+>>>>>>> 05d7491163776fb9256ec5918b9e2f9a0c402e11

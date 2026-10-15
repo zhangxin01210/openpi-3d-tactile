@@ -1,0 +1,27 @@
+{
+  "revision": "6587189d8e06480e739af5a4004d411c5c07743b",
+  "download_host": "https://hf-mirror.com",
+  "files": [
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/downloads/contactworld/insertion_usb_dataset.tar.gz",
+      "bytes": 6585153409,
+      "sha256": "e4b0a6b9d7751cea5d43b48916fb2bbca847b814d29242d58ec7eb7dae452f09",
+      "verified": true
+    },
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/downloads/contactworld/insertion_peg_dataset.tar.gz",
+      "bytes": 5441545984,
+      "sha256": "2c21d2ba2a19da64da5ec9945db6b50b98b4969e84d47515e41d16a4c13b8d7f",
+      "verified": true
+    }
+  ],
+  "source_commit": "8d0d0edff44f2bb28b58d96e3cf638088589e789",
+  "large_archive_transfer": "curl --noproxy * via hf-mirror.com; initial abandoned HF partial tests used proxy (~190 MiB), final verified archives assembled entirely from direct ranges",
+  "assets": {
+    "path": "/home/sai/zx/openpi-sim-runtime/downloads/contactworld/industreal.tar",
+    "bytes": 61839360,
+    "sha256": "84a19fd77b3c712a42c5677f6140acfa6eff73fa51c804397f8f09fd855c0375",
+    "verified": true,
+    "proxy_used": false
+  }
+}

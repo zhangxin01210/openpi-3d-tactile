@@ -1,0 +1,42 @@
+{
+  "scope": "均匀抽取每任务 10 条，导出完整视频并检查全帧数值；视觉检查使用各条分镜与候选区间。未逐帧确认全部接触，未运行仿真。",
+  "first_contact_caveat": "未保存 plug/socket 成对接触，首次碰孔时刻未知；TacFF 是手指/插件接触。以下是运动学候选，不是接触或成功真值标签。",
+  "events": [
+    {
+      "task": "insertion_usb",
+      "episode": 0,
+      "frames": [35, 46],
+      "title": "偏位后抬起、横移再对中",
+      "note": "帧 37 至 42，插件根部相对孔座根部的高度由 15.25 升至 24.04 mm，横向误差由 24.60 降至 12.33 mm；随后继续对中下降。末帧位置接近，但不满足当前源码的最终姿态判据，不能直接标成严格成功恢复。",
+      "first_plug_socket_contact_frame": null,
+      "recovery_success_confirmed": false
+    },
+    {
+      "task": "insertion_usb",
+      "episode": 111,
+      "frames": [41, 54],
+      "title": "高度停滞时做横向修正",
+      "note": "帧 41 至 49 高度约停在 18.9 mm，横向误差由 6.72 降至 2.18 mm；帧 50 降至 0.21 mm，随后继续下降。接近发布模型顶面的高度，但未保存真实碰孔接触信号。末帧略超当前源码的姿态阈值。",
+      "first_plug_socket_contact_frame": null,
+      "recovery_success_confirmed": false
+    },
+    {
+      "task": "insertion_peg",
+      "episode": 33,
+      "frames": [68, 105],
+      "title": "多次抬起和调整后插入",
+      "note": "后半段多次抬起再下降，伴随方向及 TacFF 变化；末帧横向误差约 0.4 mm、高度差约 0.3 mm，并通过当前源码的末帧位姿判据。仍缺少成对接触真值，尚未构成视觉相似而动作相反的严格对照样本。",
+      "first_plug_socket_contact_frame": null,
+      "recovery_success_confirmed": null
+    },
+    {
+      "task": "insertion_peg",
+      "episode": 0,
+      "frames": [70, 95],
+      "title": "终帧未完全插入的审查样例",
+      "note": "末帧插件根部仍比孔座根部高 16.61 mm，横向误差 1.87 mm；当前源码的四关键点平均误差为 37.43 mm，超过 7.9916 mm 阈值。这条不能默认作为完成插入的正例。",
+      "first_plug_socket_contact_frame": null,
+      "recovery_success_confirmed": false
+    }
+  ]
+}

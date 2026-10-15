@@ -3120,6 +3120,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+contactworld-source = [
+    { name = "zarr" },
+]
 dev = [
     { name = "ipykernel" },
     { name = "ipywidgets" },
@@ -3172,6 +3175,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+contactworld-source = [{ name = "zarr", specifier = ">=2.16.1,<4" }]
 dev = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "ipywidgets", specifier = ">=8.1.5" },

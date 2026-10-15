@@ -1,0 +1,161 @@
+{
+  "episode_000000": [
+    {
+      "row": 0,
+      "table_z_m": 0.7570943530031994,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 243909,
+          "median_table_height_residual_m": 0.0003974430367491566,
+          "median_absolute_table_height_residual_m": 0.0003974430367491566
+        },
+        "0.5": {
+          "near_table_count": 244200,
+          "median_table_height_residual_m": -1.5815331988466852e-07,
+          "median_absolute_table_height_residual_m": 1.611839431370221e-07
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    },
+    {
+      "row": 407,
+      "table_z_m": 0.7570943530031994,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 203783,
+          "median_table_height_residual_m": 0.0003786664532953177,
+          "median_absolute_table_height_residual_m": 0.0003786664532953177
+        },
+        "0.5": {
+          "near_table_count": 203973,
+          "median_table_height_residual_m": -1.6454261653198188e-07,
+          "median_absolute_table_height_residual_m": 1.660379979062654e-07
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    },
+    {
+      "row": 814,
+      "table_z_m": 0.7570943530031994,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 244807,
+          "median_table_height_residual_m": 0.00039799225692005447,
+          "median_absolute_table_height_residual_m": 0.00039799225692005447
+        },
+        "0.5": {
+          "near_table_count": 245032,
+          "median_table_height_residual_m": -1.5887409843262645e-07,
+          "median_absolute_table_height_residual_m": 1.6027505389537566e-07
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    }
+  ],
+  "episode_000024": [
+    {
+      "row": 0,
+      "table_z_m": 0.7570986730514598,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 240940,
+          "median_table_height_residual_m": 0.0004104230903269057,
+          "median_absolute_table_height_residual_m": 0.0004104230903269057
+        },
+        "0.5": {
+          "near_table_count": 241246,
+          "median_table_height_residual_m": -1.5543783055127491e-07,
+          "median_absolute_table_height_residual_m": 1.5910428530219178e-07
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    },
+    {
+      "row": 420,
+      "table_z_m": 0.7570986730514598,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 190214,
+          "median_table_height_residual_m": 0.0003856572472119568,
+          "median_absolute_table_height_residual_m": 0.0003856572472119568
+        },
+        "0.5": {
+          "near_table_count": 190401,
+          "median_table_height_residual_m": -1.577489429083201e-07,
+          "median_absolute_table_height_residual_m": 1.5911459039230635e-07
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    },
+    {
+      "row": 840,
+      "table_z_m": 0.7570986730514598,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 241674,
+          "median_table_height_residual_m": 0.0004104830815117033,
+          "median_absolute_table_height_residual_m": 0.0004104830815117033
+        },
+        "0.5": {
+          "near_table_count": 241857,
+          "median_table_height_residual_m": -1.5631424488127266e-07,
+          "median_absolute_table_height_residual_m": 1.5828591637401246e-07
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    }
+  ],
+  "episode_000049": [
+    {
+      "row": 0,
+      "table_z_m": 0.7556371529510416,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 243112,
+          "median_table_height_residual_m": 0.00039337392119614956,
+          "median_absolute_table_height_residual_m": 0.00039337392119614956
+        },
+        "0.5": {
+          "near_table_count": 243557,
+          "median_table_height_residual_m": -7.944461677400483e-08,
+          "median_absolute_table_height_residual_m": 8.199547540943541e-08
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    },
+    {
+      "row": 398,
+      "table_z_m": 0.7556371529510416,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 213692,
+          "median_table_height_residual_m": 0.000379504506293038,
+          "median_absolute_table_height_residual_m": 0.000379504506293038
+        },
+        "0.5": {
+          "near_table_count": 214108,
+          "median_table_height_residual_m": -8.112666405324376e-08,
+          "median_absolute_table_height_residual_m": 8.338969925691941e-08
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    },
+    {
+      "row": 795,
+      "table_z_m": 0.7556371529510416,
+      "pixel_offset_checks": {
+        "0.0": {
+          "near_table_count": 243955,
+          "median_table_height_residual_m": 0.0003939129239959316,
+          "median_absolute_table_height_residual_m": 0.0003939129239959316
+        },
+        "0.5": {
+          "near_table_count": 244285,
+          "median_table_height_residual_m": -8.00571524628424e-08,
+          "median_absolute_table_height_residual_m": 8.112662897019618e-08
+        }
+      },
+      "scope": "Chest pinhole camera only; near-table consistency check, not full metric calibration"
+    }
+  ]
+}

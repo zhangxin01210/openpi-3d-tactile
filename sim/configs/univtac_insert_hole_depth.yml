@@ -1,0 +1,44 @@
+# Source: UniVTAC isaac51/task_config/clean51.yml.
+# This project-owned variant records world-camera RGB + depth so point clouds
+# can be reconstructed. The released HDF5 archive was collected with RGB only.
+env_settings:
+  frequencies:
+    physical: 120
+    collect: 120
+    save: 60
+    video: 0
+    eval: 60
+    render: 0
+  random_texture: false
+  sensor_type: gsmini
+  optical_backend: taxim
+
+collect_settings:
+  save_root_dir: /home/sai/zx/openpi-sim-runtime/data_depth
+  use_seed: true
+  episode_num: 10
+
+replay_settings:
+  save_root_dir: /home/sai/zx/openpi-sim-runtime/eval_result_depth
+  force_action: false
+  max_episodes: 10
+
+observation_settings:
+  camera: [rgb, depth, intrinsic, pose_w_opengl]
+  tactile: [rgb, rgb_marker, marker, depth, press_depth, pose]
+  embodiment: [joint, ee]
+  actor: true
+
+task_overrides: {}
+
+# One scene on RTX 5090: these capacities passed construction and reset while
+# the Isaac Lab defaults hit CUDA allocation errors during PhysX startup.
+physx_overrides:
+  gpu_max_rigid_contact_count: 1048576
+  gpu_max_rigid_patch_count: 16384
+  gpu_found_lost_pairs_capacity: 262144
+  gpu_found_lost_aggregate_pairs_capacity: 262144
+  gpu_total_aggregate_pairs_capacity: 262144
+  gpu_collision_stack_size: 16777216
+  gpu_heap_capacity: 16777216
+  gpu_temp_buffer_capacity: 4194304

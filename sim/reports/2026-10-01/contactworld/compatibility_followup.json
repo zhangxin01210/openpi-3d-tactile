@@ -1,0 +1,29 @@
+{
+  "decision": "defer_local_legacy_runtime_and_review_bench2dex",
+  "reason": "No verified small compatibility adaptation found in inspected sources. Available 5090 recipe requires maintaining custom Torch/torchvision builds; experimental ManiFeel Isaac Lab branch only tests Lift-Cube.",
+  "local_evidence": {
+    "official_torch_cuda_ptx": "cuobjdump --list-ptx reports no PTX in installed libtorch_cuda.so",
+    "binding_source": "package only ships gymtorch tensor bridge source, no gym_38 binding source",
+    "modern_environment": "Existing Isaac Sim 5.1 environment torch 2.7.0+cu128 executes CUDA arange successfully on same RTX 5090"
+  },
+  "community_recipe": {
+    "url": "https://github.com/escontra/gauss_gym/issues/13#issuecomment-4914476549",
+    "claim": "5090 Isaac Gym works after building torch 2.4.1 for Python 3.8/CUDA12.8/sm120, cuDNN>=9.7 and rebuilding torchvision",
+    "verification": "Author report only; not independently reproduced here",
+    "classification": "outside agreed small-adaptation scope"
+  },
+  "manifeel_isaaclab_pr": {
+    "url": "https://github.com/purdue-mars/manifeel/pull/16",
+    "commit": "42291f239cc24267ba8806434ba544e8e6538556",
+    "state": "closed_unmerged",
+    "actual_task": "Isaac-Lift-Cube-Franka-v0",
+    "usb_peg_tacsl_migration": false
+  },
+  "limits": [
+    "Not a proof that ContactWorld can never run on this GPU",
+    "No custom framework rebuild attempted",
+    "No perturbation collection or training",
+    "ContactWorld datasets retained"
+  ],
+  "next": "Bench2Dex: one task, three distinct trajectories, RGB/depth/calibration/TacMap replay gate"
+}

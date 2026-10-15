@@ -1,0 +1,9 @@
+# Standalone offline audit environment, Python 3.11; no simulator or OpenPI dependencies.
+asciitree==0.3.3
+deprecated==1.3.1
+fasteners==0.20
+numcodecs==0.15.1
+numpy==2.4.6
+opencv-python-headless==5.0.0.93
+wrapt==2.5.0
+zarr==2.18.7

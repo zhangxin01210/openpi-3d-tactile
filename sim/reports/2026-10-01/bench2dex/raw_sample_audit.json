@@ -1,0 +1,450 @@
+{
+  "episodes": [
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/data/bench2dex_review/dataset/73_jigsaw_puzzle_assembly/origin-generalization/episode_000000.hdf5",
+      "metadata": {
+        "collection_mode": "scripted_hold",
+        "demo_eligible": false,
+        "success": false,
+        "success_available": true,
+        "instruction": "Arrange the 8 Tetris building blocks into a compact cluster, then separate them again.",
+        "robot_key": "multi_iiwa7_with_sharpa",
+        "frame_count": 815,
+        "fps": 20,
+        "physics_dt": 0.016666666666666666,
+        "step_stride": 3
+      },
+      "before_homing_frames": 783,
+      "usable_action_frames_before_home": 782,
+      "nonfinite_action_rows": [
+        0
+      ],
+      "nonfinite_action_rows_marked_valid": 0,
+      "action_sources": {
+        "none": 1,
+        "teleop": 814
+      },
+      "qpos_all_finite": true,
+      "qpos_max_range_rad": 2.0609428882598877,
+      "sim_step_delta_counts": {
+        "1": 1,
+        "3": 813
+      },
+      "objects": {
+        "distractor_00_clutter_025_mug": {
+          "initial_xyz": [
+            0.504422664642334,
+            0.21544092893600464,
+            0.7576189637184143
+          ],
+          "final_before_home_xyz": [
+            0.5044227838516235,
+            0.21544089913368225,
+            0.7576189637184143
+          ],
+          "max_position_range_before_home_m": 2.384185791015625e-07
+        },
+        "obj_326_piece_0": {
+          "initial_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656553387641907
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_1": {
+          "initial_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656553387641907
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_2": {
+          "initial_xyz": [
+            0.2326885461807251,
+            0.352664977312088,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.06556316465139389,
+            0.2962152063846588,
+            0.7658658027648926
+          ],
+          "max_position_range_before_home_m": 0.3049125075340271
+        },
+        "obj_326_piece_3": {
+          "initial_xyz": [
+            -0.19542700052261353,
+            0.19083315134048462,
+            0.7656552791595459
+          ],
+          "final_before_home_xyz": [
+            -0.15110522508621216,
+            0.2670069932937622,
+            0.7658963799476624
+          ],
+          "max_position_range_before_home_m": 0.07617390155792236
+        },
+        "obj_326_piece_4": {
+          "initial_xyz": [
+            -0.3646090626716614,
+            0.14130675792694092,
+            0.7656553387641907
+          ],
+          "final_before_home_xyz": [
+            -0.15166795253753662,
+            0.18078868091106415,
+            0.7656554579734802
+          ],
+          "max_position_range_before_home_m": 0.22258055210113525
+        },
+        "obj_326_piece_5": {
+          "initial_xyz": [
+            0.15813328325748444,
+            0.1651633083820343,
+            0.7656552791595459
+          ],
+          "final_before_home_xyz": [
+            -0.06354812532663345,
+            0.20818035304546356,
+            0.7656381130218506
+          ],
+          "max_position_range_before_home_m": 0.2216814160346985
+        }
+      },
+      "cameras": {},
+      "tactile": {},
+      "recomputed_current_source_success": {
+        "before_homing_pass_frames": 33,
+        "last_before_homing_pass": true,
+        "longest_consecutive_pass_frames": 18,
+        "threshold_xy_m": 0.02,
+        "threshold_z_m": 0.01,
+        "uses_recorded_velocities": true,
+        "checks_orientation": false,
+        "targets_absolute_world_xy": true
+      }
+    },
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/data/bench2dex_review/dataset/73_jigsaw_puzzle_assembly/origin-generalization/episode_000024.hdf5",
+      "metadata": {
+        "collection_mode": "scripted_hold",
+        "demo_eligible": false,
+        "success": false,
+        "success_available": true,
+        "instruction": "Arrange the 8 Tetris building blocks into a compact cluster, then separate them again.",
+        "robot_key": "multi_iiwa7_with_sharpa",
+        "frame_count": 841,
+        "fps": 20,
+        "physics_dt": 0.016666666666666666,
+        "step_stride": 3
+      },
+      "before_homing_frames": 812,
+      "usable_action_frames_before_home": 811,
+      "nonfinite_action_rows": [
+        0
+      ],
+      "nonfinite_action_rows_marked_valid": 0,
+      "action_sources": {
+        "none": 1,
+        "teleop": 840
+      },
+      "qpos_all_finite": true,
+      "qpos_max_range_rad": 1.8670912981033325,
+      "sim_step_delta_counts": {
+        "1": 1,
+        "3": 839
+      },
+      "objects": {
+        "distractor_00_clutter_037a_scissors": {
+          "initial_xyz": [
+            0.38650259375572205,
+            0.19229857623577118,
+            0.7574372291564941
+          ],
+          "final_before_home_xyz": [
+            0.38650253415107727,
+            0.19229857623577118,
+            0.7574372887611389
+          ],
+          "max_position_range_before_home_m": 1.7881393432617188e-07
+        },
+        "distractor_01_clutter_058_golf_ball": {
+          "initial_xyz": [
+            0.4990352988243103,
+            0.0006122682243585587,
+            0.7553273439407349
+          ],
+          "final_before_home_xyz": [
+            0.4990353286266327,
+            0.0006123064085841179,
+            0.7553272247314453
+          ],
+          "max_position_range_before_home_m": 2.384185791015625e-07
+        },
+        "distractor_02_clutter_002_master_chef_can": {
+          "initial_xyz": [
+            0.8972779512405396,
+            0.173972487449646,
+            0.756844162940979
+          ],
+          "final_before_home_xyz": [
+            0.89727783203125,
+            0.1739727258682251,
+            0.7568439841270447
+          ],
+          "max_position_range_before_home_m": 4.023313522338867e-07
+        },
+        "obj_326_piece_0": {
+          "initial_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7656596899032593
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_1": {
+          "initial_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7656596899032593
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_2": {
+          "initial_xyz": [
+            0.24601247906684875,
+            0.3485795855522156,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.06607764959335327,
+            0.2994191646575928,
+            0.7655749917030334
+          ],
+          "max_position_range_before_home_m": 0.3171248733997345
+        },
+        "obj_326_piece_3": {
+          "initial_xyz": [
+            -0.21536870300769806,
+            0.2027803659439087,
+            0.7656596302986145
+          ],
+          "final_before_home_xyz": [
+            -0.14875583350658417,
+            0.2694876790046692,
+            0.765772819519043
+          ],
+          "max_position_range_before_home_m": 0.06954365968704224
+        },
+        "obj_326_piece_4": {
+          "initial_xyz": [
+            -0.37703460454940796,
+            0.14455626904964447,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.14885415136814117,
+            0.18353022634983063,
+            0.7702156901359558
+          ],
+          "max_position_range_before_home_m": 0.240514874458313
+        },
+        "obj_326_piece_5": {
+          "initial_xyz": [
+            0.15072724223136902,
+            0.14174750447273254,
+            0.7656596899032593
+          ],
+          "final_before_home_xyz": [
+            -0.06250999867916107,
+            0.21374639868736267,
+            0.7706178426742554
+          ],
+          "max_position_range_before_home_m": 0.21325257420539856
+        }
+      },
+      "cameras": {},
+      "tactile": {},
+      "recomputed_current_source_success": {
+        "before_homing_pass_frames": 14,
+        "last_before_homing_pass": true,
+        "longest_consecutive_pass_frames": 10,
+        "threshold_xy_m": 0.02,
+        "threshold_z_m": 0.01,
+        "uses_recorded_velocities": true,
+        "checks_orientation": false,
+        "targets_absolute_world_xy": true
+      }
+    },
+    {
+      "path": "/home/sai/zx/openpi-sim-runtime/data/bench2dex_review/dataset/73_jigsaw_puzzle_assembly/origin-generalization/episode_000049.hdf5",
+      "metadata": {
+        "collection_mode": "scripted_hold",
+        "demo_eligible": false,
+        "success": false,
+        "success_available": true,
+        "instruction": "Arrange the 8 Tetris building blocks into a compact cluster, then separate them again.",
+        "robot_key": "multi_iiwa7_with_sharpa",
+        "frame_count": 796,
+        "fps": 20,
+        "physics_dt": 0.016666666666666666,
+        "step_stride": 3
+      },
+      "before_homing_frames": 767,
+      "usable_action_frames_before_home": 766,
+      "nonfinite_action_rows": [
+        0
+      ],
+      "nonfinite_action_rows_marked_valid": 0,
+      "action_sources": {
+        "none": 1,
+        "teleop": 795
+      },
+      "qpos_all_finite": true,
+      "qpos_max_range_rad": 2.0901355743408203,
+      "sim_step_delta_counts": {
+        "3": 795
+      },
+      "objects": {
+        "distractor_00_clutter_008_pudding_box": {
+          "initial_xyz": [
+            0.5852342844009399,
+            0.30447277426719666,
+            0.7554359436035156
+          ],
+          "final_before_home_xyz": [
+            0.5852342844009399,
+            0.30447283387184143,
+            0.7554320096969604
+          ],
+          "max_position_range_before_home_m": 6.794929504394531e-06
+        },
+        "obj_326_piece_0": {
+          "initial_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7641981244087219
+          ],
+          "final_before_home_xyz": [
+            -0.15000000596046448,
+            0.35499998927116394,
+            0.7641981244087219
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_1": {
+          "initial_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7641981244087219
+          ],
+          "final_before_home_xyz": [
+            -0.06699999421834946,
+            0.3824999928474426,
+            0.7641981244087219
+          ],
+          "max_position_range_before_home_m": 0.0
+        },
+        "obj_326_piece_2": {
+          "initial_xyz": [
+            0.24595728516578674,
+            0.3420419991016388,
+            0.7641980051994324
+          ],
+          "final_before_home_xyz": [
+            -0.06625394523143768,
+            0.296439528465271,
+            0.7642325758934021
+          ],
+          "max_position_range_before_home_m": 0.3177642822265625
+        },
+        "obj_326_piece_3": {
+          "initial_xyz": [
+            -0.21204277873039246,
+            0.19946454465389252,
+            0.7641985416412354
+          ],
+          "final_before_home_xyz": [
+            -0.1484839767217636,
+            0.2664627730846405,
+            0.7642405033111572
+          ],
+          "max_position_range_before_home_m": 0.06783896684646606
+        },
+        "obj_326_piece_4": {
+          "initial_xyz": [
+            -0.3773289620876312,
+            0.16795073449611664,
+            0.7641981840133667
+          ],
+          "final_before_home_xyz": [
+            -0.1458950936794281,
+            0.18369856476783752,
+            0.7641546130180359
+          ],
+          "max_position_range_before_home_m": 0.23779316246509552
+        },
+        "obj_326_piece_5": {
+          "initial_xyz": [
+            0.1641157567501068,
+            0.16272497177124023,
+            0.7641962170600891
+          ],
+          "final_before_home_xyz": [
+            -0.06407354772090912,
+            0.21333272755146027,
+            0.764198362827301
+          ],
+          "max_position_range_before_home_m": 0.22954535484313965
+        }
+      },
+      "cameras": {},
+      "tactile": {},
+      "recomputed_current_source_success": {
+        "before_homing_pass_frames": 22,
+        "last_before_homing_pass": true,
+        "longest_consecutive_pass_frames": 20,
+        "threshold_xy_m": 0.02,
+        "threshold_z_m": 0.01,
+        "uses_recorded_velocities": true,
+        "checks_orientation": false,
+        "targets_absolute_world_xy": true
+      }
+    }
+  ],
+  "caveat": "Stored success/demo_eligible flags are reported, not independently verified task outcomes.",
+  "anchor_initial_xyz_range_m": {
+    "obj_326_piece_0": [
+      0.0,
+      0.0,
+      0.0014615654945373535
+    ],
+    "obj_326_piece_1": [
+      0.0,
+      0.0,
+      0.0014615654945373535
+    ]
+  }
+}

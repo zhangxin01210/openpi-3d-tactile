@@ -1,0 +1,25 @@
+diff --git a/third_party/TacEx/source/tacex_uipc/setup.py b/third_party/TacEx/source/tacex_uipc/setup.py
+index 66ccaec..76c33c6 100644
+--- a/third_party/TacEx/source/tacex_uipc/setup.py
++++ b/third_party/TacEx/source/tacex_uipc/setup.py
+@@ -33,6 +33,11 @@ INSTALL_REQUIRES = [
+     "wildmeshing>=0.4.1"
+ ]
+ 
++# The libuipc CMake build can be completed separately for newer GPU targets.
++# In that case, install only this Python wrapper; the CMake post-build step
++# has already installed the generated pyuipc package into this environment.
++USE_PREBUILT_UIPC = os.environ.get("OPENPI_USE_PREBUILT_UIPC") == "1"
++
+ 
+ class CMakeExtension(Extension):
+     def __init__(self, name, sourcedir=""):
+@@ -127,7 +132,7 @@ setup(
+         "Programming Language :: Python :: 3.10",
+         "Isaac Sim :: 5.1.0",
+     ],
+-    ext_modules=[CMakeExtension("uipc", "libuipc")],
++    ext_modules=[] if USE_PREBUILT_UIPC else [CMakeExtension("uipc", "libuipc")],
+     cmdclass=dict(build_ext=CMakeBuild),
+     zip_safe=False,
+ )

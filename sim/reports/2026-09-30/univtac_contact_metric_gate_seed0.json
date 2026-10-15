@@ -1,0 +1,71 @@
+{
+  "task": "UniVTAC insert_hole",
+  "seed": 0,
+  "control_hz": 60,
+  "perturb_index": 170,
+  "pair_definition": "Active UIPC PP/PE/PT/EE normal-contact simplex with all topology vertices in prism or slot and at least one vertex from each. PH implicit-plane and mixed-actor primitives excluded.",
+  "force_definition": "Negative selected UIPC normal-barrier energy gradient on prism vertices divided by physics dt squared; model-derived provisional estimate, not independently calibrated physical force.",
+  "cases": {
+    "clean": {
+      "source": "univtac_contact_gradient_clean_seed0_full.json",
+      "terminal_success": true,
+      "all_actions_executed": true,
+      "offset_mm": [
+        0.0,
+        0.0
+      ],
+      "pre_165_169": {
+        "pair_count_median": 27.0,
+        "scaled_normal_energy_median": 1.7591861363366446e-08,
+        "barrier_force_magnitude_N_median": 3.642538997474653,
+        "barrier_force_magnitude_N_max": 3.91916944663431,
+        "action_reaction_residual_N_max": 8.903441835098303e-16,
+        "gradient_topology_mismatch_total": 0,
+        "mixed_actor_primitive_count_median_excluded": 68.0,
+        "gradient_translation_residual_relative_max": 2.0449818001177802e-16
+      },
+      "post_170_200": {
+        "pair_count_median": 25.0,
+        "scaled_normal_energy_median": 2.1015403558638074e-08,
+        "barrier_force_magnitude_N_median": 3.7273909907936584,
+        "barrier_force_magnitude_N_max": 9.03569629862472,
+        "action_reaction_residual_N_max": 3.5535809346852124e-15,
+        "gradient_topology_mismatch_total": 0,
+        "mixed_actor_primitive_count_median_excluded": 83.0,
+        "gradient_translation_residual_relative_max": 1.8542341313929987e-16
+      }
+    },
+    "slot_y_minus1mm": {
+      "source": "univtac_contact_gradient_minus1mm_seed0.json",
+      "terminal_success": false,
+      "all_actions_executed": true,
+      "offset_mm": [
+        0.0,
+        -1.0
+      ],
+      "pre_165_169": {
+        "pair_count_median": 27.0,
+        "scaled_normal_energy_median": 1.954705606755802e-08,
+        "barrier_force_magnitude_N_median": 3.6425577061621177,
+        "barrier_force_magnitude_N_max": 3.9190013439037523,
+        "action_reaction_residual_N_max": 8.968100940422724e-16,
+        "gradient_topology_mismatch_total": 0,
+        "mixed_actor_primitive_count_median_excluded": 68.0,
+        "gradient_translation_residual_relative_max": 1.2206639585952138e-16
+      },
+      "post_170_200": {
+        "pair_count_median": 331.0,
+        "scaled_normal_energy_median": 1.0792189573616012e-05,
+        "barrier_force_magnitude_N_median": 669.256906389865,
+        "barrier_force_magnitude_N_max": 843.7576178367176,
+        "action_reaction_residual_N_max": 2.852419806878895e-12,
+        "gradient_topology_mismatch_total": 0,
+        "mixed_actor_primitive_count_median_excluded": 164.0,
+        "gradient_translation_residual_relative_max": 2.2938638578244103e-16
+      }
+    }
+  },
+  "post_contact_count_ratio_hard_over_clean": 13.24,
+  "post_barrier_force_ratio_hard_over_clean": 179.55103396527844,
+  "pair_gradient_gate_pass": true
+}

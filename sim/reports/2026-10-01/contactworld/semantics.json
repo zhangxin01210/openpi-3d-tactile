@@ -1,0 +1,1839 @@
+{
+  "caveat": "Current-source endpoint pose criterion recomputed offline, NOT paper success rates, collision labels or runtime replay.",
+  "tasks": {
+    "insertion_usb": {
+      "threshold_m": 0.0079916,
+      "keypoint_scale_m": 0.5,
+      "num_keypoints": 4,
+      "endpoint_pass_count": 145,
+      "endpoint_fail_count": 56,
+      "endpoints": [
+        {
+          "episode": 0,
+          "final_keypoint_error_mm": 11.846313197912917,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 1,
+          "final_keypoint_error_mm": 5.782141959120116,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 2,
+          "final_keypoint_error_mm": 5.908554509756619,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 3,
+          "final_keypoint_error_mm": 4.630462987894334,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 4,
+          "final_keypoint_error_mm": 6.920325284103397,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 5,
+          "final_keypoint_error_mm": 4.6007490910261355,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 6,
+          "final_keypoint_error_mm": 7.1576243472902314,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 7,
+          "final_keypoint_error_mm": 6.922883838784155,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 8,
+          "final_keypoint_error_mm": 8.179858492212869,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 9,
+          "final_keypoint_error_mm": 6.532623026244018,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 10,
+          "final_keypoint_error_mm": 6.861708800243823,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 11,
+          "final_keypoint_error_mm": 6.3758708106230735,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 12,
+          "final_keypoint_error_mm": 5.8695474229533415,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 13,
+          "final_keypoint_error_mm": 4.971066142041385,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 14,
+          "final_keypoint_error_mm": 6.406252758316633,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 15,
+          "final_keypoint_error_mm": 5.579366972640149,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 16,
+          "final_keypoint_error_mm": 6.938692941882855,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 17,
+          "final_keypoint_error_mm": 6.000538318089835,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 18,
+          "final_keypoint_error_mm": 1.6303963591191295,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 19,
+          "final_keypoint_error_mm": 6.676697688704604,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 20,
+          "final_keypoint_error_mm": 5.770293524691418,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 21,
+          "final_keypoint_error_mm": 7.19427189455199,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 22,
+          "final_keypoint_error_mm": 7.53298257803961,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 23,
+          "final_keypoint_error_mm": 2.0828230566477672,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 24,
+          "final_keypoint_error_mm": 7.370128328343683,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 25,
+          "final_keypoint_error_mm": 3.2130728228024243,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 26,
+          "final_keypoint_error_mm": 2.9635020894223123,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 27,
+          "final_keypoint_error_mm": 5.68383458568296,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 28,
+          "final_keypoint_error_mm": 3.347467879450069,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 29,
+          "final_keypoint_error_mm": 4.896187983873409,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 30,
+          "final_keypoint_error_mm": 2.894073498349051,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 31,
+          "final_keypoint_error_mm": 4.252383759358741,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 32,
+          "final_keypoint_error_mm": 3.295890428751565,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 33,
+          "final_keypoint_error_mm": 2.3532135631864786,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 34,
+          "final_keypoint_error_mm": 4.20250780983514,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 35,
+          "final_keypoint_error_mm": 6.870220100082907,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 36,
+          "final_keypoint_error_mm": 4.918346763975161,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 37,
+          "final_keypoint_error_mm": 8.073804149022887,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 38,
+          "final_keypoint_error_mm": 3.0405525102851754,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 39,
+          "final_keypoint_error_mm": 4.201909501360812,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 40,
+          "final_keypoint_error_mm": 4.655219369472679,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 41,
+          "final_keypoint_error_mm": 1.6633967034047523,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 42,
+          "final_keypoint_error_mm": 2.357415269925723,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 43,
+          "final_keypoint_error_mm": 4.048219432526658,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 44,
+          "final_keypoint_error_mm": 6.737522884698371,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 45,
+          "final_keypoint_error_mm": 9.94525810032949,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 46,
+          "final_keypoint_error_mm": 6.753382498588106,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 47,
+          "final_keypoint_error_mm": 7.104686329701313,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 48,
+          "final_keypoint_error_mm": 8.560841928837103,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 49,
+          "final_keypoint_error_mm": 4.344116828660851,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 50,
+          "final_keypoint_error_mm": 3.796430276369793,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 51,
+          "final_keypoint_error_mm": 3.721629101703085,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 52,
+          "final_keypoint_error_mm": 7.3664661446228745,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 53,
+          "final_keypoint_error_mm": 9.979400992246001,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 54,
+          "final_keypoint_error_mm": 1.5455731520719105,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 55,
+          "final_keypoint_error_mm": 8.246402008596908,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 56,
+          "final_keypoint_error_mm": 6.228557182726021,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 57,
+          "final_keypoint_error_mm": 6.620573367396783,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 58,
+          "final_keypoint_error_mm": 4.72779387849048,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 59,
+          "final_keypoint_error_mm": 3.4040872323585725,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 60,
+          "final_keypoint_error_mm": 8.514758646813531,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 61,
+          "final_keypoint_error_mm": 5.956805483741558,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 62,
+          "final_keypoint_error_mm": 0.7502785579421826,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 63,
+          "final_keypoint_error_mm": 2.878402693997883,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 64,
+          "final_keypoint_error_mm": 9.98975894596279,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 65,
+          "final_keypoint_error_mm": 5.001412235178752,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 66,
+          "final_keypoint_error_mm": 5.568556529815927,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 67,
+          "final_keypoint_error_mm": 6.480575469886279,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 68,
+          "final_keypoint_error_mm": 5.762020169325019,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 69,
+          "final_keypoint_error_mm": 7.141006242626691,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 70,
+          "final_keypoint_error_mm": 4.847942002541135,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 71,
+          "final_keypoint_error_mm": 7.054656130456727,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 72,
+          "final_keypoint_error_mm": 9.947239314436365,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 73,
+          "final_keypoint_error_mm": 11.346980490911703,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 74,
+          "final_keypoint_error_mm": 7.479374073992613,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 75,
+          "final_keypoint_error_mm": 7.1852135463496465,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 76,
+          "final_keypoint_error_mm": 4.46073150471285,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 77,
+          "final_keypoint_error_mm": 14.323807351622884,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 78,
+          "final_keypoint_error_mm": 5.066196531266273,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 79,
+          "final_keypoint_error_mm": 9.35612961734389,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 80,
+          "final_keypoint_error_mm": 4.223128018540618,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 81,
+          "final_keypoint_error_mm": 6.906440504415214,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 82,
+          "final_keypoint_error_mm": 3.5216340359646767,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 83,
+          "final_keypoint_error_mm": 6.405414523621876,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 84,
+          "final_keypoint_error_mm": 7.159260042517824,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 85,
+          "final_keypoint_error_mm": 8.133675450225391,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 86,
+          "final_keypoint_error_mm": 7.535133855875793,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 87,
+          "final_keypoint_error_mm": 7.530021996013014,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 88,
+          "final_keypoint_error_mm": 3.358471418538068,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 89,
+          "final_keypoint_error_mm": 6.667004006755044,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 90,
+          "final_keypoint_error_mm": 7.975432164717147,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 91,
+          "final_keypoint_error_mm": 8.438196679600178,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 92,
+          "final_keypoint_error_mm": 3.6136700866382663,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 93,
+          "final_keypoint_error_mm": 6.437086765566146,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 94,
+          "final_keypoint_error_mm": 4.497158822014805,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 95,
+          "final_keypoint_error_mm": 7.7935873470395896,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 96,
+          "final_keypoint_error_mm": 5.585175830804303,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 97,
+          "final_keypoint_error_mm": 6.938065533858353,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 98,
+          "final_keypoint_error_mm": 6.131091396562136,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 99,
+          "final_keypoint_error_mm": 6.653783988273654,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 100,
+          "final_keypoint_error_mm": 9.31961523349081,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 101,
+          "final_keypoint_error_mm": 2.156591060483748,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 102,
+          "final_keypoint_error_mm": 2.37928472293248,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 103,
+          "final_keypoint_error_mm": 10.16872718711742,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 104,
+          "final_keypoint_error_mm": 8.263243371381035,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 105,
+          "final_keypoint_error_mm": 7.200388652145955,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 106,
+          "final_keypoint_error_mm": 1.6093494056035123,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 107,
+          "final_keypoint_error_mm": 8.009146422347705,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 108,
+          "final_keypoint_error_mm": 6.924762571136871,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 109,
+          "final_keypoint_error_mm": 5.1178187367030965,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 110,
+          "final_keypoint_error_mm": 8.236938282257041,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 111,
+          "final_keypoint_error_mm": 8.042162452038117,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 112,
+          "final_keypoint_error_mm": 9.46928502874375,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 113,
+          "final_keypoint_error_mm": 5.8120531269531615,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 114,
+          "final_keypoint_error_mm": 7.837504303892708,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 115,
+          "final_keypoint_error_mm": 10.08066249357267,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 116,
+          "final_keypoint_error_mm": 7.4508834073582655,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 117,
+          "final_keypoint_error_mm": 7.919503299103434,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 118,
+          "final_keypoint_error_mm": 3.3766837370016205,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 119,
+          "final_keypoint_error_mm": 8.389471840699404,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 120,
+          "final_keypoint_error_mm": 3.530324930350759,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 121,
+          "final_keypoint_error_mm": 9.256524893856401,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 122,
+          "final_keypoint_error_mm": 4.252355455429484,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 123,
+          "final_keypoint_error_mm": 9.461956644834698,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 124,
+          "final_keypoint_error_mm": 10.036006521103207,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 125,
+          "final_keypoint_error_mm": 8.873196783083655,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 126,
+          "final_keypoint_error_mm": 8.38286313122083,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 127,
+          "final_keypoint_error_mm": 10.34095163043355,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 128,
+          "final_keypoint_error_mm": 1.811399382400278,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 129,
+          "final_keypoint_error_mm": 8.695864462096866,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 130,
+          "final_keypoint_error_mm": 4.300591660894355,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 131,
+          "final_keypoint_error_mm": 3.8409675150081326,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 132,
+          "final_keypoint_error_mm": 4.849304705031285,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 133,
+          "final_keypoint_error_mm": 6.918781746313241,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 134,
+          "final_keypoint_error_mm": 4.093112921838519,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 135,
+          "final_keypoint_error_mm": 3.6492596873384286,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 136,
+          "final_keypoint_error_mm": 2.6517422337081147,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 137,
+          "final_keypoint_error_mm": 8.30508415896419,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 138,
+          "final_keypoint_error_mm": 10.464660380275003,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 139,
+          "final_keypoint_error_mm": 3.4094495310722146,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 140,
+          "final_keypoint_error_mm": 7.7640533889101055,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 141,
+          "final_keypoint_error_mm": 9.447967464556603,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 142,
+          "final_keypoint_error_mm": 2.806278696852124,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 143,
+          "final_keypoint_error_mm": 5.220888299653166,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 144,
+          "final_keypoint_error_mm": 5.038529383374124,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 145,
+          "final_keypoint_error_mm": 9.799739923666214,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 146,
+          "final_keypoint_error_mm": 9.334115246335257,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 147,
+          "final_keypoint_error_mm": 2.359267003173237,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 148,
+          "final_keypoint_error_mm": 4.674086128867025,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 149,
+          "final_keypoint_error_mm": 7.055436341833902,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 150,
+          "final_keypoint_error_mm": 10.3347240136413,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 151,
+          "final_keypoint_error_mm": 8.426073542271007,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 152,
+          "final_keypoint_error_mm": 6.12565752269085,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 153,
+          "final_keypoint_error_mm": 9.919704571911863,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 154,
+          "final_keypoint_error_mm": 6.482161261812249,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 155,
+          "final_keypoint_error_mm": 7.615429802318399,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 156,
+          "final_keypoint_error_mm": 2.388388725121775,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 157,
+          "final_keypoint_error_mm": 9.592328808715777,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 158,
+          "final_keypoint_error_mm": 1.7926423668125535,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 159,
+          "final_keypoint_error_mm": 10.089175683580052,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 160,
+          "final_keypoint_error_mm": 6.954134267220393,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 161,
+          "final_keypoint_error_mm": 8.124513048286437,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 162,
+          "final_keypoint_error_mm": 5.170912442625015,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 163,
+          "final_keypoint_error_mm": 16.527957408527506,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 164,
+          "final_keypoint_error_mm": 6.501484787673378,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 165,
+          "final_keypoint_error_mm": 5.799077804367916,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 166,
+          "final_keypoint_error_mm": 6.02078838946805,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 167,
+          "final_keypoint_error_mm": 5.438510393650998,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 168,
+          "final_keypoint_error_mm": 3.2932647108221444,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 169,
+          "final_keypoint_error_mm": 8.408259367255374,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 170,
+          "final_keypoint_error_mm": 8.139507543764532,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 171,
+          "final_keypoint_error_mm": 3.4941271091785904,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 172,
+          "final_keypoint_error_mm": 3.662519570874523,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 173,
+          "final_keypoint_error_mm": 7.722178323061404,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 174,
+          "final_keypoint_error_mm": 9.53998906978876,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 175,
+          "final_keypoint_error_mm": 9.072463951022806,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 176,
+          "final_keypoint_error_mm": 4.201225408563591,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 177,
+          "final_keypoint_error_mm": 3.7814589368836713,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 178,
+          "final_keypoint_error_mm": 9.018003999563678,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 179,
+          "final_keypoint_error_mm": 10.704337929995079,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 180,
+          "final_keypoint_error_mm": 3.684112677827013,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 181,
+          "final_keypoint_error_mm": 11.444732587741775,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 182,
+          "final_keypoint_error_mm": 11.623636098897789,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 183,
+          "final_keypoint_error_mm": 3.6705069669738313,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 184,
+          "final_keypoint_error_mm": 2.8638600115619424,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 185,
+          "final_keypoint_error_mm": 6.610468123155251,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 186,
+          "final_keypoint_error_mm": 1.8764338049169247,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 187,
+          "final_keypoint_error_mm": 9.48855765005453,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 188,
+          "final_keypoint_error_mm": 4.822635013801413,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 189,
+          "final_keypoint_error_mm": 1.8780350027454207,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 190,
+          "final_keypoint_error_mm": 6.814601964768818,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 191,
+          "final_keypoint_error_mm": 9.51510875661668,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 192,
+          "final_keypoint_error_mm": 5.274374645893913,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 193,
+          "final_keypoint_error_mm": 5.942866423174,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 194,
+          "final_keypoint_error_mm": 8.211511007951888,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 195,
+          "final_keypoint_error_mm": 8.359784505090017,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 196,
+          "final_keypoint_error_mm": 1.8763640337063356,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 197,
+          "final_keypoint_error_mm": 1.6529620945936476,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 198,
+          "final_keypoint_error_mm": 3.4488230432031317,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 199,
+          "final_keypoint_error_mm": 6.234217918593794,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 200,
+          "final_keypoint_error_mm": 11.060520905752893,
+          "passes_current_source_pose_criterion": false
+        }
+      ],
+      "step_idx_contiguous_from_zero": true,
+      "step_idx_all_zero": false,
+      "released_socket_geometry_check": {
+        "mesh": "/home/sai/zx/openpi-sim-runtime/downloads/contactworld/released_assets/industreal/mesh/TVB_mesh/manifeel_usb_socket.obj",
+        "mesh_bounds_m": [
+          [
+            -0.024929,
+            -0.033108,
+            -0.01926
+          ],
+          [
+            0.041264,
+            0.033108,
+            0.018
+          ]
+        ],
+        "corrected_red_point_bounds_relative_socket_m": [
+          [
+            -0.020681501322229845,
+            -0.0335207859642505,
+            -0.018817993122114445
+          ],
+          [
+            0.04106152646659574,
+            0.03247371058683411,
+            0.01862418866499267
+          ]
+        ],
+        "red_points": 29206,
+        "fraction_inside_mesh_bbox_with_1mm_tolerance": 1.0,
+        "bbox_outside_distance_max_mm": 0.6241886649926698,
+        "red_points_per_frame_min_median_max": [
+          14.0,
+          41.0,
+          81.0
+        ],
+        "blue_points_per_frame_min_median_max": [
+          7.0,
+          59.5,
+          136.0
+        ],
+        "white_point_z_median_mm": 0.5450082289711333,
+        "caveat": "Color masks approximate socket/plug. Bounding-box agreement is weaker than a surface-distance or runtime calibration test."
+      }
+    },
+    "insertion_peg": {
+      "threshold_m": 0.0079916,
+      "keypoint_scale_m": 0.5,
+      "num_keypoints": 4,
+      "endpoint_pass_count": 126,
+      "endpoint_fail_count": 27,
+      "endpoints": [
+        {
+          "episode": 0,
+          "final_keypoint_error_mm": 37.42718557773277,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 1,
+          "final_keypoint_error_mm": 7.253154158246337,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 2,
+          "final_keypoint_error_mm": 11.315365439173586,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 3,
+          "final_keypoint_error_mm": 19.513694134464256,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 4,
+          "final_keypoint_error_mm": 10.190304075965173,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 5,
+          "final_keypoint_error_mm": 4.160804002928977,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 6,
+          "final_keypoint_error_mm": 8.681329895904831,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 7,
+          "final_keypoint_error_mm": 2.757129898887024,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 8,
+          "final_keypoint_error_mm": 1.8901886159903674,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 9,
+          "final_keypoint_error_mm": 3.1937428156940837,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 10,
+          "final_keypoint_error_mm": 3.0296629334768275,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 11,
+          "final_keypoint_error_mm": 4.686342284455321,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 12,
+          "final_keypoint_error_mm": 14.12563057429809,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 13,
+          "final_keypoint_error_mm": 0.2994636869727524,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 14,
+          "final_keypoint_error_mm": 0.5116447907044268,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 15,
+          "final_keypoint_error_mm": 1.6250757190458385,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 16,
+          "final_keypoint_error_mm": 8.02135503562826,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 17,
+          "final_keypoint_error_mm": 6.131289292644477,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 18,
+          "final_keypoint_error_mm": 9.683826493819016,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 19,
+          "final_keypoint_error_mm": 6.575234346657768,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 20,
+          "final_keypoint_error_mm": 3.9542780330191927,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 21,
+          "final_keypoint_error_mm": 4.607003754878056,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 22,
+          "final_keypoint_error_mm": 5.511919039322407,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 23,
+          "final_keypoint_error_mm": 11.721051395663089,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 24,
+          "final_keypoint_error_mm": 5.717591068258482,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 25,
+          "final_keypoint_error_mm": 4.500600438693521,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 26,
+          "final_keypoint_error_mm": 1.5168137131842165,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 27,
+          "final_keypoint_error_mm": 1.429409597542331,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 28,
+          "final_keypoint_error_mm": 4.749379404656731,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 29,
+          "final_keypoint_error_mm": 5.887861209235018,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 30,
+          "final_keypoint_error_mm": 5.106529493953758,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 31,
+          "final_keypoint_error_mm": 6.5299041770578485,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 32,
+          "final_keypoint_error_mm": 3.195875229772177,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 33,
+          "final_keypoint_error_mm": 4.701369077073469,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 34,
+          "final_keypoint_error_mm": 2.488719122463997,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 35,
+          "final_keypoint_error_mm": 4.409443044450177,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 36,
+          "final_keypoint_error_mm": 7.2600186569416465,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 37,
+          "final_keypoint_error_mm": 0.44164080729718486,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 38,
+          "final_keypoint_error_mm": 7.720472373252378,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 39,
+          "final_keypoint_error_mm": 6.365422475488715,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 40,
+          "final_keypoint_error_mm": 4.414050011937035,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 41,
+          "final_keypoint_error_mm": 29.24733810583441,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 42,
+          "final_keypoint_error_mm": 1.9717503607326157,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 43,
+          "final_keypoint_error_mm": 5.609710619607482,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 44,
+          "final_keypoint_error_mm": 1.6416079067601004,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 45,
+          "final_keypoint_error_mm": 5.475455875090973,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 46,
+          "final_keypoint_error_mm": 1.4650486980070756,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 47,
+          "final_keypoint_error_mm": 6.690386280702881,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 48,
+          "final_keypoint_error_mm": 4.954859785681119,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 49,
+          "final_keypoint_error_mm": 5.634302304063112,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 50,
+          "final_keypoint_error_mm": 11.611620642484363,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 51,
+          "final_keypoint_error_mm": 7.311585161262436,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 52,
+          "final_keypoint_error_mm": 4.353474951405735,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 53,
+          "final_keypoint_error_mm": 7.2805186238267865,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 54,
+          "final_keypoint_error_mm": 5.1370254304170935,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 55,
+          "final_keypoint_error_mm": 2.20729984764061,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 56,
+          "final_keypoint_error_mm": 3.7663873919125694,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 57,
+          "final_keypoint_error_mm": 4.014065383948505,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 58,
+          "final_keypoint_error_mm": 6.898581032083581,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 59,
+          "final_keypoint_error_mm": 1.8091704613943993,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 60,
+          "final_keypoint_error_mm": 3.578066513144597,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 61,
+          "final_keypoint_error_mm": 4.499945264039655,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 62,
+          "final_keypoint_error_mm": 3.6606093063808953,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 63,
+          "final_keypoint_error_mm": 4.1058714473832785,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 64,
+          "final_keypoint_error_mm": 11.693037741599662,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 65,
+          "final_keypoint_error_mm": 1.0942491896372588,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 66,
+          "final_keypoint_error_mm": 2.7663526586936547,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 67,
+          "final_keypoint_error_mm": 5.931175891804779,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 68,
+          "final_keypoint_error_mm": 7.338698639487523,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 69,
+          "final_keypoint_error_mm": 7.0698688556227705,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 70,
+          "final_keypoint_error_mm": 1.7899140880808133,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 71,
+          "final_keypoint_error_mm": 7.74265485857154,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 72,
+          "final_keypoint_error_mm": 5.442621911860446,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 73,
+          "final_keypoint_error_mm": 8.085425854016325,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 74,
+          "final_keypoint_error_mm": 0.9559995609638378,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 75,
+          "final_keypoint_error_mm": 4.748699011597241,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 76,
+          "final_keypoint_error_mm": 4.3660972166532455,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 77,
+          "final_keypoint_error_mm": 8.292734180268495,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 78,
+          "final_keypoint_error_mm": 4.625604239678289,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 79,
+          "final_keypoint_error_mm": 2.6706743273971036,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 80,
+          "final_keypoint_error_mm": 4.923323709187354,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 81,
+          "final_keypoint_error_mm": 2.533935566871171,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 82,
+          "final_keypoint_error_mm": 14.08007614063175,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 83,
+          "final_keypoint_error_mm": 7.329648203315676,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 84,
+          "final_keypoint_error_mm": 5.167651140362544,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 85,
+          "final_keypoint_error_mm": 9.370846468141107,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 86,
+          "final_keypoint_error_mm": 3.5463047625423174,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 87,
+          "final_keypoint_error_mm": 13.546950855839428,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 88,
+          "final_keypoint_error_mm": 2.6303560763578453,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 89,
+          "final_keypoint_error_mm": 6.1656171326261875,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 90,
+          "final_keypoint_error_mm": 3.182047797572865,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 91,
+          "final_keypoint_error_mm": 9.067802414083157,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 92,
+          "final_keypoint_error_mm": 2.843177921131674,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 93,
+          "final_keypoint_error_mm": 8.292666864929254,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 94,
+          "final_keypoint_error_mm": 7.275470343628148,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 95,
+          "final_keypoint_error_mm": 3.027936737763261,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 96,
+          "final_keypoint_error_mm": 2.8442990195060074,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 97,
+          "final_keypoint_error_mm": 4.881739640784284,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 98,
+          "final_keypoint_error_mm": 9.015888343281004,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 99,
+          "final_keypoint_error_mm": 0.8220535140961048,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 100,
+          "final_keypoint_error_mm": 8.83857899891446,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 101,
+          "final_keypoint_error_mm": 4.93296122693766,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 102,
+          "final_keypoint_error_mm": 7.9060349072993965,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 103,
+          "final_keypoint_error_mm": 4.640445099692188,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 104,
+          "final_keypoint_error_mm": 2.7134685760095714,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 105,
+          "final_keypoint_error_mm": 9.463190390734967,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 106,
+          "final_keypoint_error_mm": 5.244999932135919,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 107,
+          "final_keypoint_error_mm": 1.1318668082613985,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 108,
+          "final_keypoint_error_mm": 5.161155880574258,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 109,
+          "final_keypoint_error_mm": 6.144522999013211,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 110,
+          "final_keypoint_error_mm": 2.8752126758747965,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 111,
+          "final_keypoint_error_mm": 12.43455405147374,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 112,
+          "final_keypoint_error_mm": 2.2474720128553543,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 113,
+          "final_keypoint_error_mm": 2.6513286605520565,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 114,
+          "final_keypoint_error_mm": 5.904717681763355,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 115,
+          "final_keypoint_error_mm": 1.2836208972360863,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 116,
+          "final_keypoint_error_mm": 5.2768176435116665,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 117,
+          "final_keypoint_error_mm": 4.3613187562866385,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 118,
+          "final_keypoint_error_mm": 6.071115796478455,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 119,
+          "final_keypoint_error_mm": 8.52701174337468,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 120,
+          "final_keypoint_error_mm": 0.7472872346162893,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 121,
+          "final_keypoint_error_mm": 5.9008173419541246,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 122,
+          "final_keypoint_error_mm": 8.89634707611745,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 123,
+          "final_keypoint_error_mm": 4.163711752533212,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 124,
+          "final_keypoint_error_mm": 6.882830594290929,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 125,
+          "final_keypoint_error_mm": 8.8078285963539,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 126,
+          "final_keypoint_error_mm": 6.742247583878628,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 127,
+          "final_keypoint_error_mm": 4.730884398862558,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 128,
+          "final_keypoint_error_mm": 4.175255128543139,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 129,
+          "final_keypoint_error_mm": 6.252372866296595,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 130,
+          "final_keypoint_error_mm": 0.4906263361763724,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 131,
+          "final_keypoint_error_mm": 13.019781221792373,
+          "passes_current_source_pose_criterion": false
+        },
+        {
+          "episode": 132,
+          "final_keypoint_error_mm": 1.7889660699604797,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 133,
+          "final_keypoint_error_mm": 5.223126452203554,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 134,
+          "final_keypoint_error_mm": 7.730943357527019,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 135,
+          "final_keypoint_error_mm": 4.709374183027255,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 136,
+          "final_keypoint_error_mm": 4.473113873069582,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 137,
+          "final_keypoint_error_mm": 2.719598470581825,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 138,
+          "final_keypoint_error_mm": 4.9992350141050865,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 139,
+          "final_keypoint_error_mm": 2.894357222255931,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 140,
+          "final_keypoint_error_mm": 3.7159839501363545,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 141,
+          "final_keypoint_error_mm": 7.56180864108681,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 142,
+          "final_keypoint_error_mm": 6.898292790505156,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 143,
+          "final_keypoint_error_mm": 3.854406282657992,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 144,
+          "final_keypoint_error_mm": 4.490397718902279,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 145,
+          "final_keypoint_error_mm": 2.2921697124692684,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 146,
+          "final_keypoint_error_mm": 1.167947670474615,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 147,
+          "final_keypoint_error_mm": 7.658637407844847,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 148,
+          "final_keypoint_error_mm": 7.936037563178221,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 149,
+          "final_keypoint_error_mm": 7.684725914662573,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 150,
+          "final_keypoint_error_mm": 2.4757018826860198,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 151,
+          "final_keypoint_error_mm": 1.9990591020176938,
+          "passes_current_source_pose_criterion": true
+        },
+        {
+          "episode": 152,
+          "final_keypoint_error_mm": 6.395565219214529,
+          "passes_current_source_pose_criterion": true
+        }
+      ],
+      "step_idx_contiguous_from_zero": false,
+      "step_idx_all_zero": true
+    }
+  }
+}

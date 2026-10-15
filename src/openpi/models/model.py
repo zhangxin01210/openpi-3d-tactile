@@ -166,9 +166,37 @@ class Observation(Generic[ArrayT]):
                     point_mask=tactile_data["point_mask"],
                 )
 
+            centered_data = spatial_data.get("contact_centered_tactile")
+            contact_centered_tactile = None
+            if centered_data is not None:
+                contact_centered_tactile = _spatial_types.ContactCenteredTactileInput(
+                    patch_xyz_local=centered_data["patch_xyz_local"],
+                    patch_force=centered_data["patch_force"],
+                    patch_mask=centered_data["patch_mask"],
+                    anchor_xyz_m=centered_data["anchor_xyz_m"],
+                    anchor_stats=centered_data["anchor_stats"],
+                    anchor_mask=centered_data["anchor_mask"],
+                    finger_summary=centered_data["finger_summary"],
+                    finger_center_xyz_m=centered_data["finger_center_xyz_m"],
+                    finger_valid=centered_data["finger_valid"],
+                )
+
+            relation_data = spatial_data.get("tactile_scene_relation")
+            tactile_scene_relation = None
+            if relation_data is not None:
+                tactile_scene_relation = _spatial_types.TactileSceneRelationInput(
+                    query_xyz_m=relation_data["query_xyz_m"],
+                    query_features=relation_data["query_features"],
+                    query_valid=relation_data["query_valid"],
+                    candidate_xyz_m=relation_data["candidate_xyz_m"],
+                    candidate_mask=relation_data["candidate_mask"],
+                )
+
             spatial = _spatial_types.SpatialEncoderInput(
                 visual=visual,
                 tactile=tactile,
+                contact_centered_tactile=contact_centered_tactile,
+                tactile_scene_relation=tactile_scene_relation,
             )
 
         return cls(

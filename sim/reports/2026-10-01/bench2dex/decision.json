@@ -1,0 +1,26 @@
+{
+  "contactworld": "Isolated RTX 5090 source build and minimum single USB smoke passed by 2026-10-01 16:00 (~36 minutes). CUDA, gymtorch, GPU physics/cameras, reset + 8 steps, finite nonzero TacFF verified. Original environment package snapshots unchanged.",
+  "bench2dex": {
+    "runtime_replay": "passed",
+    "task": "73_jigsaw_puzzle_assembly",
+    "episodes": [
+      0,
+      24,
+      49
+    ],
+    "frames": 2452,
+    "depth_and_calibration_output": true,
+    "chest_plane_consistency": "checked at 9 frames",
+    "wrist_metric_reconstruction": "not independently verified",
+    "tactile": "geometric penetration proxy, not 3D force",
+    "target_xy_randomization": false,
+    "closed_loop_policy": "not tested",
+    "decision": "Retain validated replay and data; user finds bimanual jigsaw too complex, so defer puzzle training."
+  },
+  "recommended_next": "Stop at achieved runtime milestone; next validate complete demonstration/action replay and online multimodal alignment before training.",
+  "perturbation_collection": "deferred per user",
+  "training": "not started",
+  "all_downloads_this_followup_direct": true,
+  "criteria_update": "Fixed destination XY is allowed. Three-dimensional force remains a preference, not a hard requirement.",
+  "latest_review": "reconsideration.md"
+}

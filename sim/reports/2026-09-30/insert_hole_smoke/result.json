@@ -1,0 +1,132 @@
+{
+  "pass": true,
+  "stage": "observations",
+  "config": "/home/sai/zx/openpi-3d-tactile/sim/configs/univtac_insert_hole_depth.yml",
+  "seed": 0,
+  "physx_compact_buffers": true,
+  "camera_names": [
+    "head",
+    "wrist"
+  ],
+  "tactile_names": [
+    "left_tactile",
+    "right_tactile"
+  ],
+  "steps_after_reset": 3,
+  "camera": {
+    "head": {
+      "rgb_shape": [
+        270,
+        480,
+        3
+      ],
+      "rgb_mean": 191.5460982510288,
+      "depth_shape": [
+        270,
+        480,
+        1
+      ],
+      "valid_depth_fraction": 0.34747685185185184,
+      "valid_depth_min_m": 0.4999999403953552,
+      "valid_depth_max_m": 1.4811081886291504,
+      "intrinsic": [
+        [
+          346.4285888671875,
+          0.0,
+          240.0
+        ],
+        [
+          0.0,
+          346.4285888671875,
+          135.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "pose_w_opengl": [
+        0.5540000200271606,
+        1.0,
+        0.15000000596046448,
+        1.5454308055495858e-08,
+        1.5454311608209537e-08,
+        0.7071067690849304,
+        0.7071067690849304
+      ],
+      "pointcloud_count_stride4": 2842
+    },
+    "wrist": {
+      "rgb_shape": [
+        270,
+        480,
+        3
+      ],
+      "rgb_mean": 170.92065586419753,
+      "depth_shape": [
+        270,
+        480,
+        1
+      ],
+      "valid_depth_fraction": 1.0,
+      "valid_depth_min_m": 0.08194690942764282,
+      "valid_depth_max_m": 0.2780008912086487,
+      "intrinsic": [
+        [
+          346.4285888671875,
+          0.0,
+          240.0
+        ],
+        [
+          0.0,
+          346.4285888671875,
+          135.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "pose_w_opengl": [
+        0.11787502467632294,
+        0.03067897818982601,
+        0.8632654547691345,
+        0.9216976761817932,
+        1.1567228952458208e-08,
+        -2.8499960169625638e-09,
+        -0.38790902495384216
+      ],
+      "pointcloud_count_stride4": 8160
+    }
+  },
+  "tactile": {
+    "left_tactile": {
+      "rgb_shape": [
+        240,
+        320,
+        3
+      ],
+      "rgb_mean": 113.48400173611111,
+      "press_depth_shape": [
+        240,
+        320
+      ],
+      "press_depth_max_mm": 0.45029959082603455
+    },
+    "right_tactile": {
+      "rgb_shape": [
+        240,
+        320,
+        3
+      ],
+      "rgb_mean": 113.01070746527778,
+      "press_depth_shape": [
+        240,
+        320
+      ],
+      "press_depth_max_mm": 0.739342987537384
+    }
+  }
+}

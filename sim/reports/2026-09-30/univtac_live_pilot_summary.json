@@ -1,0 +1,209 @@
+{
+  "task": "UniVTAC insert_hole live reference/late-slot-offset pilot",
+  "seed": 0,
+  "controller": "recorded joint target returned over OpenPI-compatible WebSocket; not a learned policy or recovery teacher",
+  "control_hz": 60,
+  "perturb_index": 170,
+  "contact_truth_status": "Strict peg-slot pair classification and barrier-gradient validation are in univtac_contact_metric_gate_seed0.json; earlier mixed-actor contact counts were superseded.",
+  "cases": [
+    {
+      "label": "clean_wire_v0",
+      "report": "univtac_live_clean_seed0.json",
+      "request_schema": "nested_reference_v0",
+      "offset_mm": [
+        0.0,
+        0.0
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": true,
+      "joint_mae_rad": 1.7055314427551604e-05,
+      "pointcloud_count_per_step": [
+        0
+      ],
+      "contact_truth_available": false,
+      "post_perturb_relative_z_descent_mm": 32.44810178875923,
+      "terminal_prism_minus_slot_z_mm": 49.89501112140715,
+      "median_right_minus_left_gripper_press_max_mm": 0.284996822476387,
+      "slot_pose_after_offset_xyz_m": [
+        0.5907914638519287,
+        -0.027541588991880417,
+        0.0020000000949949026
+      ]
+    },
+    {
+      "label": "slot_y_plus_1mm_wire_v0",
+      "report": "univtac_live_slot_y_plus1mm_seed0.json",
+      "request_schema": "nested_reference_v0",
+      "offset_mm": [
+        0.0,
+        1.0
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": true,
+      "joint_mae_rad": 1.8136298326150432e-05,
+      "pointcloud_count_per_step": [
+        0
+      ],
+      "contact_truth_available": false,
+      "post_perturb_relative_z_descent_mm": 32.85474330186844,
+      "terminal_prism_minus_slot_z_mm": 49.98588957823813,
+      "median_right_minus_left_gripper_press_max_mm": 0.2895751893520355,
+      "slot_pose_after_offset_xyz_m": [
+        0.5907914638519287,
+        -0.026541588827967644,
+        0.0020000000949949026
+      ]
+    },
+    {
+      "label": "slot_y_minus_0p5mm_wire_v0",
+      "report": "univtac_live_slot_y_minus0p5mm_pc_seed0.json",
+      "request_schema": "nested_reference_v0",
+      "offset_mm": [
+        0.0,
+        -0.5
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": true,
+      "joint_mae_rad": 1.83960909900117e-05,
+      "pointcloud_count_per_step": [
+        2048
+      ],
+      "contact_truth_available": false,
+      "post_perturb_relative_z_descent_mm": 32.97385573387146,
+      "terminal_prism_minus_slot_z_mm": 49.79183175601065,
+      "median_right_minus_left_gripper_press_max_mm": 0.2839714586734772,
+      "slot_pose_after_offset_xyz_m": [
+        0.5907914638519287,
+        -0.02804158814251423,
+        0.0020000000949949026
+      ]
+    },
+    {
+      "label": "slot_y_minus_1mm_wire_v0",
+      "report": "univtac_live_slot_y_minus1mm_seed0.json",
+      "request_schema": "nested_reference_v0",
+      "offset_mm": [
+        0.0,
+        -1.0
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": false,
+      "joint_mae_rad": 2.0977553194352708e-05,
+      "pointcloud_count_per_step": [
+        0
+      ],
+      "contact_truth_available": false,
+      "post_perturb_relative_z_descent_mm": 0.021666288375854492,
+      "terminal_prism_minus_slot_z_mm": 83.82886298932135,
+      "median_right_minus_left_gripper_press_max_mm": 0.4411265254020691,
+      "slot_pose_after_offset_xyz_m": [
+        0.5907914638519287,
+        -0.02854158915579319,
+        0.0020000000949949026
+      ]
+    },
+    {
+      "label": "raw_v1_contract_pc_2steps",
+      "report": "univtac_live_contract_pc_seed0_2steps.json",
+      "request_schema": "univtac_policy_raw_v1",
+      "offset_mm": [
+        0.0,
+        0.0
+      ],
+      "action_count": 2,
+      "actions_executed": true,
+      "terminal_success": false,
+      "joint_mae_rad": 0.0005935915073172913,
+      "pointcloud_count_per_step": [
+        2048
+      ],
+      "contact_truth_available": false
+    },
+    {
+      "label": "clean_pc_contact",
+      "report": "univtac_live_clean_pc_contact_seed0.json",
+      "request_schema": "univtac_policy_raw_v1",
+      "offset_mm": [
+        0.0,
+        0.0
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": true,
+      "joint_mae_rad": 1.8314129969999896e-05,
+      "pointcloud_count_per_step": [
+        2048
+      ],
+      "contact_truth_available": false,
+      "post_perturb_relative_z_descent_mm": 32.39946439862251,
+      "terminal_prism_minus_slot_z_mm": 49.931064480915666,
+      "median_right_minus_left_gripper_press_max_mm": 0.28538237512111664,
+      "slot_pose_after_offset_xyz_m": [
+        0.5907914638519287,
+        -0.027541588991880417,
+        0.0020000000949949026
+      ],
+      "contact_probe_superseded_by": "univtac_contact_metric_gate_seed0.json"
+    },
+    {
+      "label": "slot_y_minus_1mm_pc_contact",
+      "report": "univtac_live_slot_y_minus1mm_pc_contact_seed0.json",
+      "request_schema": "univtac_policy_raw_v1",
+      "offset_mm": [
+        0.0,
+        -1.0
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": false,
+      "joint_mae_rad": 1.8625189135784998e-05,
+      "pointcloud_count_per_step": [
+        2048
+      ],
+      "contact_truth_available": false,
+      "post_perturb_relative_z_descent_mm": 0.031717121601104736,
+      "terminal_prism_minus_slot_z_mm": 83.29634019173682,
+      "median_right_minus_left_gripper_press_max_mm": 0.4753032624721527,
+      "slot_pose_after_offset_xyz_m": [
+        0.5907914638519287,
+        -0.02854158915579319,
+        0.0020000000949949026
+      ],
+      "contact_probe_superseded_by": "univtac_contact_metric_gate_seed0.json"
+    },
+    {
+      "label": "strict_pair_clean",
+      "report": "univtac_contact_gradient_clean_seed0_full.json",
+      "request_schema": "univtac_policy_raw_v1",
+      "offset_mm": [
+        0.0,
+        0.0
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": true,
+      "contact_truth_available": true,
+      "strict_pair_count_median_post_170_200": 25.0,
+      "provisional_barrier_force_N_median_post_170_200": 3.7273909907936584
+    },
+    {
+      "label": "strict_pair_slot_y_minus1mm",
+      "report": "univtac_contact_gradient_minus1mm_seed0.json",
+      "request_schema": "univtac_policy_raw_v1",
+      "offset_mm": [
+        0.0,
+        -1.0
+      ],
+      "action_count": 201,
+      "actions_executed": true,
+      "terminal_success": false,
+      "contact_truth_available": true,
+      "strict_pair_count_median_post_170_200": 331.0,
+      "provisional_barrier_force_N_median_post_170_200": 669.256906389865
+    }
+  ]
+}

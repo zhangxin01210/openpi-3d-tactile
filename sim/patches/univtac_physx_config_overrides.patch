@@ -1,0 +1,38 @@
+diff --git a/envs/utils/env_parser.py b/envs/utils/env_parser.py
+index fba266e..25e6008 100644
+--- a/envs/utils/env_parser.py
++++ b/envs/utils/env_parser.py
+@@ -62,6 +62,7 @@ class TaskRunConfig:
+     replay_settings: ReplaySettings = field(default_factory=ReplaySettings)
+     observation_settings: dict[str, Any] = field(default_factory=dict)
+     task_overrides: dict[str, Any] = field(default_factory=dict)
++    physx_overrides: dict[str, int] = field(default_factory=dict)
+ 
+ 
+ @dataclass(frozen=True)
+@@ -232,6 +233,16 @@ def validate_task_config(config: DictConfig) -> None:
+     OmegaConf.to_container(config, resolve=True, throw_on_missing=True)
+     timing_plan(config, "collect")
+     timing_plan(config, "eval")
++    allowed_physx_overrides = {
++        "gpu_max_rigid_contact_count", "gpu_max_rigid_patch_count",
++        "gpu_found_lost_pairs_capacity", "gpu_found_lost_aggregate_pairs_capacity",
++        "gpu_total_aggregate_pairs_capacity", "gpu_collision_stack_size",
++        "gpu_heap_capacity", "gpu_temp_buffer_capacity",
++    }
++    for name, value in config.physx_overrides.items():
++        if name not in allowed_physx_overrides:
++            raise ValueError(f"Unsupported PhysX GPU buffer override: {name}")
++        _require_int(f"physx_overrides.{name}", value)
+ 
+     if not isinstance(config.collect_settings.use_seed, bool):
+         raise TypeError("collect_settings.use_seed must be a boolean.")
+@@ -307,6 +318,8 @@ def build_task_env_cfg(
+     env_cfg.uipc_sim.dt = env_cfg.sim.dt
+     env_cfg.sim.render_interval = timing.decimation
+     env_cfg.sim.render.rendering_mode = FIXED_RENDERING_MODE
++    for name, value in config.physx_overrides.items():
++        setattr(env_cfg.sim.physx, name, value)
+     for camera_cfg in env_cfg.cameras:
+         camera_cfg.update_period = env_cfg.sim.dt
+ 

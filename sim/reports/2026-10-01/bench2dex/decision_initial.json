@@ -1,0 +1,24 @@
+{
+  "contactworld": "defer local legacy stack: inspected 5090 recipe requires custom framework builds; not reproduced",
+  "bench2dex": {
+    "runtime_replay": "passed",
+    "task": "73_jigsaw_puzzle_assembly",
+    "episodes": [
+      0,
+      24,
+      49
+    ],
+    "frames": 2452,
+    "depth_and_calibration_output": true,
+    "chest_plane_consistency": "checked at 9 frames",
+    "wrist_metric_reconstruction": "not independently verified",
+    "tactile": "geometric penetration proxy, not 3D force",
+    "target_xy_randomization": false,
+    "closed_loop_policy": "not tested",
+    "decision": "retain runtime as dexterous-hand backup; selected task not adopted for formal training"
+  },
+  "recommended_next": "TacEx custom randomized contact-task protocol and demonstration-source review under current local engineering budget; other Bench2Dex tasks remain unreviewed",
+  "perturbation_collection": "deferred per user",
+  "training": "not started",
+  "all_downloads_this_followup_direct": true
+}

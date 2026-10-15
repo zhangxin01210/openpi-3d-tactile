@@ -1,0 +1,461 @@
+{
+  "dataset_root": "/home/sai/zx/openpi-sim-runtime/data_depth/insert_hole/univtac_insert_hole_depth",
+  "episode_count": 1,
+  "incomplete_file_count": 0,
+  "incomplete_files": [],
+  "all_episode_schemas_match": true,
+  "all_dataset_frame_counts_match": true,
+  "all_required_flags": {
+    "ee": true,
+    "head_depth": true,
+    "head_intrinsic": true,
+    "head_pose_w_opengl": true,
+    "head_rgb": true,
+    "joint": true,
+    "left_press_depth": true,
+    "right_press_depth": true,
+    "wrist_depth": true,
+    "wrist_intrinsic": true,
+    "wrist_pose_w_opengl": true,
+    "wrist_rgb": true
+  },
+  "episodes": [
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data_depth/insert_hole/univtac_insert_hole_depth/hdf5/0.hdf5",
+      "frames": 201,
+      "all_dataset_frame_counts_match": true,
+      "step_deltas": {
+        "min": 2,
+        "max": 2,
+        "all_positive": true
+      },
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "actor/prism_base": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "actor/slot": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "atom/id": {
+          "shape": [
+            201
+          ],
+          "dtype": "int64",
+          "bytes": 1608
+        },
+        "atom/tag": {
+          "shape": [
+            201
+          ],
+          "dtype": "|S5",
+          "bytes": 1005
+        },
+        "embodiment/ee": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "embodiment/joint": {
+          "shape": [
+            201,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 7236
+        },
+        "observation/head/depth": {
+          "shape": [
+            201,
+            270,
+            480,
+            1
+          ],
+          "dtype": "float32",
+          "bytes": 104198400
+        },
+        "observation/head/intrinsic": {
+          "shape": [
+            201,
+            3,
+            3
+          ],
+          "dtype": "float32",
+          "bytes": 7236
+        },
+        "observation/head/pose_w_opengl": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "observation/head/rgb": {
+          "shape": [
+            201
+          ],
+          "dtype": "|S27907",
+          "bytes": 5609307
+        },
+        "observation/wrist/depth": {
+          "shape": [
+            201,
+            270,
+            480,
+            1
+          ],
+          "dtype": "float32",
+          "bytes": 104198400
+        },
+        "observation/wrist/intrinsic": {
+          "shape": [
+            201,
+            3,
+            3
+          ],
+          "dtype": "float32",
+          "bytes": 7236
+        },
+        "observation/wrist/pose_w_opengl": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            201
+          ],
+          "dtype": "|S27520",
+          "bytes": 5531520
+        },
+        "step": {
+          "shape": [
+            201
+          ],
+          "dtype": "int64",
+          "bytes": 1608
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            201,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 61747200
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            201,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 202608
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            201,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 61747200
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            201
+          ],
+          "dtype": "|S10933",
+          "bytes": 2197533
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            201
+          ],
+          "dtype": "|S23807",
+          "bytes": 4785207
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            201,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 61747200
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            201,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 202608
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            201,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5628
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            201,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 61747200
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            201
+          ],
+          "dtype": "|S11347",
+          "bytes": 2280747
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            201
+          ],
+          "dtype": "|S24219",
+          "bytes": 4868019
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": true,
+        "wrist_depth": true,
+        "head_intrinsic": true,
+        "wrist_intrinsic": true,
+        "head_pose_w_opengl": true,
+        "wrist_pose_w_opengl": true,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 200,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.0071868896484375,
+        "ee_delta_abs_max": 0.0018386244773864746
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.4951353073120117,
+        "left_press_depth_nonzero_fraction": 0.3471350279850746,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.78961580991745,
+        "right_press_depth_nonzero_fraction": 0.4577106654228856,
+        "left_marker_shape": [
+          201,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          201,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 201,
+          "nonempty": 201,
+          "min_bytes": 27008,
+          "max_bytes": 27907
+        },
+        "wrist_rgb": {
+          "count": 201,
+          "nonempty": 201,
+          "min_bytes": 22861,
+          "max_bytes": 27520
+        },
+        "left_tactile_rgb": {
+          "count": 201,
+          "nonempty": 201,
+          "min_bytes": 10338,
+          "max_bytes": 10933
+        },
+        "right_tactile_rgb": {
+          "count": 201,
+          "nonempty": 201,
+          "min_bytes": 10498,
+          "max_bytes": 11347
+        }
+      },
+      "camera_geometry": {
+        "head": {
+          "pass": true,
+          "samples": [
+            {
+              "frame": 0,
+              "valid_depth_fraction": 0.34770061728395063,
+              "pointcloud_count_stride4": 2845,
+              "pose_quaternion_norm": 0.9999999403953552,
+              "pointcloud_bounds_m": [
+                [
+                  -0.09543202072381973,
+                  -0.3626195192337036,
+                  -0.0015463961753994226
+                ],
+                [
+                  0.9955486059188843,
+                  0.5000000596046448,
+                  0.5494911074638367
+                ]
+              ]
+            },
+            {
+              "frame": 100,
+              "valid_depth_fraction": 0.3507716049382716,
+              "pointcloud_count_stride4": 2873,
+              "pose_quaternion_norm": 0.9999999403953552,
+              "pointcloud_bounds_m": [
+                [
+                  -0.0954318568110466,
+                  -0.3626193106174469,
+                  -0.0015464143361896276
+                ],
+                [
+                  0.9955485463142395,
+                  0.5,
+                  0.5734687447547913
+                ]
+              ]
+            },
+            {
+              "frame": 200,
+              "valid_depth_fraction": 0.3583796296296296,
+              "pointcloud_count_stride4": 2944,
+              "pose_quaternion_norm": 0.9999999403953552,
+              "pointcloud_bounds_m": [
+                [
+                  -0.09543202072381973,
+                  -0.3626193106174469,
+                  -0.0015463961753994226
+                ],
+                [
+                  0.9955484867095947,
+                  0.5000000596046448,
+                  0.5693123936653137
+                ]
+              ]
+            }
+          ]
+        },
+        "wrist": {
+          "pass": true,
+          "samples": [
+            {
+              "frame": 0,
+              "valid_depth_fraction": 1.0,
+              "pointcloud_count_stride4": 8160,
+              "pose_quaternion_norm": 1.0,
+              "pointcloud_bounds_m": [
+                [
+                  -0.09255057573318481,
+                  -0.17834670841693878,
+                  0.584602415561676
+                ],
+                [
+                  0.32774487137794495,
+                  0.24463732540607452,
+                  0.7822954654693604
+                ]
+              ]
+            },
+            {
+              "frame": 100,
+              "valid_depth_fraction": 1.0,
+              "pointcloud_count_stride4": 8160,
+              "pose_quaternion_norm": 1.0,
+              "pointcloud_bounds_m": [
+                [
+                  -0.06998411566019058,
+                  -0.155927836894989,
+                  0.6145291924476624
+                ],
+                [
+                  0.3052035868167877,
+                  0.22165942192077637,
+                  0.7827324867248535
+                ]
+              ]
+            },
+            {
+              "frame": 200,
+              "valid_depth_fraction": 1.0,
+              "pointcloud_count_stride4": 8160,
+              "pose_quaternion_norm": 1.0,
+              "pointcloud_bounds_m": [
+                [
+                  -0.03187362477183342,
+                  -0.118073470890522,
+                  0.6659213900566101
+                ],
+                [
+                  0.26639145612716675,
+                  0.18208664655685425,
+                  0.7657948136329651
+                ]
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "data_gate": {
+    "pass": true,
+    "reason": "Synchronized RGB, tactile, and embodiment columns are present with matching frame counts."
+  },
+  "pointcloud_gate": {
+    "pass": true,
+    "reason": "Metric world-frame clouds require synchronized camera depth, intrinsics, and world poses. All episodes passed sampled reconstruction checks."
+  }
+}

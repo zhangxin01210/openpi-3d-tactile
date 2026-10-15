@@ -1,0 +1,45 @@
+{
+  "physics_requested": "gpu",
+  "python": "3.8.20 (default, Oct  3 2024, 15:24:27) \n[GCC 11.2.0]",
+  "status": "passed",
+  "stages": [
+    {
+      "stage": "import_isaacgym_begin"
+    },
+    {
+      "stage": "import_isaacgym_pass",
+      "native_tactile_api": [
+        "acquire_sdf_view_tensor",
+        "refresh_sdf_view_tensor"
+      ]
+    },
+    {
+      "stage": "create_sim_begin"
+    },
+    {
+      "stage": "create_sim_pass"
+    },
+    {
+      "stage": "physics_begin"
+    },
+    {
+      "stage": "physics_pass",
+      "box_position": [
+        1.0215981092187576e-06,
+        -1.3139568864062312e-06,
+        0.05199986696243286
+      ]
+    },
+    {
+      "stage": "camera_begin"
+    },
+    {
+      "stage": "camera_pass",
+      "valid_depth_fraction": 0.9265885416666667
+    },
+    {
+      "stage": "completed"
+    }
+  ],
+  "pid": 432293
+}

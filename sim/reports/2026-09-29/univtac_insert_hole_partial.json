@@ -1,0 +1,4683 @@
+{
+  "dataset_root": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole",
+  "episode_count": 19,
+  "incomplete_file_count": 4,
+  "incomplete_files": [
+    "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/26.hdf5.incomplete",
+    "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/27.hdf5.incomplete",
+    "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/28.hdf5.incomplete",
+    "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/29.hdf5.incomplete"
+  ],
+  "all_episode_schemas_match": false,
+  "all_required_flags": {
+    "ee": true,
+    "head_depth": false,
+    "head_rgb": true,
+    "joint": true,
+    "left_press_depth": true,
+    "right_press_depth": true,
+    "wrist_depth": false,
+    "wrist_rgb": true
+  },
+  "episodes": [
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/0.hdf5",
+      "frames": 189,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            189,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5292
+        },
+        "actor/prism_base": {
+          "shape": [
+            189,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5292
+        },
+        "actor/slot": {
+          "shape": [
+            189,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5292
+        },
+        "atom/id": {
+          "shape": [
+            189
+          ],
+          "dtype": "int64",
+          "bytes": 1512
+        },
+        "atom/tag": {
+          "shape": [
+            189
+          ],
+          "dtype": "|S5",
+          "bytes": 945
+        },
+        "embodiment/ee": {
+          "shape": [
+            189,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5292
+        },
+        "embodiment/joint": {
+          "shape": [
+            189,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 6804
+        },
+        "observation/head/rgb": {
+          "shape": [
+            189
+          ],
+          "dtype": "|S27962",
+          "bytes": 5284818
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            189
+          ],
+          "dtype": "|S26503",
+          "bytes": 5009067
+        },
+        "step": {
+          "shape": [
+            189
+          ],
+          "dtype": "int64",
+          "bytes": 1512
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            189,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58060800
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            189,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 190512
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            189,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5292
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            189,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58060800
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            189
+          ],
+          "dtype": "|S10802",
+          "bytes": 2041578
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            189
+          ],
+          "dtype": "|S23525",
+          "bytes": 4446225
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            189,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58060800
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            189,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 190512
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            189,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5292
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            189,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58060800
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            189
+          ],
+          "dtype": "|S11324",
+          "bytes": 2140236
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            189
+          ],
+          "dtype": "|S23914",
+          "bytes": 4519746
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 188,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.005189180374145508,
+        "ee_delta_abs_max": 0.0014890730381011963
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5072425007820129,
+        "left_press_depth_nonzero_fraction": 0.3697849151234568,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8128169178962708,
+        "right_press_depth_nonzero_fraction": 0.482081817680776,
+        "left_marker_shape": [
+          189,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          189,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 189,
+          "nonempty": 189,
+          "min_bytes": 0,
+          "max_bytes": 27962
+        },
+        "wrist_rgb": {
+          "count": 189,
+          "nonempty": 189,
+          "min_bytes": 0,
+          "max_bytes": 26503
+        },
+        "left_tactile_rgb": {
+          "count": 189,
+          "nonempty": 189,
+          "min_bytes": 0,
+          "max_bytes": 10802
+        },
+        "right_tactile_rgb": {
+          "count": 189,
+          "nonempty": 189,
+          "min_bytes": 0,
+          "max_bytes": 11324
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/1.hdf5",
+      "frames": 166,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            166,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4648
+        },
+        "actor/prism_base": {
+          "shape": [
+            166,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4648
+        },
+        "actor/slot": {
+          "shape": [
+            166,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4648
+        },
+        "atom/id": {
+          "shape": [
+            166
+          ],
+          "dtype": "int64",
+          "bytes": 1328
+        },
+        "atom/tag": {
+          "shape": [
+            166
+          ],
+          "dtype": "|S5",
+          "bytes": 830
+        },
+        "embodiment/ee": {
+          "shape": [
+            166,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4648
+        },
+        "embodiment/joint": {
+          "shape": [
+            166,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 5976
+        },
+        "observation/head/rgb": {
+          "shape": [
+            166
+          ],
+          "dtype": "|S27667",
+          "bytes": 4592722
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            166
+          ],
+          "dtype": "|S27084",
+          "bytes": 4495944
+        },
+        "step": {
+          "shape": [
+            166
+          ],
+          "dtype": "int64",
+          "bytes": 1328
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            166,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50995200
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            166,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 167328
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            166,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4648
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            166,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50995200
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            166
+          ],
+          "dtype": "|S11451",
+          "bytes": 1900866
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            166
+          ],
+          "dtype": "|S24122",
+          "bytes": 4004252
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            166,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50995200
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            166,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 167328
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            166,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4648
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            166,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50995200
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            166
+          ],
+          "dtype": "|S10904",
+          "bytes": 1810064
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            166
+          ],
+          "dtype": "|S23695",
+          "bytes": 3933370
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 165,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.007285594940185547,
+        "ee_delta_abs_max": 0.001765906810760498
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5249190330505371,
+        "left_press_depth_nonzero_fraction": 0.3751666823544177,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8018496632575989,
+        "right_press_depth_nonzero_fraction": 0.49953156375502006,
+        "left_marker_shape": [
+          166,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          166,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 166,
+          "nonempty": 166,
+          "min_bytes": 0,
+          "max_bytes": 27667
+        },
+        "wrist_rgb": {
+          "count": 166,
+          "nonempty": 166,
+          "min_bytes": 0,
+          "max_bytes": 27084
+        },
+        "left_tactile_rgb": {
+          "count": 166,
+          "nonempty": 166,
+          "min_bytes": 0,
+          "max_bytes": 11451
+        },
+        "right_tactile_rgb": {
+          "count": 166,
+          "nonempty": 166,
+          "min_bytes": 0,
+          "max_bytes": 10904
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/10.hdf5",
+      "frames": 164,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "actor/prism_base": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "actor/slot": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "atom/id": {
+          "shape": [
+            164
+          ],
+          "dtype": "int64",
+          "bytes": 1312
+        },
+        "atom/tag": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S5",
+          "bytes": 820
+        },
+        "embodiment/ee": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "embodiment/joint": {
+          "shape": [
+            164,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 5904
+        },
+        "observation/head/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S27872",
+          "bytes": 4571008
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S27065",
+          "bytes": 4438660
+        },
+        "step": {
+          "shape": [
+            164
+          ],
+          "dtype": "int64",
+          "bytes": 1312
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            164,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 165312
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S10838",
+          "bytes": 1777432
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S23615",
+          "bytes": 3872860
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            164,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 165312
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S11459",
+          "bytes": 1879276
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S24003",
+          "bytes": 3936492
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 163,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.00678563117980957,
+        "ee_delta_abs_max": 0.0017217397689819336
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5276477932929993,
+        "left_press_depth_nonzero_fraction": 0.3774084571900406,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8399332761764526,
+        "right_press_depth_nonzero_fraction": 0.49316549161585366,
+        "left_marker_shape": [
+          164,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          164,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 27872
+        },
+        "wrist_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 27065
+        },
+        "left_tactile_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 10838
+        },
+        "right_tactile_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 11459
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/11.hdf5",
+      "frames": 195,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "actor/prism_base": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "actor/slot": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "atom/id": {
+          "shape": [
+            195
+          ],
+          "dtype": "int64",
+          "bytes": 1560
+        },
+        "atom/tag": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S5",
+          "bytes": 975
+        },
+        "embodiment/ee": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "embodiment/joint": {
+          "shape": [
+            195,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 7020
+        },
+        "observation/head/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S27655",
+          "bytes": 5392725
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S27236",
+          "bytes": 5311020
+        },
+        "step": {
+          "shape": [
+            195
+          ],
+          "dtype": "int64",
+          "bytes": 1560
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            195,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 196560
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S11513",
+          "bytes": 2245035
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S24070",
+          "bytes": 4693650
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            195,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 196560
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S10819",
+          "bytes": 2109705
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S23712",
+          "bytes": 4623840
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 194,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.00679779052734375,
+        "ee_delta_abs_max": 0.001717209815979004
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5190591216087341,
+        "left_press_depth_nonzero_fraction": 0.3900045405982906,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8225920796394348,
+        "right_press_depth_nonzero_fraction": 0.506987045940171,
+        "left_marker_shape": [
+          195,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          195,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 27655
+        },
+        "wrist_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 27236
+        },
+        "left_tactile_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 11513
+        },
+        "right_tactile_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 10819
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/12.hdf5",
+      "frames": 232,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            232,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6496
+        },
+        "actor/prism_base": {
+          "shape": [
+            232,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6496
+        },
+        "actor/slot": {
+          "shape": [
+            232,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6496
+        },
+        "atom/id": {
+          "shape": [
+            232
+          ],
+          "dtype": "int64",
+          "bytes": 1856
+        },
+        "atom/tag": {
+          "shape": [
+            232
+          ],
+          "dtype": "|S5",
+          "bytes": 1160
+        },
+        "embodiment/ee": {
+          "shape": [
+            232,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6496
+        },
+        "embodiment/joint": {
+          "shape": [
+            232,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 8352
+        },
+        "observation/head/rgb": {
+          "shape": [
+            232
+          ],
+          "dtype": "|S28103",
+          "bytes": 6519896
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            232
+          ],
+          "dtype": "|S26522",
+          "bytes": 6153104
+        },
+        "step": {
+          "shape": [
+            232
+          ],
+          "dtype": "int64",
+          "bytes": 1856
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            232,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 71270400
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            232,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 233856
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            232,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6496
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            232,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 71270400
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            232
+          ],
+          "dtype": "|S10826",
+          "bytes": 2511632
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            232
+          ],
+          "dtype": "|S23638",
+          "bytes": 5484016
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            232,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 71270400
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            232,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 233856
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            232,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6496
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            232,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 71270400
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            232
+          ],
+          "dtype": "|S11458",
+          "bytes": 2658256
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            232
+          ],
+          "dtype": "|S23932",
+          "bytes": 5552224
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 231,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.004444122314453125,
+        "ee_delta_abs_max": 0.0010481476783752441
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.45943212509155273,
+        "left_press_depth_nonzero_fraction": 0.3663237473060345,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.7521803379058838,
+        "right_press_depth_nonzero_fraction": 0.48247799928160917,
+        "left_marker_shape": [
+          232,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          232,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 232,
+          "nonempty": 232,
+          "min_bytes": 0,
+          "max_bytes": 28103
+        },
+        "wrist_rgb": {
+          "count": 232,
+          "nonempty": 232,
+          "min_bytes": 0,
+          "max_bytes": 26522
+        },
+        "left_tactile_rgb": {
+          "count": 232,
+          "nonempty": 232,
+          "min_bytes": 0,
+          "max_bytes": 10826
+        },
+        "right_tactile_rgb": {
+          "count": 232,
+          "nonempty": 232,
+          "min_bytes": 0,
+          "max_bytes": 11458
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/13.hdf5",
+      "frames": 168,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "actor/prism_base": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "actor/slot": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "atom/id": {
+          "shape": [
+            168
+          ],
+          "dtype": "int64",
+          "bytes": 1344
+        },
+        "atom/tag": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S5",
+          "bytes": 840
+        },
+        "embodiment/ee": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "embodiment/joint": {
+          "shape": [
+            168,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 6048
+        },
+        "observation/head/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S27944",
+          "bytes": 4694592
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S26674",
+          "bytes": 4481232
+        },
+        "step": {
+          "shape": [
+            168
+          ],
+          "dtype": "int64",
+          "bytes": 1344
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            168,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 169344
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S10822",
+          "bytes": 1818096
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S23615",
+          "bytes": 3967320
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            168,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 169344
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S11429",
+          "bytes": 1920072
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S23952",
+          "bytes": 4023936
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 167,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.006178140640258789,
+        "ee_delta_abs_max": 0.0016696155071258545
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5634254813194275,
+        "left_press_depth_nonzero_fraction": 0.38568646143353175,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.857211172580719,
+        "right_press_depth_nonzero_fraction": 0.49938135540674605,
+        "left_marker_shape": [
+          168,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          168,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 27944
+        },
+        "wrist_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 26674
+        },
+        "left_tactile_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 10822
+        },
+        "right_tactile_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 11429
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/14.hdf5",
+      "frames": 196,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            196,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5488
+        },
+        "actor/prism_base": {
+          "shape": [
+            196,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5488
+        },
+        "actor/slot": {
+          "shape": [
+            196,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5488
+        },
+        "atom/id": {
+          "shape": [
+            196
+          ],
+          "dtype": "int64",
+          "bytes": 1568
+        },
+        "atom/tag": {
+          "shape": [
+            196
+          ],
+          "dtype": "|S5",
+          "bytes": 980
+        },
+        "embodiment/ee": {
+          "shape": [
+            196,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5488
+        },
+        "embodiment/joint": {
+          "shape": [
+            196,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 7056
+        },
+        "observation/head/rgb": {
+          "shape": [
+            196
+          ],
+          "dtype": "|S27667",
+          "bytes": 5422732
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            196
+          ],
+          "dtype": "|S27637",
+          "bytes": 5416852
+        },
+        "step": {
+          "shape": [
+            196
+          ],
+          "dtype": "int64",
+          "bytes": 1568
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            196,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 60211200
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            196,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 197568
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            196,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5488
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            196,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 60211200
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            196
+          ],
+          "dtype": "|S11437",
+          "bytes": 2241652
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            196
+          ],
+          "dtype": "|S23993",
+          "bytes": 4702628
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            196,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 60211200
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            196,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 197568
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            196,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5488
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            196,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 60211200
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            196
+          ],
+          "dtype": "|S10875",
+          "bytes": 2131500
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            196
+          ],
+          "dtype": "|S23741",
+          "bytes": 4653236
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 195,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.007091045379638672,
+        "ee_delta_abs_max": 0.0017618536949157715
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5058790445327759,
+        "left_press_depth_nonzero_fraction": 0.3771270461309524,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8124182820320129,
+        "right_press_depth_nonzero_fraction": 0.49915822969812923,
+        "left_marker_shape": [
+          196,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          196,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 196,
+          "nonempty": 196,
+          "min_bytes": 0,
+          "max_bytes": 27667
+        },
+        "wrist_rgb": {
+          "count": 196,
+          "nonempty": 196,
+          "min_bytes": 0,
+          "max_bytes": 27637
+        },
+        "left_tactile_rgb": {
+          "count": 196,
+          "nonempty": 196,
+          "min_bytes": 0,
+          "max_bytes": 11437
+        },
+        "right_tactile_rgb": {
+          "count": 196,
+          "nonempty": 196,
+          "min_bytes": 0,
+          "max_bytes": 10875
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/15.hdf5",
+      "frames": 194,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            194,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5432
+        },
+        "actor/prism_base": {
+          "shape": [
+            194,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5432
+        },
+        "actor/slot": {
+          "shape": [
+            194,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5432
+        },
+        "atom/id": {
+          "shape": [
+            194
+          ],
+          "dtype": "int64",
+          "bytes": 1552
+        },
+        "atom/tag": {
+          "shape": [
+            194
+          ],
+          "dtype": "|S5",
+          "bytes": 970
+        },
+        "embodiment/ee": {
+          "shape": [
+            194,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5432
+        },
+        "embodiment/joint": {
+          "shape": [
+            194,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 6984
+        },
+        "observation/head/rgb": {
+          "shape": [
+            194
+          ],
+          "dtype": "|S27926",
+          "bytes": 5417644
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            194
+          ],
+          "dtype": "|S26644",
+          "bytes": 5168936
+        },
+        "step": {
+          "shape": [
+            194
+          ],
+          "dtype": "int64",
+          "bytes": 1552
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            194,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59596800
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            194,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 195552
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            194,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5432
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            194,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59596800
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            194
+          ],
+          "dtype": "|S10805",
+          "bytes": 2096170
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            194
+          ],
+          "dtype": "|S23635",
+          "bytes": 4585190
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            194,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59596800
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            194,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 195552
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            194,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5432
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            194,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59596800
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            194
+          ],
+          "dtype": "|S11399",
+          "bytes": 2211406
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            194
+          ],
+          "dtype": "|S23910",
+          "bytes": 4638540
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 193,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.0058574676513671875,
+        "ee_delta_abs_max": 0.001412808895111084
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5881372094154358,
+        "left_press_depth_nonzero_fraction": 0.3659487086554983,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8982564210891724,
+        "right_press_depth_nonzero_fraction": 0.4900846354166667,
+        "left_marker_shape": [
+          194,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          194,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 194,
+          "nonempty": 194,
+          "min_bytes": 0,
+          "max_bytes": 27926
+        },
+        "wrist_rgb": {
+          "count": 194,
+          "nonempty": 194,
+          "min_bytes": 0,
+          "max_bytes": 26644
+        },
+        "left_tactile_rgb": {
+          "count": 194,
+          "nonempty": 194,
+          "min_bytes": 0,
+          "max_bytes": 10805
+        },
+        "right_tactile_rgb": {
+          "count": 194,
+          "nonempty": 194,
+          "min_bytes": 0,
+          "max_bytes": 11399
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/16.hdf5",
+      "frames": 165,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "actor/prism_base": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "actor/slot": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "atom/id": {
+          "shape": [
+            165
+          ],
+          "dtype": "int64",
+          "bytes": 1320
+        },
+        "atom/tag": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S5",
+          "bytes": 825
+        },
+        "embodiment/ee": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "embodiment/joint": {
+          "shape": [
+            165,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 5940
+        },
+        "observation/head/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S27905",
+          "bytes": 4604325
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S26770",
+          "bytes": 4417050
+        },
+        "step": {
+          "shape": [
+            165
+          ],
+          "dtype": "int64",
+          "bytes": 1320
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            165,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 166320
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S10772",
+          "bytes": 1777380
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S23653",
+          "bytes": 3902745
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            165,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 166320
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S11350",
+          "bytes": 1872750
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S23797",
+          "bytes": 3926505
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 164,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.0072040557861328125,
+        "ee_delta_abs_max": 0.001806497573852539
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.4836651384830475,
+        "left_press_depth_nonzero_fraction": 0.37704655934343434,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.7717791199684143,
+        "right_press_depth_nonzero_fraction": 0.48815648674242423,
+        "left_marker_shape": [
+          165,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          165,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 27905
+        },
+        "wrist_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 26770
+        },
+        "left_tactile_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 10772
+        },
+        "right_tactile_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 11350
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/17.hdf5",
+      "frames": 224,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            224,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6272
+        },
+        "actor/prism_base": {
+          "shape": [
+            224,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6272
+        },
+        "actor/slot": {
+          "shape": [
+            224,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6272
+        },
+        "atom/id": {
+          "shape": [
+            224
+          ],
+          "dtype": "int64",
+          "bytes": 1792
+        },
+        "atom/tag": {
+          "shape": [
+            224
+          ],
+          "dtype": "|S5",
+          "bytes": 1120
+        },
+        "embodiment/ee": {
+          "shape": [
+            224,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6272
+        },
+        "embodiment/joint": {
+          "shape": [
+            224,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 8064
+        },
+        "observation/head/rgb": {
+          "shape": [
+            224
+          ],
+          "dtype": "|S27983",
+          "bytes": 6268192
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            224
+          ],
+          "dtype": "|S26806",
+          "bytes": 6004544
+        },
+        "step": {
+          "shape": [
+            224
+          ],
+          "dtype": "int64",
+          "bytes": 1792
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            224,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 68812800
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            224,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 225792
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            224,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6272
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            224,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 68812800
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            224
+          ],
+          "dtype": "|S10859",
+          "bytes": 2432416
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            224
+          ],
+          "dtype": "|S23554",
+          "bytes": 5276096
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            224,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 68812800
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            224,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 225792
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            224,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6272
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            224,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 68812800
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            224
+          ],
+          "dtype": "|S11458",
+          "bytes": 2566592
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            224
+          ],
+          "dtype": "|S23892",
+          "bytes": 5351808
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 223,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.004552483558654785,
+        "ee_delta_abs_max": 0.001157999038696289
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.4809233248233795,
+        "left_press_depth_nonzero_fraction": 0.362978515625,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.7748189568519592,
+        "right_press_depth_nonzero_fraction": 0.48225545247395835,
+        "left_marker_shape": [
+          224,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          224,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 224,
+          "nonempty": 224,
+          "min_bytes": 0,
+          "max_bytes": 27983
+        },
+        "wrist_rgb": {
+          "count": 224,
+          "nonempty": 224,
+          "min_bytes": 0,
+          "max_bytes": 26806
+        },
+        "left_tactile_rgb": {
+          "count": 224,
+          "nonempty": 224,
+          "min_bytes": 0,
+          "max_bytes": 10859
+        },
+        "right_tactile_rgb": {
+          "count": 224,
+          "nonempty": 224,
+          "min_bytes": 0,
+          "max_bytes": 11458
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/18.hdf5",
+      "frames": 164,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "actor/prism_base": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "actor/slot": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "atom/id": {
+          "shape": [
+            164
+          ],
+          "dtype": "int64",
+          "bytes": 1312
+        },
+        "atom/tag": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S5",
+          "bytes": 820
+        },
+        "embodiment/ee": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "embodiment/joint": {
+          "shape": [
+            164,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 5904
+        },
+        "observation/head/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S27948",
+          "bytes": 4583472
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S26389",
+          "bytes": 4327796
+        },
+        "step": {
+          "shape": [
+            164
+          ],
+          "dtype": "int64",
+          "bytes": 1312
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            164,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 165312
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S10833",
+          "bytes": 1776612
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S23631",
+          "bytes": 3875484
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            164,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 165312
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            164,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4592
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            164,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50380800
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S11451",
+          "bytes": 1877964
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            164
+          ],
+          "dtype": "|S24027",
+          "bytes": 3940428
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 163,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.006869077682495117,
+        "ee_delta_abs_max": 0.001700758934020996
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5965526103973389,
+        "left_press_depth_nonzero_fraction": 0.37471092162093494,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.92791348695755,
+        "right_press_depth_nonzero_fraction": 0.4931664443597561,
+        "left_marker_shape": [
+          164,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          164,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 27948
+        },
+        "wrist_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 26389
+        },
+        "left_tactile_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 10833
+        },
+        "right_tactile_rgb": {
+          "count": 164,
+          "nonempty": 164,
+          "min_bytes": 0,
+          "max_bytes": 11451
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/19.hdf5",
+      "frames": 215,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            215,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6020
+        },
+        "actor/prism_base": {
+          "shape": [
+            215,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6020
+        },
+        "actor/slot": {
+          "shape": [
+            215,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6020
+        },
+        "atom/id": {
+          "shape": [
+            215
+          ],
+          "dtype": "int64",
+          "bytes": 1720
+        },
+        "atom/tag": {
+          "shape": [
+            215
+          ],
+          "dtype": "|S5",
+          "bytes": 1075
+        },
+        "embodiment/ee": {
+          "shape": [
+            215,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6020
+        },
+        "embodiment/joint": {
+          "shape": [
+            215,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 7740
+        },
+        "observation/head/rgb": {
+          "shape": [
+            215
+          ],
+          "dtype": "|S27907",
+          "bytes": 6000005
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            215
+          ],
+          "dtype": "|S26503",
+          "bytes": 5698145
+        },
+        "step": {
+          "shape": [
+            215
+          ],
+          "dtype": "int64",
+          "bytes": 1720
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            215,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 66048000
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            215,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 216720
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            215,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6020
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            215,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 66048000
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            215
+          ],
+          "dtype": "|S10960",
+          "bytes": 2356400
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            215
+          ],
+          "dtype": "|S23485",
+          "bytes": 5049275
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            215,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 66048000
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            215,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 216720
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            215,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6020
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            215,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 66048000
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            215
+          ],
+          "dtype": "|S11476",
+          "bytes": 2467340
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            215
+          ],
+          "dtype": "|S24021",
+          "bytes": 5164515
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 214,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.004983663558959961,
+        "ee_delta_abs_max": 0.0016946494579315186
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.6260383129119873,
+        "left_press_depth_nonzero_fraction": 0.3651521923449612,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.9074690937995911,
+        "right_press_depth_nonzero_fraction": 0.48466036821705427,
+        "left_marker_shape": [
+          215,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          215,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 215,
+          "nonempty": 215,
+          "min_bytes": 0,
+          "max_bytes": 27907
+        },
+        "wrist_rgb": {
+          "count": 215,
+          "nonempty": 215,
+          "min_bytes": 0,
+          "max_bytes": 26503
+        },
+        "left_tactile_rgb": {
+          "count": 215,
+          "nonempty": 215,
+          "min_bytes": 0,
+          "max_bytes": 10960
+        },
+        "right_tactile_rgb": {
+          "count": 215,
+          "nonempty": 215,
+          "min_bytes": 0,
+          "max_bytes": 11476
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/2.hdf5",
+      "frames": 165,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "actor/prism_base": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "actor/slot": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "atom/id": {
+          "shape": [
+            165
+          ],
+          "dtype": "int64",
+          "bytes": 1320
+        },
+        "atom/tag": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S5",
+          "bytes": 825
+        },
+        "embodiment/ee": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "embodiment/joint": {
+          "shape": [
+            165,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 5940
+        },
+        "observation/head/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S27860",
+          "bytes": 4596900
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S26780",
+          "bytes": 4418700
+        },
+        "step": {
+          "shape": [
+            165
+          ],
+          "dtype": "int64",
+          "bytes": 1320
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            165,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 166320
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S10812",
+          "bytes": 1783980
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S23471",
+          "bytes": 3872715
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            165,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 166320
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            165,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4620
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            165,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 50688000
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S11405",
+          "bytes": 1881825
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            165
+          ],
+          "dtype": "|S23968",
+          "bytes": 3954720
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 164,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.006218910217285156,
+        "ee_delta_abs_max": 0.0017273128032684326
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.4954948127269745,
+        "left_press_depth_nonzero_fraction": 0.3699395517676768,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.773865282535553,
+        "right_press_depth_nonzero_fraction": 0.48652209595959595,
+        "left_marker_shape": [
+          165,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          165,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 27860
+        },
+        "wrist_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 26780
+        },
+        "left_tactile_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 10812
+        },
+        "right_tactile_rgb": {
+          "count": 165,
+          "nonempty": 165,
+          "min_bytes": 0,
+          "max_bytes": 11405
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/20.hdf5",
+      "frames": 168,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "actor/prism_base": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "actor/slot": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "atom/id": {
+          "shape": [
+            168
+          ],
+          "dtype": "int64",
+          "bytes": 1344
+        },
+        "atom/tag": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S5",
+          "bytes": 840
+        },
+        "embodiment/ee": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "embodiment/joint": {
+          "shape": [
+            168,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 6048
+        },
+        "observation/head/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S27860",
+          "bytes": 4680480
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S26955",
+          "bytes": 4528440
+        },
+        "step": {
+          "shape": [
+            168
+          ],
+          "dtype": "int64",
+          "bytes": 1344
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            168,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 169344
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S10832",
+          "bytes": 1819776
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S23565",
+          "bytes": 3958920
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            168,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 169344
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            168,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 4704
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            168,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 51609600
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S11455",
+          "bytes": 1924440
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            168
+          ],
+          "dtype": "|S24043",
+          "bytes": 4039224
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 167,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.006332278251647949,
+        "ee_delta_abs_max": 0.0016861557960510254
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.7156128883361816,
+        "left_press_depth_nonzero_fraction": 0.3829046533978175,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 1.0030972957611084,
+        "right_press_depth_nonzero_fraction": 0.48936221168154764,
+        "left_marker_shape": [
+          168,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          168,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 27860
+        },
+        "wrist_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 26955
+        },
+        "left_tactile_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 10832
+        },
+        "right_tactile_rgb": {
+          "count": 168,
+          "nonempty": 168,
+          "min_bytes": 0,
+          "max_bytes": 11455
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/21.hdf5",
+      "frames": 195,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "actor/prism_base": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "actor/slot": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "atom/id": {
+          "shape": [
+            195
+          ],
+          "dtype": "int64",
+          "bytes": 1560
+        },
+        "atom/tag": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S5",
+          "bytes": 975
+        },
+        "embodiment/ee": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "embodiment/joint": {
+          "shape": [
+            195,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 7020
+        },
+        "observation/head/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S27565",
+          "bytes": 5375175
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S26726",
+          "bytes": 5211570
+        },
+        "step": {
+          "shape": [
+            195
+          ],
+          "dtype": "int64",
+          "bytes": 1560
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            195,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 196560
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S11381",
+          "bytes": 2219295
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S23977",
+          "bytes": 4675515
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            195,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 196560
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S10811",
+          "bytes": 2108145
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S23735",
+          "bytes": 4628325
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 194,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.006803274154663086,
+        "ee_delta_abs_max": 0.001707613468170166
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.4814895689487457,
+        "left_press_depth_nonzero_fraction": 0.37396200587606837,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.7855663895606995,
+        "right_press_depth_nonzero_fraction": 0.4946260016025641,
+        "left_marker_shape": [
+          195,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          195,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 27565
+        },
+        "wrist_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 26726
+        },
+        "left_tactile_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 11381
+        },
+        "right_tactile_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 10811
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/22.hdf5",
+      "frames": 192,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            192,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5376
+        },
+        "actor/prism_base": {
+          "shape": [
+            192,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5376
+        },
+        "actor/slot": {
+          "shape": [
+            192,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5376
+        },
+        "atom/id": {
+          "shape": [
+            192
+          ],
+          "dtype": "int64",
+          "bytes": 1536
+        },
+        "atom/tag": {
+          "shape": [
+            192
+          ],
+          "dtype": "|S5",
+          "bytes": 960
+        },
+        "embodiment/ee": {
+          "shape": [
+            192,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5376
+        },
+        "embodiment/joint": {
+          "shape": [
+            192,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 6912
+        },
+        "observation/head/rgb": {
+          "shape": [
+            192
+          ],
+          "dtype": "|S27974",
+          "bytes": 5371008
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            192
+          ],
+          "dtype": "|S26725",
+          "bytes": 5131200
+        },
+        "step": {
+          "shape": [
+            192
+          ],
+          "dtype": "int64",
+          "bytes": 1536
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            192,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58982400
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            192,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 193536
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            192,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5376
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            192,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58982400
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            192
+          ],
+          "dtype": "|S10861",
+          "bytes": 2085312
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            192
+          ],
+          "dtype": "|S23445",
+          "bytes": 4501440
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            192,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58982400
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            192,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 193536
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            192,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5376
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            192,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 58982400
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            192
+          ],
+          "dtype": "|S11401",
+          "bytes": 2188992
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            192
+          ],
+          "dtype": "|S23928",
+          "bytes": 4594176
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 191,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.0068999528884887695,
+        "ee_delta_abs_max": 0.0017682909965515137
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.525913655757904,
+        "left_press_depth_nonzero_fraction": 0.3776896837022569,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8186730742454529,
+        "right_press_depth_nonzero_fraction": 0.4902855767144097,
+        "left_marker_shape": [
+          192,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          192,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 192,
+          "nonempty": 192,
+          "min_bytes": 0,
+          "max_bytes": 27974
+        },
+        "wrist_rgb": {
+          "count": 192,
+          "nonempty": 192,
+          "min_bytes": 0,
+          "max_bytes": 26725
+        },
+        "left_tactile_rgb": {
+          "count": 192,
+          "nonempty": 192,
+          "min_bytes": 0,
+          "max_bytes": 10861
+        },
+        "right_tactile_rgb": {
+          "count": 192,
+          "nonempty": 192,
+          "min_bytes": 0,
+          "max_bytes": 11401
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/23.hdf5",
+      "frames": 241,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            241,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6748
+        },
+        "actor/prism_base": {
+          "shape": [
+            241,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6748
+        },
+        "actor/slot": {
+          "shape": [
+            241,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6748
+        },
+        "atom/id": {
+          "shape": [
+            241
+          ],
+          "dtype": "int64",
+          "bytes": 1928
+        },
+        "atom/tag": {
+          "shape": [
+            241
+          ],
+          "dtype": "|S5",
+          "bytes": 1205
+        },
+        "embodiment/ee": {
+          "shape": [
+            241,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6748
+        },
+        "embodiment/joint": {
+          "shape": [
+            241,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 8676
+        },
+        "observation/head/rgb": {
+          "shape": [
+            241
+          ],
+          "dtype": "|S27677",
+          "bytes": 6670157
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            241
+          ],
+          "dtype": "|S26629",
+          "bytes": 6417589
+        },
+        "step": {
+          "shape": [
+            241
+          ],
+          "dtype": "int64",
+          "bytes": 1928
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            241,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 74035200
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            241,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 242928
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            241,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6748
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            241,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 74035200
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            241
+          ],
+          "dtype": "|S11394",
+          "bytes": 2745954
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            241
+          ],
+          "dtype": "|S23912",
+          "bytes": 5762792
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            241,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 74035200
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            241,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 242928
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            241,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 6748
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            241,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 74035200
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            241
+          ],
+          "dtype": "|S10918",
+          "bytes": 2631238
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            241
+          ],
+          "dtype": "|S23838",
+          "bytes": 5744958
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 240,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.004683971405029297,
+        "ee_delta_abs_max": 0.0011248588562011719
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.5033961534500122,
+        "left_press_depth_nonzero_fraction": 0.371816433264177,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.8093560934066772,
+        "right_press_depth_nonzero_fraction": 0.49337574559128633,
+        "left_marker_shape": [
+          241,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          241,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 241,
+          "nonempty": 241,
+          "min_bytes": 0,
+          "max_bytes": 27677
+        },
+        "wrist_rgb": {
+          "count": 241,
+          "nonempty": 241,
+          "min_bytes": 0,
+          "max_bytes": 26629
+        },
+        "left_tactile_rgb": {
+          "count": 241,
+          "nonempty": 241,
+          "min_bytes": 0,
+          "max_bytes": 11394
+        },
+        "right_tactile_rgb": {
+          "count": 241,
+          "nonempty": 241,
+          "min_bytes": 0,
+          "max_bytes": 10918
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/24.hdf5",
+      "frames": 183,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            183,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5124
+        },
+        "actor/prism_base": {
+          "shape": [
+            183,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5124
+        },
+        "actor/slot": {
+          "shape": [
+            183,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5124
+        },
+        "atom/id": {
+          "shape": [
+            183
+          ],
+          "dtype": "int64",
+          "bytes": 1464
+        },
+        "atom/tag": {
+          "shape": [
+            183
+          ],
+          "dtype": "|S5",
+          "bytes": 915
+        },
+        "embodiment/ee": {
+          "shape": [
+            183,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5124
+        },
+        "embodiment/joint": {
+          "shape": [
+            183,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 6588
+        },
+        "observation/head/rgb": {
+          "shape": [
+            183
+          ],
+          "dtype": "|S27603",
+          "bytes": 5051349
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            183
+          ],
+          "dtype": "|S26757",
+          "bytes": 4896531
+        },
+        "step": {
+          "shape": [
+            183
+          ],
+          "dtype": "int64",
+          "bytes": 1464
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            183,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 56217600
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            183,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 184464
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            183,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5124
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            183,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 56217600
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            183
+          ],
+          "dtype": "|S11463",
+          "bytes": 2097729
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            183
+          ],
+          "dtype": "|S24017",
+          "bytes": 4395111
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            183,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 56217600
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            183,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 184464
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            183,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5124
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            183,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 56217600
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            183
+          ],
+          "dtype": "|S10980",
+          "bytes": 2009340
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            183
+          ],
+          "dtype": "|S23777",
+          "bytes": 4351191
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 182,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.0069427490234375,
+        "ee_delta_abs_max": 0.001753687858581543
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.4783473014831543,
+        "left_press_depth_nonzero_fraction": 0.38328267304189434,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.7818299531936646,
+        "right_press_depth_nonzero_fraction": 0.5020989867941712,
+        "left_marker_shape": [
+          183,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          183,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 183,
+          "nonempty": 183,
+          "min_bytes": 0,
+          "max_bytes": 27603
+        },
+        "wrist_rgb": {
+          "count": 183,
+          "nonempty": 183,
+          "min_bytes": 0,
+          "max_bytes": 26757
+        },
+        "left_tactile_rgb": {
+          "count": 183,
+          "nonempty": 183,
+          "min_bytes": 0,
+          "max_bytes": 11463
+        },
+        "right_tactile_rgb": {
+          "count": 183,
+          "nonempty": 183,
+          "min_bytes": 0,
+          "max_bytes": 10980
+        }
+      }
+    },
+    {
+      "file": "/home/sai/zx/openpi-sim-runtime/data/isaac51/insert_hole/hdf5/25.hdf5",
+      "frames": 195,
+      "schema": {
+        "actor/prism": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "actor/prism_base": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "actor/slot": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "atom/id": {
+          "shape": [
+            195
+          ],
+          "dtype": "int64",
+          "bytes": 1560
+        },
+        "atom/tag": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S5",
+          "bytes": 975
+        },
+        "embodiment/ee": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "embodiment/joint": {
+          "shape": [
+            195,
+            9
+          ],
+          "dtype": "float32",
+          "bytes": 7020
+        },
+        "observation/head/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S27872",
+          "bytes": 5435040
+        },
+        "observation/wrist/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S27021",
+          "bytes": 5269095
+        },
+        "step": {
+          "shape": [
+            195
+          ],
+          "dtype": "int64",
+          "bytes": 1560
+        },
+        "tactile/left_tactile/depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/left_tactile/marker": {
+          "shape": [
+            195,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 196560
+        },
+        "tactile/left_tactile/pose": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "tactile/left_tactile/press_depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/left_tactile/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S10795",
+          "bytes": 2105025
+        },
+        "tactile/left_tactile/rgb_marker": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S23551",
+          "bytes": 4592445
+        },
+        "tactile/right_tactile/depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/right_tactile/marker": {
+          "shape": [
+            195,
+            2,
+            63,
+            2
+          ],
+          "dtype": "float32",
+          "bytes": 196560
+        },
+        "tactile/right_tactile/pose": {
+          "shape": [
+            195,
+            7
+          ],
+          "dtype": "float32",
+          "bytes": 5460
+        },
+        "tactile/right_tactile/press_depth": {
+          "shape": [
+            195,
+            240,
+            320
+          ],
+          "dtype": "float32",
+          "bytes": 59904000
+        },
+        "tactile/right_tactile/rgb": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S11448",
+          "bytes": 2232360
+        },
+        "tactile/right_tactile/rgb_marker": {
+          "shape": [
+            195
+          ],
+          "dtype": "|S23931",
+          "bytes": 4666545
+        }
+      },
+      "required_present": {
+        "joint": true,
+        "ee": true,
+        "head_rgb": true,
+        "wrist_rgb": true,
+        "head_depth": false,
+        "wrist_depth": false,
+        "left_press_depth": true,
+        "right_press_depth": true
+      },
+      "derived_action_contract": {
+        "source": "next row of embodiment/joint and embodiment/ee",
+        "valid_action_frames": 194,
+        "joint_action_dim": 9,
+        "ee_action_dim": 7,
+        "joint_delta_abs_max": 0.006690263748168945,
+        "ee_delta_abs_max": 0.00174635648727417
+      },
+      "tactile": {
+        "left_press_depth_min": 0.0,
+        "left_press_depth_max": 0.4887129068374634,
+        "left_press_depth_nonzero_fraction": 0.3723954326923077,
+        "right_press_depth_min": 0.0,
+        "right_press_depth_max": 0.7863114476203918,
+        "right_press_depth_nonzero_fraction": 0.4879105902777778,
+        "left_marker_shape": [
+          195,
+          2,
+          63,
+          2
+        ],
+        "right_marker_shape": [
+          195,
+          2,
+          63,
+          2
+        ]
+      },
+      "compressed_streams": {
+        "head_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 27872
+        },
+        "wrist_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 27021
+        },
+        "left_tactile_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 10795
+        },
+        "right_tactile_rgb": {
+          "count": 195,
+          "nonempty": 195,
+          "min_bytes": 0,
+          "max_bytes": 11448
+        }
+      }
+    }
+  ],
+  "data_gate": {
+    "pass": false,
+    "reason": "The current archive is ready for offline schema conversion. Camera depth is reported separately; a missing head/wrist depth field means point-cloud data must be recollected with a depth-enabled config."
+  }
+}
