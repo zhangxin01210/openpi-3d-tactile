@@ -21,12 +21,20 @@ GRID_SHAPE = (10, 14)
 ANCHORS_PER_FINGER = 2
 PATCH_POINTS_PER_ANCHOR = 16
 RELATION_CANDIDATES = 48
+RELATION_SHELLS = (
+    # (inner radius, outer radius, quota).  The shell quota prevents a dense
+    # held USB surface from consuming all relation candidates before the
+    # nearby socket/target geometry can enter the representation.
+    (0.003, 0.08, 20),
+    (0.08, 0.18, 16),
+    (0.18, 0.36, 12),
+)
 
 # ContactWorld TacFF values are simulator units.  This small floor only
 # distinguishes a completely zero pad from numerical noise; relative strength
 # determines the connected contact regions.
 ACTIVE_FLOOR = np.float32(5e-5)
-RELATION_RADIUS_M = np.float32(0.16)
+RELATION_RADIUS_M = np.float32(0.36)
 BACKSIDE_TOLERANCE_M = np.float32(0.004)
 SELF_SURFACE_MARGIN_M = np.float32(0.003)
 
@@ -170,6 +178,7 @@ def build_relation_candidates(cloud_xyz: np.ndarray, pad_xyz: np.ndarray,
     candidates = np.zeros((FINGERS, RELATION_CANDIDATES, 3), np.float32)
     mask = np.zeros((FINGERS, RELATION_CANDIDATES), bool)
     candidate_distance = np.zeros((FINGERS, RELATION_CANDIDATES), np.float32)
+    candidate_shell = np.full((FINGERS, RELATION_CANDIDATES), -1, np.int8)
     pad_centers = pad_xyz.mean(axis=1)
     for finger in range(FINGERS):
         inward = pad_centers[1 - finger] - pad_centers[finger]
@@ -182,10 +191,31 @@ def build_relation_candidates(cloud_xyz: np.ndarray, pad_xyz: np.ndarray,
         kept = np.flatnonzero(keep)
         if not len(kept):
             continue
-        order = kept[np.argsort(distance[kept], kind="stable")[:RELATION_CANDIDATES]]
+        selected = []
+        selected_shell = []
+        selected_set = set()
+        for shell_id, (inner, outer, quota) in enumerate(RELATION_SHELLS):
+            shell = kept[(distance[kept] >= inner) & (distance[kept] < outer)]
+            shell = shell[np.argsort(distance[shell], kind="stable")[:quota]]
+            selected.extend(shell.tolist())
+            selected_shell.extend([shell_id] * len(shell))
+            selected_set.update(int(index) for index in shell)
+        # If one shell is sparse, fill its unused slots with the nearest
+        # remaining candidates while preserving the shell labels.
+        remaining = [int(index) for index in kept
+                     if int(index) not in selected_set]
+        remaining.sort(key=lambda index: float(distance[index]))
+        for index in remaining:
+            if len(selected) >= RELATION_CANDIDATES:
+                break
+            selected.append(index)
+            selected_shell.append(3)
+        order = np.asarray(selected[:RELATION_CANDIDATES], dtype=np.int32)
         candidates[finger, :len(order)] = cloud_xyz[order]
         mask[finger, :len(order)] = True
         candidate_distance[finger, :len(order)] = distance[order]
+        candidate_shell[finger, :len(order)] = np.asarray(
+            selected_shell[:RELATION_CANDIDATES], dtype=np.int8)
     return {
         "query_xyz_base": query_xyz,
         "query_features": np.stack([item["finger_summary"] for item in centered]).astype(np.float32),
@@ -193,6 +223,7 @@ def build_relation_candidates(cloud_xyz: np.ndarray, pad_xyz: np.ndarray,
         "candidate_xyz_base": candidates,
         "candidate_mask": mask,
         "candidate_distance": candidate_distance,
+        "candidate_shell": candidate_shell,
     }
 
 
@@ -204,8 +235,11 @@ def build_frame(cloud_xyz: np.ndarray, tactile_xyz: np.ndarray, tactile_force: n
         raise ValueError((tactile_xyz.shape, tactile_force.shape))
     centered = [build_centered_finger(tactile_xyz[finger], tactile_force[finger]) for finger in range(FINGERS)]
     relation = build_relation_candidates(cloud_xyz, tactile_xyz, centered)
+    bool_keys = {"patch_mask", "anchor_mask", "finger_valid"}
+    int_keys = {"candidate_shell"}
     output = {
-        key: np.stack([item[key] for item in centered]).astype(np.float32 if key not in {"patch_mask", "anchor_mask", "finger_valid"} else bool)
+        key: np.stack([item[key] for item in centered]).astype(
+            bool if key in bool_keys else np.int8 if key in int_keys else np.float32)
         for key in ("patch_xyz_local", "patch_force", "patch_mask", "anchor_xyz_base", "anchor_uv",
                     "anchor_stats", "anchor_mask", "finger_summary", "finger_center_base", "finger_valid")
     }

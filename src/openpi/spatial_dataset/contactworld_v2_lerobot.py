@@ -44,11 +44,11 @@ class ContactWorldV2LeRobotSpatial:
             raise ValueError("Contact representation requires reviewed cloud and bilateral tactile inputs")
         self.contact_repr_mode = contact_repr_mode
         self.contact_repr_root = (Path(contact_repr_root) if contact_repr_root is not None
-                                  else self.root / "spatial/contact_repr_v1")
+                                  else self.root / "spatial/contact_repr_v2")
         self._repr_arrays: dict[int, dict[str, np.ndarray]] = {}
         if contact_repr_mode != "none":
             repr_manifest = json.loads((self.contact_repr_root / "manifest.json").read_text())
-            if repr_manifest.get("format") != "contactworld-usb-contact-representation-v1":
+            if repr_manifest.get("format") != "contactworld-usb-contact-representation-v2":
                 raise ValueError("Unsupported ContactWorld contact representation sidecar")
         self._arrays: dict[tuple[int, str], np.ndarray] = {}
 

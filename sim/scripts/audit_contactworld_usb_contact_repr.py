@@ -130,6 +130,8 @@ def relation_points(cloud: np.ndarray, taxel_xyz: np.ndarray,
         "pads": [np.round(np.asarray(taxel_xyz[finger]), 5).tolist() for finger in range(2)],
         "retained": [np.round(retained_xyz[finger][retained_mask[finger]], 5).tolist()
                      for finger in range(2)],
+        "retained_shell": [np.asarray(derived["candidate_shell"][finger][retained_mask[finger]],
+                                        dtype=np.int8).tolist() for finger in range(2)],
         "queries": np.round(query, 5).tolist(),
     }
 
@@ -150,7 +152,7 @@ def main() -> None:
     parser.add_argument("--max-episodes", type=int, default=5)
     args = parser.parse_args()
     dataset = args.dataset.resolve()
-    repr_root = (args.repr_root or dataset / "spatial/contact_repr_v1").resolve()
+    repr_root = (args.repr_root or dataset / "spatial/contact_repr_v2").resolve()
     manifest = json.loads((dataset / "spatial/manifest.json").read_text())
     all_rows = manifest["episodes"]
     if args.episodes:
@@ -179,6 +181,8 @@ def main() -> None:
             recomputed = build_frame(cloud[frame], xyz[frame], force[frame])
             if not np.array_equal(recomputed["candidate_mask"], derived["candidate_mask"][frame]):
                 raise ValueError("Contact representation sidecar does not match source frame")
+            if not np.array_equal(recomputed["candidate_shell"], derived["candidate_shell"][frame]):
+                raise ValueError("Contact representation shell labels do not match source frame")
             front = frame_from_video(dataset, "front", episode, frame)
             wrist = frame_from_video(dataset, "wrist", episode, frame)
             image = np.concatenate((front, wrist), axis=1)
@@ -194,20 +198,28 @@ def main() -> None:
             cloud_data[cloud_id] = relation_points(
                 cloud[frame], xyz[frame],
                 {key: derived[key][frame] for key in (
-                    "query_xyz_base", "candidate_xyz_base", "candidate_mask")})
+                    "query_xyz_base", "candidate_xyz_base", "candidate_mask", "candidate_shell")})
             counts = derived["candidate_mask"][frame].sum(axis=-1)
+            shell_counts = [[int(((derived["candidate_shell"][frame, finger] == shell)
+                                  & derived["candidate_mask"][frame, finger]).sum())
+                             for shell in range(3)] for finger in range(2)]
+            distance_ranges = []
+            for finger in range(2):
+                values = derived["candidate_distance"][frame, finger][derived["candidate_mask"][frame, finger]]
+                distance_ranges.append([round(float(values.min()) * 100, 1),
+                                        round(float(values.max()) * 100, 1)])
             valid = derived["finger_valid"][frame].tolist()
-            cards.append(f'''<details class="case"><summary>episode {episode} · frame {frame} · left/right candidate count {counts.tolist()} · contact valid {valid}</summary>
+            cards.append(f'''<details class="case"><summary>episode {episode} · frame {frame} · candidates L/R {counts.tolist()} · shells L/R {shell_counts} · distance cm L/R {distance_ranges} · contact valid {valid}</summary>
 <div class="grid"><section><h3>Front / wrist RGB</h3><img src="data:image/jpeg;base64,{base64.b64encode(packed.tobytes()).decode()}"></section>
 <section><h3>Contact-centred sparse tactile</h3><img src="data:image/png;base64,{force_plot}"></section>
 <section class="wide"><h3>Interactive tactile-to-scene point cloud</h3>
-<div class="cloud-toolbar"><button type="button" data-cloud-action="local" data-cloud="{cloud_id}">局部关系点</button><button type="button" data-cloud-action="scene" data-cloud="{cloud_id}">全部场景点</button><button type="button" data-cloud-action="reset" data-cloud="{cloud_id}">重置视角</button><span>拖动旋转 · 滚轮缩放</span></div>
+<div class="cloud-toolbar"><button type="button" data-cloud-action="local" data-cloud="{cloud_id}">局部关系点</button><button type="button" data-cloud-action="scene" data-cloud="{cloud_id}">全部场景点</button><button type="button" data-cloud-action="shell0" data-cloud="{cloud_id}">只看近层</button><button type="button" data-cloud-action="shell1" data-cloud="{cloud_id}">只看中层</button><button type="button" data-cloud-action="shell2" data-cloud="{cloud_id}">只看远层</button><button type="button" data-cloud-action="reset" data-cloud="{cloud_id}">重置视角</button><span>拖动旋转 · 滚轮缩放</span></div>
 <canvas class="cloud-viewer" id="{cloud_id}" width="1100" height="560" aria-label="可旋转的机械臂 base 坐标系点云"></canvas>
-<div class="legend"><span><i class="swatch context"></i>场景点</span><span><i class="swatch left"></i>左指 taxel</span><span><i class="swatch right"></i>右指 taxel</span><span><i class="swatch left-rel"></i>左指保留候选</span><span><i class="swatch right-rel"></i>右指保留候选</span><span><i class="swatch query"></i>力中心</span></div></section></div>
-<p>默认显示查询点周围 {float(RELATION_RADIUS_M):.3f} m 的局部点；“全部场景点”显示这一帧的 4096 点云。灰色点是场景点，青色/黄色是左右指 taxel，绿色/紫色是通过触觉朝向过滤器保留的候选。候选仍不是物体分割，也不等于 USB–插座真实碰撞点。</p></details>''')
+<div class="legend"><span><i class="swatch context"></i>场景点</span><span><i class="swatch left"></i>左指 taxel</span><span><i class="swatch right"></i>右指 taxel</span><span><i class="swatch left-rel"></i>近层 0–8 cm</span><span><i class="swatch right-rel"></i>近层（右指）</span><span><i class="swatch mid-rel"></i>中层 8–18 cm</span><span><i class="swatch far-rel"></i>远层 18–36 cm</span><span><i class="swatch query"></i>力中心</span></div></section></div>
+<p>默认显示查询点周围 {float(RELATION_RADIUS_M):.3f} m 的局部点；“全部场景点”显示这一帧的 4096 点云。灰色点是场景点，青色/黄色是左右指 taxel。候选按近层 0–8 cm、中层 8–18 cm、远层 18–36 cm 分配名额，颜色由深到浅表示距离层，页面会同时保留远层点，避免近处 U 盘占满候选。候选仍不是物体分割，也不等于 USB–插座真实碰撞点。</p></details>''')
     data_json = json.dumps(cloud_data, separators=(",", ":"))
     page = f'''<!doctype html><meta charset="utf-8"><title>ContactWorld USB contact representation audit</title>
-<style>body{{margin:0 auto;max-width:1500px;padding:24px;background:#101722;color:#e8effa;font:16px system-ui;line-height:1.5}}h1{{margin-top:0}}details{{border:1px solid #40536d;border-radius:8px;margin:16px 0;background:#172334}}summary{{padding:12px;cursor:pointer;font-weight:650}}.case>div{{padding:0 12px 12px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.wide{{grid-column:1/-1}}img{{max-width:100%;display:block;background:#081018}}p{{color:#bccce1}}.notice{{border-left:4px solid #67b7ff;background:#182a40;padding:12px}}.cloud-toolbar{{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}}button{{border:1px solid #5c7fa8;background:#23466f;color:#e8effa;border-radius:5px;padding:7px 11px;cursor:pointer}}button:hover{{background:#2f5c8e}}.cloud-toolbar span{{color:#9fb3cd;font-size:13px}}.cloud-viewer{{width:100%;height:auto;display:block;background:#0a111b;border:1px solid #40536d;touch-action:none;cursor:grab}}.cloud-viewer.dragging{{cursor:grabbing}}.legend{{display:flex;flex-wrap:wrap;gap:12px 18px;color:#c8d5e5;font-size:13px;margin-top:8px}}.legend span{{display:inline-flex;align-items:center;gap:5px}}.swatch{{width:10px;height:10px;border-radius:50%;display:inline-block}}.context{{background:#8d9bab}}.left{{background:#29d6ff}}.right{{background:#ffbd45}}.left-rel{{background:#5af29c}}.right-rel{{background:#f25ac5}}.query{{background:#ffffff}}</style>
+<style>body{{margin:0 auto;max-width:1500px;padding:24px;background:#101722;color:#e8effa;font:16px system-ui;line-height:1.5}}h1{{margin-top:0}}details{{border:1px solid #40536d;border-radius:8px;margin:16px 0;background:#172334}}summary{{padding:12px;cursor:pointer;font-weight:650}}.case>div{{padding:0 12px 12px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}.wide{{grid-column:1/-1}}img{{max-width:100%;display:block;background:#081018}}p{{color:#bccce1}}.notice{{border-left:4px solid #67b7ff;background:#182a40;padding:12px}}.cloud-toolbar{{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}}button{{border:1px solid #5c7fa8;background:#23466f;color:#e8effa;border-radius:5px;padding:7px 11px;cursor:pointer}}button:hover{{background:#2f5c8e}}.cloud-toolbar span{{color:#9fb3cd;font-size:13px}}.cloud-viewer{{width:100%;height:auto;display:block;background:#0a111b;border:1px solid #40536d;touch-action:none;cursor:grab}}.cloud-viewer.dragging{{cursor:grabbing}}.legend{{display:flex;flex-wrap:wrap;gap:12px 18px;color:#c8d5e5;font-size:13px;margin-top:8px}}.legend span{{display:inline-flex;align-items:center;gap:5px}}.swatch{{width:10px;height:10px;border-radius:50%;display:inline-block}}.context{{background:#8d9bab}}.left{{background:#29d6ff}}.right{{background:#ffbd45}}.left-rel{{background:#5af29c}}.right-rel{{background:#f25ac5}}.mid-rel{{background:#22b573}}.far-rel{{background:#9ef2c4}}.query{{background:#ffffff}}</style>
 <h1>USB V3: contact-centred tactile and local tactile–scene relation input audit</h1>
 <p class="notice">This page must be reviewed before training 16–19. It uses the same deterministic sidecar that training and online policy evaluation read. The contact centre is a finger-pad force centre, not a USB–socket collision point. The relation filter is tactile-facing local geometry, not simulator object identity or a full robot segmentation.</p>
 <p>Each finger has up to two force-connected patches × 16 retained taxels; the model receives the two patch tokens plus one full-pad summary token. Relation models receive three learned relation tokens per finger over the coloured candidates.</p>
@@ -215,11 +227,17 @@ def main() -> None:
 <script>
 const CLOUD_DATA = {data_json};
 (function() {{
-  const colours = {{context: '#8d9bab', left: '#29d6ff', right: '#ffbd45', leftRel: '#5af29c', rightRel: '#f25ac5'}};
+  const colours = {{context: '#8d9bab', left: '#29d6ff', right: '#ffbd45'}};
+  const shellColours = [
+    ['#5af29c', '#f25ac5'],
+    ['#22b573', '#d03cab'],
+    ['#9ef2c4', '#ff9ae0'],
+    ['#d7ffe8', '#ffd2f2'],
+  ];
   const viewers = new Map();
   function init(canvas, data) {{
     const ctx = canvas.getContext('2d');
-    const state = {{mode: 'local', yaw: 0.72, pitch: 0.42, zoom: 1, dragging: false, lastX: 0, lastY: 0}};
+    const state = {{mode: 'local', shell: 'all', yaw: 0.72, pitch: 0.42, zoom: 1, dragging: false, lastX: 0, lastY: 0}};
     function reset() {{ state.yaw = 0.72; state.pitch = 0.42; state.zoom = 1; draw(); }}
     function draw() {{
       const rect = canvas.getBoundingClientRect();
@@ -243,7 +261,13 @@ const CLOUD_DATA = {data_json};
       const drawSet = (arr, color, radius, alpha) => arr.map(p => {{ const q=project(p); return [q[2],q[0],q[1]]; }}).sort((a,b)=>a[0]-b[0]).forEach(q => {{ ctx.globalAlpha=alpha; ctx.fillStyle=color; ctx.beginPath(); ctx.arc(q[1],q[2],radius,0,Math.PI*2); ctx.fill(); }});
       drawSet(cloud, colours.context, state.mode==='scene'?1.3:2.1, state.mode==='scene'?.35:.58);
       drawSet(data.pads[0], colours.left, 3.2, .95); drawSet(data.pads[1], colours.right, 3.2, .95);
-      drawSet(data.retained[0], colours.leftRel, 4.4, 1); drawSet(data.retained[1], colours.rightRel, 4.4, 1);
+      for (let finger=0; finger<2; finger++) {{
+        for (let shell=0; shell<4; shell++) {{
+          const selected = data.retained[finger].filter((_, index) =>
+            (state.shell === 'all' || Number(state.shell) === shell) && data.retained_shell[finger][index] === shell);
+          drawSet(selected, shellColours[shell][finger], 4.4, 1);
+        }}
+      }}
       data.queries.forEach((p,i) => {{ const q=project(p); ctx.strokeStyle=i===0?colours.left:colours.right; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(q[0]-7,q[1]-7); ctx.lineTo(q[0]+7,q[1]+7); ctx.moveTo(q[0]+7,q[1]-7); ctx.lineTo(q[0]-7,q[1]+7); ctx.stroke(); }});
       ctx.globalAlpha=1; ctx.fillStyle='#dbe8f8'; ctx.font='13px system-ui'; ctx.fillText('base X →', width-78, height-15); ctx.fillText('Y ↑', 13, 25); ctx.fillText('Z depth', 13, height-15);
       ctx.fillStyle='#9fb3cd'; ctx.fillText(state.mode==='scene'?`全部场景点：${{data.scene.length}}`:`局部点：${{data.local.length}}`, 14, height-15);
@@ -253,10 +277,10 @@ const CLOUD_DATA = {data_json};
     canvas.addEventListener('pointerup', e => {{ state.dragging=false; canvas.classList.remove('dragging'); canvas.releasePointerCapture(e.pointerId); }});
     canvas.addEventListener('pointercancel', () => {{ state.dragging=false; canvas.classList.remove('dragging'); }});
     canvas.addEventListener('wheel', e => {{ e.preventDefault(); state.zoom=Math.max(.25,Math.min(8,state.zoom*Math.exp(-e.deltaY*.001))); draw(); }}, {{passive:false}});
-    window.addEventListener('resize', draw); viewers.set(canvas.id, {{reset, setMode: mode => {{ state.mode=mode; draw(); }}}}); draw();
+    window.addEventListener('resize', draw); viewers.set(canvas.id, {{reset, setMode: mode => {{ state.mode=mode; draw(); }}, setShell: shell => {{ state.shell=shell; draw(); }}}}); draw();
   }}
   document.querySelectorAll('.cloud-viewer').forEach(canvas => init(canvas, CLOUD_DATA[canvas.id]));
-  document.querySelectorAll('[data-cloud-action]').forEach(button => button.addEventListener('click', () => {{ const viewer=viewers.get(button.dataset.cloud); if(!viewer)return; if(button.dataset.cloudAction==='reset')viewer.reset(); else viewer.setMode(button.dataset.cloudAction); }}));
+  document.querySelectorAll('[data-cloud-action]').forEach(button => button.addEventListener('click', () => {{ const viewer=viewers.get(button.dataset.cloud); if(!viewer)return; const action=button.dataset.cloudAction; if(action==='reset')viewer.reset(); else if(action.startsWith('shell'))viewer.setShell(action.slice(5)===''?'all':action.slice(5)); else viewer.setMode(action); }}));
 }})();
 </script></html>'''
     (args.output / "index.html").write_text(page)

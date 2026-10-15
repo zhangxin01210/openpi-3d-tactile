@@ -56,13 +56,19 @@ blocks used for that match do not add tokens or another sensor.
 
 The models retain their full original cloud and raw tactile encoders.  For
 each finger, the force-weighted pad centre is a query.  From the 4096 cloud
-points, the representation keeps up to 48 nearest points within 16 cm that
-are on the tactile-facing side of the pad pair and farther than 3 mm from the
-query.  A relation candidate carries `[candidate-query XYZ, distance, 13-D
-finger force summary]`.  Three learned attention queries pool this set into
-three tokens per finger, giving six relationship tokens.
+points, the representation keeps 48 tactile-facing candidates within 36 cm,
+with fixed radial quotas: 20 from 0–8 cm, 16 from 8–18 cm, and 12 from
+18–36 cm.  This prevents the dense held-USB surface from consuming all
+candidate slots and gives the relation encoder a chance to see socket-side
+geometry while the hand is approaching.  A relation candidate carries
+`[candidate-query XYZ, distance, 13-D finger force summary]`; the sidecar also
+stores its radial shell ID for audit only.  Three learned attention queries
+pool this set into three tokens per finger, giving six relationship tokens.
 
 The geometric filter removes points that are clearly behind the active pad.
+The shell quota is a sampling rule, not a claim that every far-layer point is
+the socket.  The interactive audit colors near, middle, and far candidates
+separately and keeps a full-scene view for checking this assumption.
 The archived V3 point cloud has no robot or object semantic mask, so it is not
 called full robot segmentation and it does not claim to identify the physical
 USB–socket collision.  The audit page displays all local candidates and the
@@ -77,7 +83,7 @@ cd /home/sai/zx/openpi-3d-tactile
 bash sim/scripts/launch_contactworld_usb_contact_repr_audit.sh
 ```
 
-It builds `data/contactworld_usb_v3_bilateral/spatial/contact_repr_v1`, checks
+It builds `data/contactworld_usb_v3_bilateral/spatial/contact_repr_v2`, checks
 every episode and exactly reconstructs three frames per episode, then writes:
 
 ```text
@@ -92,7 +98,7 @@ any GPU worker.
 ## Training command after the audit is accepted
 
 On the training server, generate or upload the reviewed
-`spatial/contact_repr_v1` directory together with the USB V3 dataset.  Then:
+`spatial/contact_repr_v2` directory together with the USB V3 dataset.  Then:
 
 ```bash
 cd /workspace/mnt/sqzhang26/openpi-3d-tactile

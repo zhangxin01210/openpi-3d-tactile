@@ -14,16 +14,17 @@ mkdir -p "$RUN"
 export MPLCONFIGDIR="${MPLCONFIGDIR:-/tmp/openpi-matplotlib}"
 "$PYTHON" sim/scripts/prepare_contactworld_usb_contact_repr.py \
   --dataset "$DATA" \
-  --output "$DATA/spatial/contact_repr_v1" \
+  --output "$DATA/spatial/contact_repr_v2" \
+  --overwrite \
   | tee "$RUN/prepare.log"
 "$PYTHON" sim/scripts/verify_contactworld_usb_contact_repr.py \
   --dataset "$DATA" \
-  --repr-root "$DATA/spatial/contact_repr_v1" \
+  --repr-root "$DATA/spatial/contact_repr_v2" \
   --output "$RUN/contact_repr_verify.json" \
   | tee "$RUN/verify.log"
 "$PYTHON" sim/scripts/audit_contactworld_usb_contact_repr.py \
   --dataset "$DATA" \
-  --repr-root "$DATA/spatial/contact_repr_v1" \
+  --repr-root "$DATA/spatial/contact_repr_v2" \
   --output "$RUN" \
   | tee "$RUN/audit.log"
 echo "Review: $RUN/index.html"

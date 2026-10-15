@@ -92,7 +92,7 @@ def main():
             "pi0_cw3_usb_19_base_map_matched_relation",
         }
         if representation_configs.intersection(selected):
-            representation_manifest = data / "spatial/contact_repr_v1/manifest.json"
+            representation_manifest = data / "spatial/contact_repr_v2/manifest.json"
             if not representation_manifest.is_file():
                 parser.error("Missing reviewed contact representation sidecar: " + str(representation_manifest))
             subprocess.run([sys.executable, "sim/scripts/verify_contactworld_usb_contact_repr.py",

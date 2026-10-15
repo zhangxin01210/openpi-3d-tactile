@@ -1904,7 +1904,7 @@ def _contactworld_v3_train_config(name: str, *, cloud_mode: str = "none",
         contact_repr_mode=("relation" if use_tactile_scene_relation else
                             "centered" if tactile_representation in {
                                 "contact_centered_point", "contact_centered_map"} else "none"),
-        contact_repr_root=str(_CONTACTWORLD_V3_DATA / "spatial/contact_repr_v1"),
+        contact_repr_root=str(_CONTACTWORLD_V3_DATA / "spatial/contact_repr_v2"),
     )
     return TrainConfig(
         name=name, model=model,

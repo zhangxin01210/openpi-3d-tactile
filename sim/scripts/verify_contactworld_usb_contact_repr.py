@@ -41,6 +41,7 @@ SHAPES = {
     "candidate_xyz_base": (2, 48, 3),
     "candidate_mask": (2, 48),
     "candidate_distance": (2, 48),
+    "candidate_shell": (2, 48),
 }
 
 
@@ -50,6 +51,11 @@ def check_array(name: str, value: np.ndarray, length: int) -> None:
     if name.endswith("mask") or name in {"finger_valid", "query_valid"}:
         if value.dtype != np.bool_:
             raise ValueError(f"{name}: expected bool, got {value.dtype}")
+    elif name == "candidate_shell":
+        if value.dtype != np.int8:
+            raise ValueError(f"{name}: expected int8, got {value.dtype}")
+        if np.any((value < -1) | (value > 3)):
+            raise ValueError(f"{name}: invalid shell id")
     elif not np.isfinite(value).all():
         raise ValueError(f"{name}: non-finite value")
 
@@ -65,12 +71,12 @@ def main() -> None:
     if args.samples_per_episode < 1:
         parser.error("--samples-per-episode must be positive")
     dataset = args.dataset.resolve()
-    repr_root = (args.repr_root or dataset / "spatial/contact_repr_v1").resolve()
+    repr_root = (args.repr_root or dataset / "spatial/contact_repr_v2").resolve()
     source_manifest = json.loads((dataset / "spatial/manifest.json").read_text())
     manifest = json.loads((repr_root / "manifest.json").read_text())
     if source_manifest.get("format") != "contactworld-spatial-v3-bilateral":
         raise ValueError("Expected bilateral USB V3 source sidecar")
-    if manifest.get("format") != "contactworld-usb-contact-representation-v1":
+    if manifest.get("format") != "contactworld-usb-contact-representation-v2":
         raise ValueError("Unsupported contact representation format")
     source_rows = source_manifest["episodes"]
     derived_rows = manifest["episodes"]

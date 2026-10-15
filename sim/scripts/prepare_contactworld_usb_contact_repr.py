@@ -23,7 +23,7 @@ if str(ROOT / "src") not in sys.path:
 from openpi.spatial_dataset import contactworld_contact_repr as contact_repr  # noqa: E402
 
 
-FORMAT = "contactworld-usb-contact-representation-v1"
+FORMAT = "contactworld-usb-contact-representation-v2"
 
 
 def _episodes(root: Path, requested: list[int] | None, limit: int | None) -> list[dict]:
@@ -54,7 +54,7 @@ def main() -> None:
     args = parser.parse_args()
 
     dataset = args.dataset.resolve()
-    output = (args.output or dataset / "spatial/contact_repr_v1").resolve()
+    output = (args.output or dataset / "spatial/contact_repr_v2").resolve()
     output.mkdir(parents=True, exist_ok=True)
     rows = _episodes(dataset, args.episodes, args.limit)
     manifest_rows = []
@@ -101,6 +101,7 @@ def main() -> None:
         "relation_filter": {
             "name": "tactile-facing local half-space",
             "radius_m": float(contact_repr.RELATION_RADIUS_M),
+            "shells": [list(shell) for shell in contact_repr.RELATION_SHELLS],
             "backside_tolerance_m": float(contact_repr.BACKSIDE_TOLERANCE_M),
             "self_surface_margin_m": float(contact_repr.SELF_SURFACE_MARGIN_M),
             "limitation": "Not full robot mesh segmentation; audit visualizes all retained candidates.",
