@@ -124,8 +124,8 @@ def main() -> None:
             summary_path = output / "summary.json"
             if summary_path.exists():
                 saved = json.loads(summary_path.read_text())
-                if saved.get("trials_requested") != args.trials:
-                    raise ValueError("Existing evaluation uses a different --trials: " + str(summary_path))
+                if int(saved.get("trials_requested", 0)) > args.trials:
+                    raise ValueError("Existing evaluation uses more trials than requested: " + str(summary_path))
                 completed = len(saved.get("results", []))
                 if completed >= args.trials:
                     print("SKIP complete %s %d/%d" % (config, completed, args.trials), flush=True)

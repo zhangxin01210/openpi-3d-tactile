@@ -198,11 +198,15 @@ def main() -> None:
     summary_path = args.output / "summary.json"
     if summary_path.exists():
         previous = json.loads(summary_path.read_text())
+        if int(previous.get("trials_requested", 0)) > args.trials:
+            raise ValueError("Existing summary has more trials than requested")
         for key in ("task", "policy_config", "checkpoint", "checkpoint_metadata_sha256", "seed_base",
-                    "trials_requested", "max_steps", "replan_every", "source", "action_dim"):
+                    "max_steps", "replan_every", "source", "action_dim"):
             if previous.get(key) != summary[key]:
                 raise ValueError("Existing summary differs on " + key)
         summary = previous
+        # A short smoke run can be extended in place to the full trial count.
+        summary["trials_requested"] = args.trials
     completed = len(summary["results"])
     if [r["seed"] for r in summary["results"]] != list(range(args.seed_base, args.seed_base + completed)):
         raise ValueError("Existing results are not a contiguous seed prefix")
