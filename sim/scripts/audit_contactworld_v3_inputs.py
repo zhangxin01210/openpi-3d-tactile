@@ -26,6 +26,12 @@ CONFIGS = (
     "pi0_cw3_usb_11_fused_pc_base_structured_prefix",
     "pi0_cw3_usb_12_fused_pc_base_structured_split_route",
     "pi0_cw3_usb_13_fused_pc_local_map_3tok",
+    "pi0_cw3_usb_14_base_pooled_no_pc",
+    "pi0_cw3_usb_15_base_map_matched_no_pc",
+    "pi0_cw3_usb_16_contact_centered_point",
+    "pi0_cw3_usb_17_contact_centered_map",
+    "pi0_cw3_usb_18_base_pooled_relation",
+    "pi0_cw3_usb_19_base_map_matched_relation",
 )
 
 
@@ -33,6 +39,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("dataset", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--configs", nargs="+", choices=CONFIGS, default=list(CONFIGS))
     args = parser.parse_args()
     root = args.dataset.resolve()
     manifest = json.loads((root / "spatial/manifest.json").read_text())
@@ -64,7 +71,7 @@ def main() -> None:
     results = []
     structured_reference = None
     split_map_parameters = None
-    for name in CONFIGS:
+    for name in args.configs:
         config = training_config.get_config(name)
         factory = dataclasses.replace(
             config.data, repo_id=str(root),
@@ -144,6 +151,8 @@ def main() -> None:
             if use_tactile and observation.spatial.tactile.force.shape != spec.spatial.tactile.force.shape:
                 raise ValueError(f"{name}: tactile tensor differs from model input spec")
             encoder = config.model.create_spatial_encoder(rngs=nnx.Rngs(0))
+            row["spatial_encoder_trainable_parameters"] = int(sum(
+                value.size for value in jax.tree.leaves(nnx.state(encoder, nnx.Param))))
             encoded = encoder(observation.spatial)
             tokens = np.asarray(encoded.tokens)
             mask = np.asarray(encoded.token_mask)
@@ -154,10 +163,44 @@ def main() -> None:
             map_mode = representation in {"map_coupled", "map_split", "map_local", "map_split_local",
                                           "map_coupled_matched", "map_local_multiquery"}
             visual_tokens = (config.model.visual_num_centers + 1) if use_visual else 0
-            tactile_tokens = (6 if split_map or matched_map or multiquery_map or (use_tactile and not map_mode and
-                              representation != "summary") else 2 if use_tactile else 0)
-            expected_tokens = visual_tokens + tactile_tokens
+            centered = representation in {"contact_centered_point", "contact_centered_map"}
+            relation_tokens = 6 if config.model.use_tactile_scene_relation else 0
+            tactile_tokens = (6 if split_map or matched_map or multiquery_map or centered or
+                              (use_tactile and not map_mode and representation != "summary")
+                              else 2 if use_tactile else 0)
+            expected_tokens = visual_tokens + tactile_tokens + relation_tokens
             expected_mask = np.ones((1, expected_tokens), dtype=bool)
+            if centered:
+                centered_input = observation.spatial.contact_centered_tactile
+                if centered_input is None:
+                    raise ValueError(f"{name}: missing contact-centred tactile sidecar")
+                if (centered_input.patch_xyz_local.shape != (1, 2, 2, 16, 2) or
+                        centered_input.patch_force.shape != (1, 2, 2, 16, 3) or
+                        centered_input.patch_mask.shape != (1, 2, 2, 16) or
+                        centered_input.anchor_mask.shape != (1, 2, 2)):
+                    raise ValueError(f"{name}: invalid contact-centred tactile shape")
+                # Token order is L anchors, L summary, R anchors, R summary.
+                anchor_mask = np.asarray(centered_input.anchor_mask)[0]
+                expected_mask[0, visual_tokens:visual_tokens + 6] = np.array([
+                    anchor_mask[0, 0], anchor_mask[0, 1], True,
+                    anchor_mask[1, 0], anchor_mask[1, 1], True,
+                ], dtype=bool)
+                row["contact_centered_tokens"] = 6
+                row["active_contact_patches"] = int(anchor_mask.sum())
+            if relation_tokens:
+                relation_input = observation.spatial.tactile_scene_relation
+                if relation_input is None:
+                    raise ValueError(f"{name}: missing tactile-scene relation sidecar")
+                if (relation_input.query_xyz_m.shape != (1, 2, 3) or
+                        relation_input.query_features.shape != (1, 2, 13) or
+                        relation_input.candidate_xyz_m.shape != (1, 2, 48, 3) or
+                        relation_input.candidate_mask.shape != (1, 2, 48)):
+                    raise ValueError(f"{name}: invalid tactile-scene relation shape")
+                row["relation_tokens"] = 6
+                row["relation_candidates_left_right"] = [
+                    int(np.asarray(relation_input.candidate_mask)[0, finger].sum())
+                    for finger in range(2)
+                ]
             if tokens.shape != (1, expected_tokens, config.model.token_dim) or not np.array_equal(mask, expected_mask):
                 raise ValueError(f"{name}: spatial encoder token/mask shape differs")
             if not np.isfinite(tokens).all():
@@ -194,7 +237,7 @@ def main() -> None:
                 if actual_route != expected_route:
                     raise ValueError(f"{name}: actual spatial route is {actual_route}, expected {expected_route}")
                 row["route_shapes"] = [list(shape) if shape is not None else None for shape in actual_route]
-            if use_tactile and config.model.tactile_pool_per_finger:
+            if use_tactile and config.model.tactile_pool_per_finger and not centered:
                 original_force = np.asarray(observation.spatial.tactile.force)
                 original_norm = np.asarray(observation.spatial.tactile.force_norm)
                 altered = dataclasses.replace(observation.spatial,
@@ -236,6 +279,46 @@ def main() -> None:
                                             tokens[:, left_token + 1:], atol=1e-6, rtol=1e-6)):
                         raise ValueError(f"{name}: channel-specific token routing failed")
                     row["independent_force_channels"] = True
+            if centered:
+                centered_input = observation.spatial.contact_centered_tactile
+                active_left = bool(np.asarray(centered_input.anchor_mask)[0, 0].any())
+                if active_left:
+                    altered_contact = dataclasses.replace(
+                        centered_input,
+                        patch_force=np.asarray(centered_input.patch_force) *
+                        np.array([0.0, 1.0], dtype=np.float32)[None, :, None, None, None],
+                    )
+                    altered = dataclasses.replace(
+                        observation.spatial, contact_centered_tactile=altered_contact,
+                    )
+                    changed = np.asarray(encoder(altered).tokens)
+                    left = slice(visual_tokens, visual_tokens + 2)
+                    right = slice(visual_tokens + 3, visual_tokens + 5)
+                    if (np.array_equal(changed[:, left], tokens[:, left]) or
+                            not np.allclose(changed[:, right], tokens[:, right], atol=1e-6, rtol=1e-6)):
+                        raise ValueError(f"{name}: centred tactile finger routing failed")
+                    row["independent_contact_centres"] = True
+            if relation_tokens:
+                relation_input = observation.spatial.tactile_scene_relation
+                left_candidates = np.asarray(relation_input.candidate_mask)[0, 0].any()
+                if left_candidates:
+                    altered_relation = dataclasses.replace(
+                        relation_input,
+                        candidate_mask=np.asarray(relation_input.candidate_mask) *
+                        np.array([False, True], dtype=bool)[None, :, None],
+                    )
+                    altered = dataclasses.replace(
+                        observation.spatial, tactile_scene_relation=altered_relation,
+                    )
+                    changed = np.asarray(encoder(altered).tokens)
+                    relation_start = visual_tokens + tactile_tokens
+                    if (np.array_equal(changed[:, relation_start:relation_start + 3],
+                                       tokens[:, relation_start:relation_start + 3]) or
+                            not np.allclose(changed[:, relation_start + 3:relation_start + 6],
+                                            tokens[:, relation_start + 3:relation_start + 6],
+                                            atol=1e-6, rtol=1e-6)):
+                        raise ValueError(f"{name}: left/right relation token routing failed")
+                    row["independent_relation_fingers"] = True
             if name.endswith("07_fused_pc_base_pooled"):
                 if (encoder.structured_encoder.config.tactile_local_tokens_per_finger != 4 or
                         encoder.structured_encoder.config.tactile_summary_tokens_per_finger != 2):
@@ -255,7 +338,8 @@ def main() -> None:
                 row["tactile_vit_parameters"] = parameter_count
                 if name.endswith("09_fused_pc_base_map_split"):
                     split_map_parameters = parameter_count
-                elif split_map_parameters is None or abs(parameter_count / split_map_parameters - 1) > 0.05:
+                elif (split_map_parameters is not None and
+                      abs(parameter_count / split_map_parameters - 1) > 0.05):
                     raise ValueError(f"{name}: capacity control differs from split ViT by over 5%")
             if name.endswith("13_fused_pc_local_map_3tok"):
                 if (mode != "both_local_grid" or len(encoder.map_encoders) != 1 or

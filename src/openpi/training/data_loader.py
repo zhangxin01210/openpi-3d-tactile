@@ -223,10 +223,18 @@ def create_torch_dataset(
 
             if settings.visual != (settings.cloud_mode != "none") or settings.force != (settings.force_mode != "none"):
                 raise ValueError("ContactWorld replayed cloud/force mode differs from model modality switches")
+            repr_mode = settings.contact_repr_mode
+            expected_centered = getattr(model_config, "tactile_representation", "") in {
+                "contact_centered_point", "contact_centered_map"}
+            expected_relation = bool(getattr(model_config, "use_tactile_scene_relation", False))
+            if ((repr_mode == "centered") != expected_centered
+                    or (repr_mode == "relation") != expected_relation):
+                raise ValueError("Contact representation sidecar and model spec disagree")
             dataset = ContactWorldV2LeRobotSpatial(
                 dataset, settings.root, cloud_mode=settings.cloud_mode,
                 force_mode=settings.force_mode, depth=settings.depth,
                 action_horizon=settings.action_horizon,
+                contact_repr_mode=repr_mode, contact_repr_root=settings.contact_repr_root,
             )
         elif settings.dataset_version == "v1":
             from openpi.spatial_dataset.contactworld_lerobot import ContactWorldLeRobotSpatial

@@ -147,6 +147,10 @@ class ContactWorldSidecarConfig:
     dataset_version: str = "v1"
     cloud_mode: str = "none"
     force_mode: str = "none"
+    # Optional derived USB-V3 representation.  It is kept outside the base
+    # LeRobot export so raw reviewed modalities remain immutable.
+    contact_repr_mode: str = "none"  # none / centered / relation
+    contact_repr_root: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1871,7 +1875,8 @@ _CONTACTWORLD_V3_DATA = _CONTACTWORLD_ROOT / "data/contactworld_usb_v3_bilateral
 def _contactworld_v3_train_config(name: str, *, cloud_mode: str = "none",
                                   force_mode: str = "none", separate_fingers: bool = False,
                                   tactile_representation: str | None = None,
-                                  target: str = "suffix", spatial_route: str = "shared") -> TrainConfig:
+                                  target: str = "suffix", spatial_route: str = "shared",
+                                  use_tactile_scene_relation: bool = False) -> TrainConfig:
     visual = cloud_mode != "none"
     force = force_mode != "none"
     common_model = dict(paligemma_variant="gemma_2b_lora",
@@ -1885,6 +1890,7 @@ def _contactworld_v3_train_config(name: str, *, cloud_mode: str = "none",
             tactile_pool_per_finger=separate_fingers,
             structured=True,
             spatial_route=spatial_route,
+            use_tactile_scene_relation=use_tactile_scene_relation,
             conditioning=spatial_conditioning.SpatialConditioningConfig(target=target),
         )
         loader = spatial_weight_loaders.SpatialCheckpointWeightLoader(_CONTACTWORLD_WEIGHTS)
@@ -1895,6 +1901,10 @@ def _contactworld_v3_train_config(name: str, *, cloud_mode: str = "none",
         root=str(_CONTACTWORLD_V3_DATA), action_horizon=16, visual=visual,
         force=force, dataset_version="v3", cloud_mode=cloud_mode,
         force_mode=force_mode,
+        contact_repr_mode=("relation" if use_tactile_scene_relation else
+                            "centered" if tactile_representation in {
+                                "contact_centered_point", "contact_centered_map"} else "none"),
+        contact_repr_root=str(_CONTACTWORLD_V3_DATA / "spatial/contact_repr_v1"),
     )
     return TrainConfig(
         name=name, model=model,
@@ -1946,6 +1956,31 @@ _CONFIGS.extend([
     _contactworld_v3_train_config("pi0_cw3_usb_13_fused_pc_local_map_3tok",
                                   cloud_mode="fused", force_mode="both_local_grid",
                                   separate_fingers=True, tactile_representation="map_local_multiquery"),
+    # Second-round targeted ablations from the two best first-round models.
+    # 14/15 remove only the 4096-point visual cloud.  16/17 replace raw dense
+    # tactile fields with two contact-centred sparse patches plus one full-pad
+    # summary per finger.  18/19 add six tactile-to-scene relation tokens.
+    _contactworld_v3_train_config("pi0_cw3_usb_14_base_pooled_no_pc",
+                                  force_mode="both_base3d"),
+    _contactworld_v3_train_config("pi0_cw3_usb_15_base_map_matched_no_pc",
+                                  force_mode="both_base3d", separate_fingers=True,
+                                  tactile_representation="map_coupled_matched"),
+    _contactworld_v3_train_config("pi0_cw3_usb_16_contact_centered_point",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True,
+                                  tactile_representation="contact_centered_point"),
+    _contactworld_v3_train_config("pi0_cw3_usb_17_contact_centered_map",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True,
+                                  tactile_representation="contact_centered_map"),
+    _contactworld_v3_train_config("pi0_cw3_usb_18_base_pooled_relation",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  use_tactile_scene_relation=True),
+    _contactworld_v3_train_config("pi0_cw3_usb_19_base_map_matched_relation",
+                                  cloud_mode="fused", force_mode="both_base3d",
+                                  separate_fingers=True,
+                                  tactile_representation="map_coupled_matched",
+                                  use_tactile_scene_relation=True),
 ])
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):

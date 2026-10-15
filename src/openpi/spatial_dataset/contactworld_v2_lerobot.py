@@ -10,7 +10,8 @@ import numpy as np
 
 class ContactWorldV2LeRobotSpatial:
     def __init__(self, base, root: str | Path, *, cloud_mode: str,
-                 force_mode: str, depth: bool = False, action_horizon: int = 16):
+                 force_mode: str, depth: bool = False, action_horizon: int = 16,
+                 contact_repr_mode: str = "none", contact_repr_root: str | Path | None = None):
         if cloud_mode not in {"none", "front", "fused"}:
             raise ValueError(cloud_mode)
         if force_mode not in {"none", "local", "base3d", "local_at_base",
@@ -37,6 +38,18 @@ class ContactWorldV2LeRobotSpatial:
         self.cloud_mode = cloud_mode
         self.force_mode = force_mode
         self.depth = depth
+        if contact_repr_mode not in {"none", "centered", "relation"}:
+            raise ValueError(contact_repr_mode)
+        if contact_repr_mode != "none" and (cloud_mode == "none" or force_mode == "none"):
+            raise ValueError("Contact representation requires reviewed cloud and bilateral tactile inputs")
+        self.contact_repr_mode = contact_repr_mode
+        self.contact_repr_root = (Path(contact_repr_root) if contact_repr_root is not None
+                                  else self.root / "spatial/contact_repr_v1")
+        self._repr_arrays: dict[int, dict[str, np.ndarray]] = {}
+        if contact_repr_mode != "none":
+            repr_manifest = json.loads((self.contact_repr_root / "manifest.json").read_text())
+            if repr_manifest.get("format") != "contactworld-usb-contact-representation-v1":
+                raise ValueError("Unsupported ContactWorld contact representation sidecar")
         self._arrays: dict[tuple[int, str], np.ndarray] = {}
 
     def __len__(self):
@@ -48,6 +61,13 @@ class ContactWorldV2LeRobotSpatial:
             path = self.root / "spatial/episodes" / f"episode_{episode:06d}" / f"{key}.npy"
             self._arrays[identity] = np.load(path, mmap_mode="r")
         return np.asarray(self._arrays[identity][frame]).copy()
+
+    def _repr_row(self, episode: int, frame: int, key: str) -> np.ndarray:
+        if episode not in self._repr_arrays:
+            path = self.contact_repr_root / "episodes" / f"episode_{episode:06d}.npz"
+            with np.load(path) as source:
+                self._repr_arrays[episode] = {name: source[name].copy() for name in source.files}
+        return self._repr_arrays[episode][key][frame].copy()
 
     def __getitem__(self, index):
         item = dict(self.base[self.sample_indices[index]])
@@ -113,5 +133,26 @@ class ContactWorldV2LeRobotSpatial:
                        "taxel_id": taxel_id,
                        "point_mask": np.ones(count, bool)}
         if visual is not None or tactile is not None:
-            item["spatial"] = {"visual": visual, "tactile": tactile}
+            spatial = {"visual": visual, "tactile": tactile}
+            if self.contact_repr_mode == "centered":
+                spatial["contact_centered_tactile"] = {
+                    "patch_xyz_local": self._repr_row(episode, frame, "patch_xyz_local").astype(np.float32),
+                    "patch_force": self._repr_row(episode, frame, "patch_force").astype(np.float32),
+                    "patch_mask": self._repr_row(episode, frame, "patch_mask").astype(bool),
+                    "anchor_xyz_m": self._repr_row(episode, frame, "anchor_xyz_base").astype(np.float32),
+                    "anchor_stats": self._repr_row(episode, frame, "anchor_stats").astype(np.float32),
+                    "anchor_mask": self._repr_row(episode, frame, "anchor_mask").astype(bool),
+                    "finger_summary": self._repr_row(episode, frame, "finger_summary").astype(np.float32),
+                    "finger_center_xyz_m": self._repr_row(episode, frame, "finger_center_base").astype(np.float32),
+                    "finger_valid": self._repr_row(episode, frame, "finger_valid").astype(bool),
+                }
+            if self.contact_repr_mode == "relation":
+                spatial["tactile_scene_relation"] = {
+                    "query_xyz_m": self._repr_row(episode, frame, "query_xyz_base").astype(np.float32),
+                    "query_features": self._repr_row(episode, frame, "query_features").astype(np.float32),
+                    "query_valid": self._repr_row(episode, frame, "query_valid").astype(bool),
+                    "candidate_xyz_m": self._repr_row(episode, frame, "candidate_xyz_base").astype(np.float32),
+                    "candidate_mask": self._repr_row(episode, frame, "candidate_mask").astype(bool),
+                }
+            item["spatial"] = spatial
         return item

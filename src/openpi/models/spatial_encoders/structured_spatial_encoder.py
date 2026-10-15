@@ -38,6 +38,10 @@ class StructuredSpatialEncoderConfig:
     tactile_knn: int = 8
     tactile_local_tokens_per_finger: int = 4
     tactile_summary_tokens_per_finger: int = 1
+    # Contact-centred tactile can use this module's reviewed visual branch
+    # while supplying its own tactile encoder.  Avoid allocating an unused
+    # PointNet-style tactile branch in that case.
+    enable_tactile: bool = True
 
     hidden_dim: int = 128
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
@@ -64,7 +68,8 @@ class StructuredSpatialEncoderConfig:
         return (
             self.visual_num_centers
             + 1
-            + self.num_fingers * (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
+            + (self.num_fingers * (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
+               if self.enable_tactile else 0)
         )
 
 
@@ -82,36 +87,36 @@ class StructuredSpatialEncoder(nnx.Module):
         self.visual_global_layers = _make_mlp(self._VISUAL_PATCH_DIM, (h, d), rngs)
         self.visual_pos_layers = _make_mlp(3, (h, d), rngs)
 
-        tactile_input_dim = self._TACTILE_TAXEL_DIM + d
-        self.tactile_taxel_layers = _make_mlp(tactile_input_dim, (h, d), rngs)
-        self.tactile_edge_layers = _make_mlp(d * 2 + 3, (h, d), rngs)
-        self.tactile_context_layers = _make_mlp(d * 3, (h, d), rngs)
-        self.tactile_key = nnx.Linear(d, d, rngs=rngs)
-        self.tactile_value = nnx.Linear(d, d, rngs=rngs)
-        self.tactile_pos_layers = _make_mlp(3, (h, d), rngs)
-
         self.visual_modality_embedding = nnx.Param(
             jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
         )
-        self.tactile_modality_embedding = nnx.Param(
-            jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
-        )
-        self.finger_embedding = nnx.Param(
-            jax.random.normal(rngs.params(), (config.num_fingers, d), dtype=jnp.float32) * 0.02
-        )
-        self.tactile_pool_queries = nnx.Param(
-            jax.random.normal(
-                rngs.params(),
-                (config.num_fingers, config.tactile_local_tokens_per_finger, d),
-                dtype=jnp.float32,
+        if config.enable_tactile:
+            tactile_input_dim = self._TACTILE_TAXEL_DIM + d
+            self.tactile_taxel_layers = _make_mlp(tactile_input_dim, (h, d), rngs)
+            self.tactile_edge_layers = _make_mlp(d * 2 + 3, (h, d), rngs)
+            self.tactile_context_layers = _make_mlp(d * 3, (h, d), rngs)
+            self.tactile_key = nnx.Linear(d, d, rngs=rngs)
+            self.tactile_value = nnx.Linear(d, d, rngs=rngs)
+            self.tactile_pos_layers = _make_mlp(3, (h, d), rngs)
+            self.tactile_modality_embedding = nnx.Param(
+                jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
             )
-            * 0.02
-        )
-        self.tactile_summary_queries = nnx.Param(
-            jax.random.normal(rngs.params(),
-                              (config.num_fingers, config.tactile_summary_tokens_per_finger, d),
-                              dtype=jnp.float32) * 0.02
-        )
+            self.finger_embedding = nnx.Param(
+                jax.random.normal(rngs.params(), (config.num_fingers, d), dtype=jnp.float32) * 0.02
+            )
+            self.tactile_pool_queries = nnx.Param(
+                jax.random.normal(
+                    rngs.params(),
+                    (config.num_fingers, config.tactile_local_tokens_per_finger, d),
+                    dtype=jnp.float32,
+                )
+                * 0.02
+            )
+            self.tactile_summary_queries = nnx.Param(
+                jax.random.normal(rngs.params(),
+                                  (config.num_fingers, config.tactile_summary_tokens_per_finger, d),
+                                  dtype=jnp.float32) * 0.02
+            )
 
     def __call__(self, inputs: SpatialEncoderInput) -> SpatialEncoderOutput:
         token_parts = []
@@ -131,6 +136,8 @@ class StructuredSpatialEncoder(nnx.Module):
             aux["visual_token_count"] = jnp.zeros((batch_size,), dtype=jnp.int32)
 
         if inputs.tactile is not None:
+            if not self.config.enable_tactile:
+                raise ValueError("This structured encoder was configured without a tactile branch")
             tokens, mask, xyz, tactile_aux = self._encode_tactile(inputs.tactile)
             token_parts.append(tokens)
             mask_parts.append(mask)

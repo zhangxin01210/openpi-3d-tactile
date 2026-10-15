@@ -14,12 +14,15 @@ from openpi.models.spatial_encoders import structured_spatial_encoder
 from openpi.models.spatial_encoders import transforms as spatial_transforms
 from openpi.models.spatial_encoders.types import SpatialEncoderInput
 from openpi.models.spatial_encoders.types import SpatialEncoderOutput
+from openpi.models.spatial_encoders.types import ContactCenteredTactileInput
+from openpi.models.spatial_encoders.types import TactileSceneRelationInput
 from openpi.models.spatial_pi0_config import SpatialPi0Config
+from openpi.shared import array_typing as at
 
 TactileRepresentation = Literal[
     "none", "grid", "summary", "ee3d", "base3d",
     "map_coupled", "map_split", "map_local", "map_split_local", "map_coupled_matched",
-    "map_local_multiquery",
+    "map_local_multiquery", "contact_centered_point", "contact_centered_map",
 ]
 
 
@@ -37,6 +40,7 @@ class ContactWorldPi0Config(SpatialPi0Config):
     tactile_local_tokens_per_finger: int = 2
     tactile_knn: int = 8
     spatial_route: Literal["shared", "visual_prefix_tactile_suffix"] = "shared"
+    use_tactile_scene_relation: bool = False
 
     def __post_init__(self):
         super().__post_init__()
@@ -52,6 +56,12 @@ class ContactWorldPi0Config(SpatialPi0Config):
                                            "map_coupled_matched", "map_local_multiquery"} and (
                 not self.use_tactile or not self.tactile_pool_per_finger or self.tactile_points != 280):
             raise ValueError("Bilateral tactile maps require separate 140-taxel finger grids")
+        if self.tactile_representation in {"contact_centered_point", "contact_centered_map"} and (
+                not self.use_tactile or not self.tactile_pool_per_finger or self.tactile_points != 280
+                or not self.structured):
+            raise ValueError("Contact-centred tactile needs bilateral structured tactile input")
+        if self.use_tactile_scene_relation and (not self.use_visual or not self.use_tactile or not self.structured):
+            raise ValueError("Tactile-scene relation tokens need structured visual and tactile input")
         if self.spatial_route == "visual_prefix_tactile_suffix" and (
                 not self.structured or not self.use_visual or not self.use_tactile or
                 not self.conditioning.use_prefix or not self.conditioning.use_suffix):
@@ -80,6 +90,43 @@ class ContactWorldPi0Config(SpatialPi0Config):
         if self.structured:
             return ContactWorldStructuredEncoder(self, rngs=rngs)
         return ContactWorldEncoder(self, rngs=rngs)
+
+    def inputs_spec(self, *, batch_size: int = 1):
+        observation, actions = super().inputs_spec(batch_size=batch_size)
+        if observation.spatial is None:
+            raise ValueError("ContactWorld spatial config requires spatial input")
+        centered = None
+        if self.tactile_representation in {"contact_centered_point", "contact_centered_map"}:
+            centered = ContactCenteredTactileInput(
+                patch_xyz_local=jax.ShapeDtypeStruct((batch_size, 2, 2, 16, 2), jnp.float32),
+                patch_force=jax.ShapeDtypeStruct((batch_size, 2, 2, 16, 3), jnp.float32),
+                patch_mask=jax.ShapeDtypeStruct((batch_size, 2, 2, 16), jnp.bool_),
+                anchor_xyz_m=jax.ShapeDtypeStruct((batch_size, 2, 2, 3), jnp.float32),
+                anchor_stats=jax.ShapeDtypeStruct((batch_size, 2, 2, 10), jnp.float32),
+                anchor_mask=jax.ShapeDtypeStruct((batch_size, 2, 2), jnp.bool_),
+                finger_summary=jax.ShapeDtypeStruct((batch_size, 2, 13), jnp.float32),
+                finger_center_xyz_m=jax.ShapeDtypeStruct((batch_size, 2, 3), jnp.float32),
+                finger_valid=jax.ShapeDtypeStruct((batch_size, 2), jnp.bool_),
+            )
+        relation = None
+        if self.use_tactile_scene_relation:
+            relation = TactileSceneRelationInput(
+                query_xyz_m=jax.ShapeDtypeStruct((batch_size, 2, 3), jnp.float32),
+                query_features=jax.ShapeDtypeStruct((batch_size, 2, 13), jnp.float32),
+                query_valid=jax.ShapeDtypeStruct((batch_size, 2), jnp.bool_),
+                candidate_xyz_m=jax.ShapeDtypeStruct((batch_size, 2, 48, 3), jnp.float32),
+                candidate_mask=jax.ShapeDtypeStruct((batch_size, 2, 48), jnp.bool_),
+            )
+        spatial = observation.spatial.replace(
+            contact_centered_tactile=centered,
+            tactile_scene_relation=relation,
+        )
+        # ``inputs_spec`` deliberately carries ShapeDtypeStruct values.  The
+        # generic spatial config uses the same guard when it replaces the
+        # typed Observation dataclass.
+        with at.disable_typechecking():
+            observation = dataclasses.replace(observation, spatial=spatial)
+        return observation, actions
 
 
 class _TactileMapBlock(nnx.Module):
@@ -143,6 +190,9 @@ class ContactWorldStructuredEncoder(nnx.Module):
             "map_local_multiquery",
         }
         self.summary_mode = config.tactile_representation == "summary"
+        self.centered_mode = config.tactile_representation in {
+            "contact_centered_point", "contact_centered_map",
+        }
         tactile_fingers = 2 if config.tactile_pool_per_finger else 1
         pooled = (config.use_tactile and not config.tactile_pool_per_finger and
                   config.tactile_points == 280)
@@ -155,6 +205,7 @@ class ContactWorldStructuredEncoder(nnx.Module):
             tactile_knn=config.tactile_knn,
             tactile_local_tokens_per_finger=local_tokens,
             tactile_summary_tokens_per_finger=2 if pooled else 1,
+            enable_tactile=not self.centered_mode,
             transforms=spatial_transforms.SpatialFeatureTransforms(
                 force=spatial_transforms.LinearScaleForceTransform(scale=0.002)
             ),
@@ -184,6 +235,52 @@ class ContactWorldStructuredEncoder(nnx.Module):
             self.summary_finger_embedding = nnx.Param(
                 jax.random.normal(rngs.params(), (tactile_fingers, config.token_dim)) * 0.02
             )
+        if self.centered_mode:
+            if config.tactile_representation == "contact_centered_point":
+                # 07-C: Point-style aggregation over the selected contact patch.
+                self.centered_point_in = nnx.Linear(5, config.token_dim, rngs=rngs)
+                self.centered_point_out = nnx.Linear(2 * config.token_dim + 10, config.token_dim, rngs=rngs)
+                # Match model 07's active spatial-encoder parameter budget
+                # (within 1%) without adding a token or another modality.
+                self.centered_capacity_in = nnx.Linear(config.token_dim, 576, rngs=rngs)
+                self.centered_capacity_out = nnx.Linear(576, config.token_dim, rngs=rngs)
+            else:
+                # 10-C: local force-position attention over the same 16
+                # selected taxels. It preserves coupled Fx/Fy/Fz processing
+                # without assuming a translated patch remains rectangular.
+                self.centered_map_in = nnx.Linear(5, 224, rngs=rngs)
+                self.centered_map_query = nnx.Param(
+                    jax.random.normal(rngs.params(), (1, 1, 224)) * 0.02
+                )
+                self.centered_map_blocks = [_TactileMapBlock(224, rngs=rngs) for _ in range(2)]
+                self.centered_map_norm = nnx.LayerNorm(224, rngs=rngs)
+                self.centered_map_out = nnx.Linear(224, config.token_dim, rngs=rngs)
+                # Match model 10's active spatial-encoder parameter budget
+                # (within 1%) without changing token count or inputs.
+                self.centered_capacity_in = nnx.Linear(config.token_dim, 752, rngs=rngs)
+                self.centered_capacity_out = nnx.Linear(752, config.token_dim, rngs=rngs)
+            self.centered_anchor_pos = nnx.Linear(3, config.token_dim, rngs=rngs)
+            self.centered_global_in = nnx.Linear(13, config.token_dim, rngs=rngs)
+            self.centered_global_out = nnx.Linear(config.token_dim, config.token_dim, rngs=rngs)
+            self.centered_finger_embedding = nnx.Param(
+                jax.random.normal(rngs.params(), (2, config.token_dim)) * 0.02
+            )
+        if config.use_tactile_scene_relation:
+            d = config.token_dim
+            self.relation_candidate_in = nnx.Linear(17, d, rngs=rngs)
+            self.relation_key = nnx.Linear(d, d, rngs=rngs)
+            self.relation_value = nnx.Linear(d, d, rngs=rngs)
+            self.relation_query_in = nnx.Linear(16, d, rngs=rngs)
+            self.relation_pos = nnx.Linear(3, d, rngs=rngs)
+            self.relation_queries = nnx.Param(
+                jax.random.normal(rngs.params(), (2, 3, d)) * 0.02
+            )
+            self.relation_finger_embedding = nnx.Param(
+                jax.random.normal(rngs.params(), (2, d)) * 0.02
+            )
+            self.relation_no_candidate = nnx.Param(
+                jax.random.normal(rngs.params(), (d,)) * 0.02
+            )
 
     def __call__(self, spatial: SpatialEncoderInput) -> SpatialEncoderOutput:
         outputs = []
@@ -195,7 +292,11 @@ class ContactWorldStructuredEncoder(nnx.Module):
             tactile = spatial.tactile
             if tactile is None:
                 raise ValueError("Missing ContactWorld tactile force")
-            if self.map_mode:
+            if self.centered_mode:
+                if spatial.contact_centered_tactile is None:
+                    raise ValueError("Missing precomputed contact-centred tactile input")
+                outputs.append(self._encode_contact_centered(spatial.contact_centered_tactile))
+            elif self.map_mode:
                 outputs.append(self._encode_maps(tactile))
             elif self.summary_mode:
                 outputs.append(self._encode_summary(tactile))
@@ -205,6 +306,10 @@ class ContactWorldStructuredEncoder(nnx.Module):
                 if not self.config.tactile_pool_per_finger:
                     tactile = tactile.replace(finger_id=jnp.zeros_like(tactile.finger_id))
                 outputs.append(self.structured_encoder(SpatialEncoderInput(tactile=tactile)))
+        if self.config.use_tactile_scene_relation:
+            if spatial.tactile_scene_relation is None:
+                raise ValueError("Missing precomputed tactile-scene relation input")
+            outputs.append(self._encode_relation(spatial.tactile_scene_relation))
         tokens = jnp.concatenate([output.tokens for output in outputs], axis=1)
         masks = jnp.concatenate([output.token_mask for output in outputs], axis=1)
         xyz = jnp.concatenate([output.token_xyz_m for output in outputs], axis=1)
@@ -213,6 +318,109 @@ class ContactWorldStructuredEncoder(nnx.Module):
                                     aux={"visual_token_count": jnp.sum(masks[:, :visual_tokens], axis=1),
                                          "tactile_token_count": jnp.sum(masks[:, visual_tokens:], axis=1),
                                          "total_token_count": jnp.sum(masks, axis=1)})
+
+    def _encode_contact_centered(self, contact) -> SpatialEncoderOutput:
+        patch_xyz = jnp.asarray(contact.patch_xyz_local, dtype=jnp.float32)
+        patch_force = jnp.asarray(contact.patch_force, dtype=jnp.float32) / 0.002
+        patch_mask = jnp.asarray(contact.patch_mask, dtype=jnp.bool_)
+        anchor_xyz = jnp.asarray(contact.anchor_xyz_m, dtype=jnp.float32)
+        anchor_stats = jnp.asarray(contact.anchor_stats, dtype=jnp.float32)
+        anchor_mask = jnp.asarray(contact.anchor_mask, dtype=jnp.bool_)
+        finger_summary = jnp.asarray(contact.finger_summary, dtype=jnp.float32)
+        finger_center = jnp.asarray(contact.finger_center_xyz_m, dtype=jnp.float32)
+        if patch_xyz.shape[1:] != (2, 2, 16, 2) or patch_force.shape[1:] != (2, 2, 16, 3):
+            raise ValueError("Expected [B, 2, 2, 16] contact-centred tactile patches")
+        tokens, masks, xyz = [], [], []
+        anchor_stats_scaled = jnp.concatenate((
+            anchor_stats[..., :4] / 0.002,  # resultant force and magnitude
+            anchor_stats[..., 4:6],          # contact fraction and UV spread
+            anchor_stats[..., 6:7] / 0.002,  # max taxel magnitude
+            anchor_stats[..., 7:],           # UV location and validity
+        ), axis=-1)
+        finger_summary_scaled = jnp.concatenate(
+            (finger_summary[..., :12] / 0.002, finger_summary[..., 12:]), axis=-1)
+        for finger in range(2):
+            for anchor in range(2):
+                local_feature = jnp.concatenate((patch_xyz[:, finger, anchor],
+                                                 patch_force[:, finger, anchor]), axis=-1)
+                point_mask = patch_mask[:, finger, anchor]
+                if self.config.tactile_representation == "contact_centered_point":
+                    h = jnn.gelu(self.centered_point_in(local_feature))
+                    count = jnp.maximum(jnp.sum(point_mask, axis=1, keepdims=True), 1)
+                    mean = jnp.sum(jnp.where(point_mask[..., None], h, 0), axis=1) / count
+                    maximum = jnp.max(jnp.where(point_mask[..., None], h, -1e6), axis=1)
+                    maximum = jnp.where(jnp.any(point_mask, axis=1)[:, None], maximum, 0)
+                    token = self.centered_point_out(jnp.concatenate(
+                        (mean, maximum, anchor_stats_scaled[:, finger, anchor]), axis=-1))
+                else:
+                    batch = local_feature.shape[0]
+                    h = self.centered_map_in(local_feature)
+                    query = jnp.broadcast_to(self.centered_map_query.value, (batch, 1, 224))
+                    h = jnp.concatenate((query, h), axis=1)
+                    for block in self.centered_map_blocks:
+                        h = block(h)
+                    token = self.centered_map_out(self.centered_map_norm(h[:, 0]))
+                token = token + self.centered_capacity_out(
+                    jnn.gelu(self.centered_capacity_in(token)))
+                position = self.centered_anchor_pos(
+                    (anchor_xyz[:, finger, anchor] - jnp.asarray([0.5, 0.0, 0.1], jnp.float32)) / 0.2
+                )
+                tokens.append(token + position + self.centered_finger_embedding.value[finger])
+                masks.append(anchor_mask[:, finger, anchor])
+                xyz.append(anchor_xyz[:, finger, anchor])
+            summary = self.centered_global_out(jnn.gelu(self.centered_global_in(finger_summary_scaled[:, finger])))
+            position = self.centered_anchor_pos(
+                (finger_center[:, finger] - jnp.asarray([0.5, 0.0, 0.1], jnp.float32)) / 0.2
+            )
+            tokens.append(summary + position + self.centered_finger_embedding.value[finger])
+            masks.append(jnp.ones((finger_summary.shape[0],), dtype=jnp.bool_))
+            xyz.append(finger_center[:, finger])
+        return SpatialEncoderOutput(tokens=jnp.stack(tokens, axis=1),
+                                    token_mask=jnp.stack(masks, axis=1),
+                                    token_xyz_m=jnp.stack(xyz, axis=1))
+
+    def _encode_relation(self, relation) -> SpatialEncoderOutput:
+        query_xyz = jnp.asarray(relation.query_xyz_m, dtype=jnp.float32)
+        query_features_raw = jnp.asarray(relation.query_features, dtype=jnp.float32)
+        query_features = jnp.concatenate(
+            (query_features_raw[..., :12] / 0.002, query_features_raw[..., 12:]), axis=-1)
+        candidate_xyz = jnp.asarray(relation.candidate_xyz_m, dtype=jnp.float32)
+        candidate_mask = jnp.asarray(relation.candidate_mask, dtype=jnp.bool_)
+        if (query_xyz.shape[1:] != (2, 3) or query_features.shape[1:] != (2, 13)
+                or candidate_xyz.shape[1:] != (2, 48, 3)):
+            raise ValueError("Expected two 48-point tactile-scene relation neighborhoods")
+        tokens, masks, xyz = [], [], []
+        for finger in range(2):
+            delta = candidate_xyz[:, finger] - query_xyz[:, finger, None]
+            distance = jnp.linalg.norm(delta, axis=-1, keepdims=True)
+            repeated = jnp.broadcast_to(query_features[:, finger, None],
+                                        (*candidate_xyz[:, finger].shape[:2], 13))
+            feature = jnp.concatenate((delta / 0.1, distance / 0.1, repeated), axis=-1)
+            h = jnn.gelu(self.relation_candidate_in(feature))
+            key = self.relation_key(h)
+            value = self.relation_value(h)
+            base = self.relation_query_in(jnp.concatenate(
+                (query_features[:, finger], query_xyz[:, finger] / 0.2), axis=-1))
+            has_candidates = jnp.any(candidate_mask[:, finger], axis=1)
+            for slot in range(3):
+                query = base + self.relation_queries.value[finger, slot]
+                logits = jnp.einsum("bd,bnd->bn", query, key) * key.shape[-1] ** -0.5
+                logits = jnp.where(candidate_mask[:, finger], logits, -1e6)
+                weight = jnn.softmax(logits, axis=-1)
+                attended = jnp.einsum("bn,bnd->bd", weight, value)
+                attended = jnp.where(has_candidates[:, None], attended,
+                                     jnp.broadcast_to(self.relation_no_candidate.value, attended.shape))
+                token = (attended + self.relation_pos(
+                    (query_xyz[:, finger] - jnp.asarray([0.5, 0.0, 0.1], jnp.float32)) / 0.2)
+                    + self.relation_finger_embedding.value[finger])
+                tokens.append(token)
+                # A no-candidate token is intentionally visible to pi0; the
+                # learned fallback embedding tells it that geometry is absent.
+                masks.append(jnp.ones((query_xyz.shape[0],), dtype=jnp.bool_))
+                xyz.append(query_xyz[:, finger])
+        return SpatialEncoderOutput(tokens=jnp.stack(tokens, axis=1),
+                                    token_mask=jnp.stack(masks, axis=1),
+                                    token_xyz_m=jnp.stack(xyz, axis=1))
 
     def _encode_maps(self, tactile) -> SpatialEncoderOutput:
         force = jnp.asarray(tactile.force, dtype=jnp.float32)

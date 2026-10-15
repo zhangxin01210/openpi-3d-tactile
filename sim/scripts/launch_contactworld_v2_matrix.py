@@ -28,6 +28,12 @@ CONFIGS_V3 = (
     "pi0_cw3_usb_11_fused_pc_base_structured_prefix",
     "pi0_cw3_usb_12_fused_pc_base_structured_split_route",
     "pi0_cw3_usb_13_fused_pc_local_map_3tok",
+    "pi0_cw3_usb_14_base_pooled_no_pc",
+    "pi0_cw3_usb_15_base_map_matched_no_pc",
+    "pi0_cw3_usb_16_contact_centered_point",
+    "pi0_cw3_usb_17_contact_centered_map",
+    "pi0_cw3_usb_18_base_pooled_relation",
+    "pi0_cw3_usb_19_base_map_matched_relation",
 )
 
 
@@ -79,8 +85,27 @@ def main():
     subprocess.run([sys.executable, "sim/scripts/verify_contactworld_v2_lerobot.py", str(data)],
                    cwd=repo, check=True)
     if args.version == "v3":
+        representation_configs = {
+            "pi0_cw3_usb_16_contact_centered_point",
+            "pi0_cw3_usb_17_contact_centered_map",
+            "pi0_cw3_usb_18_base_pooled_relation",
+            "pi0_cw3_usb_19_base_map_matched_relation",
+        }
+        if representation_configs.intersection(selected):
+            representation_manifest = data / "spatial/contact_repr_v1/manifest.json"
+            if not representation_manifest.is_file():
+                parser.error("Missing reviewed contact representation sidecar: " + str(representation_manifest))
+            subprocess.run([sys.executable, "sim/scripts/verify_contactworld_usb_contact_repr.py",
+                            "--dataset", str(data), "--repr-root", str(representation_manifest.parent)],
+                           cwd=repo, check=True)
+        # The audit reads only local LeRobot files, but datasets may otherwise
+        # try to create a cache under the invoking account's home directory.
+        # Keep that write isolated and make the preflight work under both a
+        # workstation user and a root-owned training pod.
         audit_env = dict(os.environ, JAX_PLATFORM_NAME="cpu")
-        subprocess.run([sys.executable, "sim/scripts/audit_contactworld_v3_inputs.py", str(data)],
+        audit_env.setdefault("HF_DATASETS_CACHE", "/tmp/openpi-hf-datasets")
+        subprocess.run([sys.executable, "sim/scripts/audit_contactworld_v3_inputs.py", str(data),
+                        "--configs", *selected],
                        cwd=repo, env=audit_env, check=True)
     log_dir = repo / ("runs/contactworld_usb_v3_train" if args.version == "v3" else
                        "runs/contactworld_usb_v2_train") / args.label

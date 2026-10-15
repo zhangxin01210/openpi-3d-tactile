@@ -6,10 +6,21 @@ sampling and coordinate conversion identical to the V3 capture/export path.
 
 from __future__ import annotations
 
+from pathlib import Path
+import sys
+
 import numpy as np
 
 from contactworld_base_cloud import POINTS, base_cloud
 from contactworld_tactile_base import tactile_field_to_base
+
+# The simulator uses a Python 3.8 Isaac Gym environment rather than the
+# OpenPI virtualenv.  This pure-NumPy representation builder is shared with
+# offline export instead of maintaining a second implementation.
+_SRC = Path(__file__).resolve().parents[2] / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
+from openpi.spatial_dataset.contactworld_contact_repr import build_frame as build_contact_repr
 
 
 CONFIG_SUFFIXES = (
@@ -17,13 +28,18 @@ CONFIG_SUFFIXES = (
     "fused_pc_local_summary", "fused_pc_base_structured", "fused_pc_base_pooled",
     "fused_pc_base_map", "fused_pc_base_map_split", "fused_pc_base_map_matched",
     "fused_pc_base_structured_prefix", "fused_pc_base_structured_split_route",
-    "fused_pc_local_map_3tok",
+    "fused_pc_local_map_3tok", "base_pooled_no_pc", "base_map_matched_no_pc",
+    "contact_centered_point", "contact_centered_map", "base_pooled_relation",
+    "base_map_matched_relation",
 )
 CONFIGS = tuple("pi0_cw3_usb_%02d_%s" % (index, suffix)
                 for index, suffix in enumerate(CONFIG_SUFFIXES, 1))
 LOCAL_FORCE_CONFIGS = {CONFIGS[index - 1] for index in (3, 4, 5, 13)}
 BASE_FORCE_CONFIGS = {CONFIGS[index - 1] for index in (6, 7, 8, 9, 10, 11, 12)}
-CLOUD_CONFIGS = set(CONFIGS) - {CONFIGS[0], CONFIGS[2]}
+BASE_FORCE_CONFIGS |= {CONFIGS[index - 1] for index in (14, 15, 16, 17, 18, 19)}
+CENTERED_CONTACT_CONFIGS = {CONFIGS[index - 1] for index in (16, 17)}
+RELATION_CONFIGS = {CONFIGS[index - 1] for index in (18, 19)}
+CLOUD_CONFIGS = set(CONFIGS) - {CONFIGS[0], CONFIGS[2], CONFIGS[13], CONFIGS[14]}
 
 
 def obs_array(env, key):
@@ -128,7 +144,30 @@ def policy_input(snap, config):
             "point_mask": np.ones(280, bool),
         }
     if visual is not None or tactile is not None:
-        request["spatial"] = {"visual": visual, "tactile": tactile}
+        spatial = {"visual": visual, "tactile": tactile}
+        if config in CENTERED_CONTACT_CONFIGS or config in RELATION_CONFIGS:
+            derived = build_contact_repr(snap["cloud_xyz"], snap["taxel_xyz_base"], snap["force_base"])
+            if config in CENTERED_CONTACT_CONFIGS:
+                spatial["contact_centered_tactile"] = {
+                    "patch_xyz_local": derived["patch_xyz_local"],
+                    "patch_force": derived["patch_force"],
+                    "patch_mask": derived["patch_mask"],
+                    "anchor_xyz_m": derived["anchor_xyz_base"],
+                    "anchor_stats": derived["anchor_stats"],
+                    "anchor_mask": derived["anchor_mask"],
+                    "finger_summary": derived["finger_summary"],
+                    "finger_center_xyz_m": derived["finger_center_base"],
+                    "finger_valid": derived["finger_valid"],
+                }
+            if config in RELATION_CONFIGS:
+                spatial["tactile_scene_relation"] = {
+                    "query_xyz_m": derived["query_xyz_base"],
+                    "query_features": derived["query_features"],
+                    "query_valid": derived["query_valid"],
+                    "candidate_xyz_m": derived["candidate_xyz_base"],
+                    "candidate_mask": derived["candidate_mask"],
+                }
+        request["spatial"] = spatial
     return request
 
 
