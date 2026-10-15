@@ -172,3 +172,5 @@ cython_debug/
 /review/
 /diagnostics/
 3D_tactile
+contactworld_failure_comparison_offline
+configs 
