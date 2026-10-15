@@ -1692,6 +1692,90 @@ _CONTACTWORLD_WEIGHTS = os.environ.get(
 )
 
 
+def _front_contactworld_method_config(name: str, *, method: str) -> TrainConfig:
+    """Adapt reviewed ContactWorld USB 07/10 encoders to real XHand data.
+
+    The simulator experiments use two ordered 140-taxel pads.  The real XHand
+    sidecar exposes five ordered 120-taxel finger groups.  The encoder keeps
+    the simulator aggregation/query intent while consuming the real canonical
+    base-frame geometry and force scale.  The real front-only RGB-D sidecar and
+    action horizon remain inherited from the existing front configuration.
+    """
+    if method not in {"07_base_pooled", "10_base_map_matched"}:
+        raise ValueError(f"Unsupported front ContactWorld method: {method}")
+    base = next(
+        config for config in _CONFIGS
+        if config.name == "pi0_xhand_spatial_structured_suffix_front"
+    )
+    assert isinstance(base.model, spatial_pi0_config.StructuredSpatialPi0Config)
+    assert isinstance(base.data, LeRobotXHandDataConfig)
+    assert base.data.spatial is not None
+
+    map_matched = method == "10_base_map_matched"
+    model = contactworld_pi0_config.ContactWorldPi0Config(
+        paligemma_variant="gemma_2b_lora",
+        action_expert_variant="gemma_300m_lora",
+        action_horizon=base.model.action_horizon,
+        use_visual=True,
+        use_tactile=True,
+        visual_points=base.model.visual_points,
+        tactile_points=base.model.tactile_points,
+        tactile_representation="base3d_matched" if map_matched else "base3d",
+        tactile_pool_per_finger=map_matched,
+        structured=True,
+        visual_num_centers=16,
+        visual_knn=32,
+        tactile_local_tokens_per_finger=3 if map_matched else 2,
+        tactile_knn=8,
+        tactile_group_count=5,
+        tactile_grid_shape=None,
+        tactile_force_scale=_XHAND_SPATIAL_FORCE_SCALE,
+        conditioning=spatial_conditioning.SpatialConditioningConfig(target="suffix"),
+    )
+    return dataclasses.replace(
+        base,
+        name=name,
+        model=model,
+        weight_loader=base.weight_loader,
+        freeze_filter=model.get_freeze_filter(),
+        ema_decay=None,
+        batch_size=8,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=5_000,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
+        policy_metadata={
+            "spatial_camera_roles": ["front"],
+            "spatial_use_visual": True,
+            "spatial_use_tactile": True,
+            "front_calibration_profile": base.data.spatial.front_calibration_profile,
+            "contactworld_source_method": "10" if map_matched else "07",
+            "contactworld_visual_adaptation": "front_only_from_real_xhand_sidecar",
+            "contactworld_tactile_adaptation": (
+                "five_120_taxel_geometry_groups_shared_3query"
+                if map_matched else "all_600_taxels_base3d_pooled"
+            ),
+            "contactworld_token_layout": (
+                "visual_17_plus_tactile_15"
+                if map_matched else "visual_17_plus_tactile_6"
+            ),
+        },
+    )
+
+
+_CONFIGS.extend([
+    _front_contactworld_method_config(
+        "pi0_xhand_spatial_structured_suffix_front_07_base_pooled",
+        method="07_base_pooled",
+    ),
+    _front_contactworld_method_config(
+        "pi0_xhand_spatial_structured_suffix_front_10_base_map_matched",
+        method="10_base_map_matched",
+    ),
+])
+
+
 def _contactworld_train_config(name: str, *, visual: bool = False, force: bool = False,
                                tactile_representation: str = "none", tactile_image: str = "none",
                                target: str = "suffix", split_route: bool = False,

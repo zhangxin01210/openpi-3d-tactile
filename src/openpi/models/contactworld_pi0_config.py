@@ -21,6 +21,7 @@ from openpi.shared import array_typing as at
 
 TactileRepresentation = Literal[
     "none", "grid", "summary", "ee3d", "base3d",
+    "base3d_matched",
     "map_coupled", "map_split", "map_local", "map_split_local", "map_coupled_matched",
     "map_local_multiquery", "contact_centered_point", "contact_centered_map",
 ]
@@ -39,6 +40,14 @@ class ContactWorldPi0Config(SpatialPi0Config):
     visual_knn: int = 32
     tactile_local_tokens_per_finger: int = 2
     tactile_knn: int = 8
+    # ContactWorld v3 uses two 140-taxel pads. Real XHand variants can reuse
+    # the same encoder with five contiguous 120-taxel finger groups.
+    tactile_group_count: int = 2
+    # Only map-based representations need a 2-D shape.  Real XHand taxels
+    # have a 3-D arrangement, so the geometry-matched branch deliberately
+    # leaves this unset and consumes xyz_m directly.
+    tactile_grid_shape: tuple[int, int] | None = (10, 14)
+    tactile_force_scale: float = 0.002
     spatial_route: Literal["shared", "visual_prefix_tactile_suffix"] = "shared"
     use_tactile_scene_relation: bool = False
 
@@ -49,13 +58,25 @@ class ContactWorldPi0Config(SpatialPi0Config):
             raise ValueError("Split route needs both modalities and both conditioning targets")
         if self.use_tactile and self.tactile_representation == "none":
             raise ValueError("Force branch enabled without a representation")
-        if self.tactile_pool_per_finger and self.tactile_points != 280 and not (
-                self.structured and self.tactile_points == 140):
-            raise ValueError("Per-finger ContactWorld pooling requires 140 or 280 taxels")
+        if self.tactile_group_count <= 0:
+            raise ValueError("tactile_group_count must be > 0")
+        if self.tactile_grid_shape is not None and (
+                len(self.tactile_grid_shape) != 2 or any(value <= 0 for value in self.tactile_grid_shape)):
+            raise ValueError("tactile_grid_shape must contain two positive values when provided")
+        if self.tactile_force_scale <= 0:
+            raise ValueError("tactile_force_scale must be > 0")
+        if self.tactile_pool_per_finger and self.tactile_points % self.tactile_group_count:
+            raise ValueError("tactile_points must divide evenly across tactile groups")
         if self.tactile_representation in {"map_coupled", "map_split", "map_local", "map_split_local",
                                            "map_coupled_matched", "map_local_multiquery"} and (
-                not self.use_tactile or not self.tactile_pool_per_finger or self.tactile_points != 280):
-            raise ValueError("Bilateral tactile maps require separate 140-taxel finger grids")
+                not self.use_tactile or not self.tactile_pool_per_finger or
+                self.tactile_grid_shape is None or
+                self.tactile_points != self.tactile_group_count * self.tactile_grid_shape[0] * self.tactile_grid_shape[1]):
+            raise ValueError("Tactile maps require one ordered grid per tactile group")
+        if self.tactile_representation == "base3d_matched" and (
+                not self.use_tactile or not self.tactile_pool_per_finger or not self.structured or
+                self.tactile_points % self.tactile_group_count):
+            raise ValueError("3D matched tactile requires structured per-finger point groups")
         if self.tactile_representation in {"contact_centered_point", "contact_centered_map"} and (
                 not self.use_tactile or not self.tactile_pool_per_finger or self.tactile_points != 280
                 or not self.structured):
@@ -130,7 +151,7 @@ class ContactWorldPi0Config(SpatialPi0Config):
 
 
 class _TactileMapBlock(nnx.Module):
-    """Small pre-norm ViT block for signed 10x14 force maps."""
+    """Small pre-norm ViT block for signed tactile force maps."""
 
     def __init__(self, width: int, *, rngs: nnx.Rngs):
         self.norm1 = nnx.LayerNorm(width, rngs=rngs)
@@ -154,23 +175,33 @@ class _TactileMapBlock(nnx.Module):
 
 
 class _TactileMapViT(nnx.Module):
-    """2x2 patches, 35 spatial patches and one or three learned output queries."""
+    """2x2 patches and one or three learned output queries."""
 
-    def __init__(self, channels: int, width: int, token_dim: int, num_outputs: int, *, rngs: nnx.Rngs):
+    def __init__(self, channels: int, width: int, token_dim: int, num_outputs: int,
+                 grid_shape: tuple[int, int], *, rngs: nnx.Rngs):
         self.num_outputs = num_outputs
+        self.grid_shape = grid_shape
+        grid_height, grid_width = grid_shape
+        if grid_height % 2 or grid_width % 2:
+            raise ValueError("Tactile map grid dimensions must be even")
+        self.patch_count = (grid_height // 2) * (grid_width // 2)
         self.patch = nnx.Linear(4 * channels, width, rngs=rngs)
         self.cls = nnx.Param(jax.random.normal(rngs.params(), (1, num_outputs, width)) * 0.02)
-        self.pos = nnx.Param(jax.random.normal(rngs.params(), (1, num_outputs + 35, width)) * 0.02)
+        self.pos = nnx.Param(
+            jax.random.normal(rngs.params(), (1, num_outputs + self.patch_count, width)) * 0.02
+        )
         self.blocks = [_TactileMapBlock(width, rngs=rngs) for _ in range(2)]
         self.norm = nnx.LayerNorm(width, rngs=rngs)
         self.output = nnx.Linear(width, token_dim, rngs=rngs) if width != token_dim else None
 
     def __call__(self, grid: jax.Array) -> jax.Array:
-        if grid.shape[1:3] != (10, 14):
-            raise ValueError("TacFF map must be 10x14")
-        batch, _, _, channels = grid.shape
-        patches = grid.reshape(batch, 5, 2, 7, 2, channels)
-        patches = jnp.transpose(patches, (0, 1, 3, 2, 4, 5)).reshape(batch, 35, 4 * channels)
+        if grid.shape[1:3] != self.grid_shape:
+            raise ValueError(f"TacFF map must be {self.grid_shape[0]}x{self.grid_shape[1]}")
+        batch, height, width, channels = grid.shape
+        patches = grid.reshape(batch, height // 2, 2, width // 2, 2, channels)
+        patches = jnp.transpose(patches, (0, 1, 3, 2, 4, 5)).reshape(
+            batch, self.patch_count, 4 * channels
+        )
         x = self.patch(patches)
         x = jnp.concatenate((jnp.broadcast_to(self.cls.value, (batch, self.num_outputs, x.shape[-1])), x), axis=1)
         x = x + self.pos.value
@@ -181,7 +212,7 @@ class _TactileMapViT(nnx.Module):
 
 
 class ContactWorldStructuredEncoder(nnx.Module):
-    """XHand structured XYZ/TacFF encoder plus independent tactile-map ViTs."""
+    """Structured visual encoder plus geometry-aware tactile variants."""
 
     def __init__(self, config: ContactWorldPi0Config, *, rngs: nnx.Rngs):
         self.config = config
@@ -189,14 +220,15 @@ class ContactWorldStructuredEncoder(nnx.Module):
             "map_coupled", "map_split", "map_local", "map_split_local", "map_coupled_matched",
             "map_local_multiquery",
         }
+        self.matched_3d_mode = config.tactile_representation == "base3d_matched"
         self.summary_mode = config.tactile_representation == "summary"
         self.centered_mode = config.tactile_representation in {
             "contact_centered_point", "contact_centered_map",
         }
-        tactile_fingers = 2 if config.tactile_pool_per_finger else 1
-        pooled = (config.use_tactile and not config.tactile_pool_per_finger and
-                  config.tactile_points == 280)
-        local_tokens = (4 if pooled else config.tactile_local_tokens_per_finger)
+        tactile_fingers = config.tactile_group_count if config.tactile_pool_per_finger else 1
+        pooled = config.use_tactile and not config.tactile_pool_per_finger
+        local_tokens = (3 if self.matched_3d_mode else (4 if pooled else config.tactile_local_tokens_per_finger))
+        summary_tokens = (0 if self.matched_3d_mode else (2 if pooled else 1))
         structured_config = structured_spatial_encoder.StructuredSpatialEncoderConfig(
             token_dim=config.token_dim,
             visual_num_centers=config.visual_num_centers,
@@ -204,10 +236,11 @@ class ContactWorldStructuredEncoder(nnx.Module):
             num_fingers=tactile_fingers,
             tactile_knn=config.tactile_knn,
             tactile_local_tokens_per_finger=local_tokens,
-            tactile_summary_tokens_per_finger=2 if pooled else 1,
+            tactile_summary_tokens_per_finger=summary_tokens,
+            share_tactile_queries_across_fingers=self.matched_3d_mode,
             enable_tactile=not self.centered_mode,
             transforms=spatial_transforms.SpatialFeatureTransforms(
-                force=spatial_transforms.LinearScaleForceTransform(scale=0.002)
+                force=spatial_transforms.LinearScaleForceTransform(scale=config.tactile_force_scale)
             ),
         )
         self.structured_encoder = structured_config.create(rngs=rngs)
@@ -217,11 +250,12 @@ class ContactWorldStructuredEncoder(nnx.Module):
             multiquery = config.tactile_representation == "map_local_multiquery"
             self.map_encoders = [
                 _TactileMapViT(1 if split else 3, 224 if matched else config.token_dim,
-                               config.token_dim, 3 if matched or multiquery else 1, rngs=rngs)
+                               config.token_dim, 3 if matched or multiquery else 1,
+                               config.tactile_grid_shape, rngs=rngs)
                 for _ in range(3 if split else 1)
             ]
             self.map_finger_embedding = nnx.Param(
-                jax.random.normal(rngs.params(), (2, config.token_dim)) * 0.02
+                jax.random.normal(rngs.params(), (config.tactile_group_count, config.token_dim)) * 0.02
             )
             self.map_channel_embedding = nnx.Param(
                 jax.random.normal(rngs.params(), (3 if split or matched else 1,
@@ -298,11 +332,16 @@ class ContactWorldStructuredEncoder(nnx.Module):
                 outputs.append(self._encode_contact_centered(spatial.contact_centered_tactile))
             elif self.map_mode:
                 outputs.append(self._encode_maps(tactile))
+            elif self.matched_3d_mode:
+                # USB-10 keeps three shared matched queries per finger, but
+                # uses the canonical real-XHand xyz/force point set instead
+                # of pretending the 120 taxels form a rectangular image.
+                outputs.append(self.structured_encoder(SpatialEncoderInput(tactile=tactile)))
             elif self.summary_mode:
                 outputs.append(self._encode_summary(tactile))
             else:
-                # The pooled ablation has the same six-token budget and the
-                # same 4-local/2-summary query types as two separate pads.
+                # The pooled ablation uses the same six-token 4-local/2-summary
+                # query budget, regardless of how many source groups exist.
                 if not self.config.tactile_pool_per_finger:
                     tactile = tactile.replace(finger_id=jnp.zeros_like(tactile.finger_id))
                 outputs.append(self.structured_encoder(SpatialEncoderInput(tactile=tactile)))
@@ -424,16 +463,27 @@ class ContactWorldStructuredEncoder(nnx.Module):
 
     def _encode_maps(self, tactile) -> SpatialEncoderOutput:
         force = jnp.asarray(tactile.force, dtype=jnp.float32)
-        if force.shape[1:] != (280, 3):
-            raise ValueError("Bilateral force maps require two ordered 140-taxel grids")
         # Local channels are [normal, shear_x, shear_y]; base channels are Fx/Fy/Fz.
-        grids = force.reshape(force.shape[0], 2, 10, 14, 3) / 0.002
+        group_count = self.config.tactile_group_count
+        if self.config.tactile_grid_shape is None:
+            raise ValueError("Map representation requires tactile_grid_shape")
+        grid_height, grid_width = self.config.tactile_grid_shape
+        points_per_group = grid_height * grid_width
+        if force.shape[1:] != (group_count * points_per_group, 3):
+            raise ValueError(
+                "Tactile map input must contain one ordered grid per tactile group"
+            )
+        grids = force.reshape(
+            force.shape[0], group_count, grid_height, grid_width, 3
+        ) / self.config.tactile_force_scale
         tokens, masks, xyz = [], [], []
         split = len(self.map_encoders) == 3
-        for finger in range(2):
-            point_mask = tactile.point_mask[:, finger * 140:(finger + 1) * 140]
+        for finger in range(group_count):
+            start = finger * points_per_group
+            end = (finger + 1) * points_per_group
+            point_mask = tactile.point_mask[:, start:end]
             finger_mask = jnp.any(point_mask, axis=1)
-            point_xyz = tactile.xyz_m[:, finger * 140:(finger + 1) * 140]
+            point_xyz = tactile.xyz_m[:, start:end]
             center = jnp.sum(jnp.where(point_mask[..., None], point_xyz, 0), axis=1) / jnp.maximum(
                 jnp.sum(point_mask, axis=1, keepdims=True), 1)
             position = self.map_position_proj(

@@ -39,11 +39,17 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync --frozen --no-group rlds
 | `pi0_xhand_spatial_structured_prefix` | Structured Spatial Encoder | prefix | LoRA |
 | `pi0_xhand_spatial_structured_suffix` | Structured Spatial Encoder | suffix，front+left 视觉+触觉 | full，旧配置不变 |
 | `pi0_xhand_spatial_structured_suffix_front` | Structured Spatial Encoder | suffix，front-only 视觉+触觉 | full，三卡基线 |
+| `pi0_xhand_spatial_structured_suffix_front_07_base_pooled` | ContactWorld structured encoder | suffix，front-only 视觉 + 600 点 pooled base3d tactile | USB-07 真机适配 |
+| `pi0_xhand_spatial_structured_suffix_front_10_base_map_matched` | ContactWorld structured + matched 3D tactile queries | suffix，front-only 视觉 + 5×120 base-frame tactile points | USB-10 真机适配 |
 | `pi0_xhand_spatial_structured_suffix_front_visual` | Structured Spatial Encoder | suffix，front-only 视觉 | full，消融触觉 |
 | `pi0_xhand_spatial_structured_suffix_front_tactile` | Structured Spatial Encoder | suffix，触觉 | full，消融点云 |
 | `pi0_xhand_spatial_structured_both` | Structured Spatial Encoder | prefix + suffix | LoRA |
 
 仓库还保留 `pi0_xhand_spatial_joint_pointnet_{prefix,suffix,both}` 等对照配置。配置名定义模型结构，**不能用 prefix 配置加载 suffix checkpoint**。
+
+USB v3 的 07/10 不能把输入尺寸原样复制到真机：仿真是 2 个 `140`-taxel pad（280 点），真机是 5 根手指、每根 120 点（600 点）。因此两个新配置保留方法本身但适配真实 tactile 链路：07 将全部真机 base-frame tactile pooled 成 4 个 local + 2 个 summary token；10 按五根手指分别处理真实三维 taxel 点集，每根手指使用 3 个共享 matched query token，不再把真实三维阵列伪造成 `10×12` force map。视觉仍严格使用当前 front-only sidecar，动作 horizon 继承真机配置（不是仿真的 16），force scale 也使用真机现有 `_XHAND_SPATIAL_FORCE_SCALE`，不能直接使用仿真的 `0.002`。
+
+两者都使用 `gemma_2b_lora` + `gemma_300m_lora`、base checkpoint 的 spatial loader、20k steps/8 batch，和 USB 07/10 的训练方式对齐；它们不是已有 full-finetune front 配置的 checkpoint 兼容替代品，必须分别计算真机数据的 norm stats 并从 base checkpoint 新开实验。
 
 三个新配置共用 [`config.py`](src/openpi/training/config.py) 中的 `FRONT_SPATIAL_VERSION` 和 `FRONT_CALIBRATION_PROFILE`。默认是未纠正的 `v1_front` 与 `None`；确认要用候选或新拟合的标定后，改成新 sidecar 版本名和相应 profile 路径。旧 suffix 配置不会跟着变。不要覆盖旧 sidecar，也不要在 checkpoint 训练后改动对应 profile 文件。
 
@@ -82,6 +88,21 @@ PYTHONPATH=src python scripts/spatial/visualize_spatial_web.py \
 ```
 
 如网页较大，用 `--max-dense-points-per-camera 5000` 或 `--max-cad-edges-per-group 1500` 缩减**仅用于展示**的点和轮廓线，不影响正式模型输入。
+
+要同时检查“触觉已经接触但点云仍相距较远”和“没有接触但点云已经重叠”，运行独立的 front-only QA：
+
+```bash
+PYTHONPATH=src:scripts/spatial python scripts/spatial/audit_cloud_tactile_contact.py \
+  --dataset data/press_button_0 --episodes all --frames contact_events \
+  --output diagnostics/press_button_0_cloud_tactile_audit
+```
+
+该脚本严格对应 `pi0_xhand_spatial_structured_suffix_front`：只用 front 深度、同时启用 visual+tactile，并将
+`configs/ur7e_xhand/front_calibration_candidate.json` 与未修正 baseline 做对照。`contact_states.csv` 覆盖每个 episode/frame/finger；
+`distance_summary.csv` 给出 active tactile 到 self-filtered object cloud 的 min/median/p90/max 及 10/20/30 mm 内数量；
+无接触手指则记录 `false_overlap` 候选。`index.html` 链接到可交互 Plotly 页面：绿色是 object cloud、橙色是 robot-self、蓝色菱形是最终 4096 点，页面会画最近/最远诊断 pair，点击任意两个点可测任意三维距离。完整的 dense/object/self/final 数组保存在 `clouds/**/*.npz`，便于用 NumPy 做二次统计。
+
+默认只对接触事件及其前后 2 帧做昂贵的 CAD 深度自滤波；要覆盖所有帧可用 `--frames all --max-visual-frames-per-episode 0`，但输出会明显变大。`--self-tolerance-mm` 默认 15 mm，`--false-overlap-mm` 默认 10 mm，这些是审计阈值，不是真值标签；遮挡、深度孔洞、CAD 外壳误差和旧数据缺少设备级 RGB-D 时间戳时，false-overlap 只能作为复核候选。
 
 如果 2D root-to-tip 已贴合、3D 点云仍与 CAD 表面有 gap，先在**原始 front 深度像素坐标**做定量检查（不是 4096 点抽样，也不是彩色相机投影）：
 
@@ -235,6 +256,13 @@ python scripts/compute_norm_stats.py \
 
 新三组与旧 Structured 配置共享 `assets/xhand/press_button_4_times_clean/` 下的 state/action 统计；已有该数据集的统计时无需重复计算。checkpoint 保存时也会把统计复制到自己的 `assets/`。
 
+07/10 真机适配使用同一份真机 state/action 统计，但应分别用对应配置名检查数据 contract：
+
+```bash
+python scripts/compute_norm_stats.py --config-name pi0_xhand_spatial_structured_suffix_front_07_base_pooled
+python scripts/compute_norm_stats.py --config-name pi0_xhand_spatial_structured_suffix_front_10_base_map_matched
+```
+
 ### 3. 启动训练
 
 旧 front+left suffix 实验的命令仍是：
@@ -265,6 +293,11 @@ CUDA_VISIBLE_DEVICES=1 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.p
 CUDA_VISIBLE_DEVICES=2 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.py \
   pi0_xhand_spatial_structured_suffix_front_tactile --exp-name front_tactile
 ```
+
+USB 07/10 真机实验则使用 `pi0_xhand_spatial_structured_suffix_front_07_base_pooled`
+和 `pi0_xhand_spatial_structured_suffix_front_10_base_map_matched`；10 的配置名保留
+`map_matched` 作为 USB 实验编号兼容名，但实际已经改为真实三维 taxel 的 matched query。
+二者是新的 LoRA spatial 实验，不要加载已有 full-finetune front checkpoint。
 
 上述配置继承旧 suffix 中训练机的绝对 `repo_id`/`weight_loader` 路径，换机器要先改。三路 RGB 和 proprio 始终保留，因此消融结论只针对新增的**结构化空间分支**，不是“完全无视觉/无触觉”的机器人。
 

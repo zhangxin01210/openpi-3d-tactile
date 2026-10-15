@@ -38,6 +38,11 @@ class StructuredSpatialEncoderConfig:
     tactile_knn: int = 8
     tactile_local_tokens_per_finger: int = 4
     tactile_summary_tokens_per_finger: int = 1
+    # Some experiments use the same learned query bank for every finger and
+    # distinguish fingers only through the per-finger embedding.  This keeps
+    # the parameter sharing of the simulator's matched-map branch without
+    # requiring a fabricated 2-D taxel grid on real hardware.
+    share_tactile_queries_across_fingers: bool = False
     # Contact-centred tactile can use this module's reviewed visual branch
     # while supplying its own tactile encoder.  Avoid allocating an unused
     # PointNet-style tactile branch in that case.
@@ -54,11 +59,14 @@ class StructuredSpatialEncoderConfig:
             "num_fingers",
             "tactile_knn",
             "tactile_local_tokens_per_finger",
-            "tactile_summary_tokens_per_finger",
             "hidden_dim",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be > 0")
+        if self.tactile_summary_tokens_per_finger < 0:
+            raise ValueError("tactile_summary_tokens_per_finger must be >= 0")
+        if (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger) <= 0:
+            raise ValueError("At least one tactile token per finger is required")
 
     def create(self, *, rngs: nnx.Rngs) -> "StructuredSpatialEncoder":
         return StructuredSpatialEncoder(config=self, rngs=rngs)
@@ -104,19 +112,24 @@ class StructuredSpatialEncoder(nnx.Module):
             self.finger_embedding = nnx.Param(
                 jax.random.normal(rngs.params(), (config.num_fingers, d), dtype=jnp.float32) * 0.02
             )
+            query_finger_count = 1 if config.share_tactile_queries_across_fingers else config.num_fingers
             self.tactile_pool_queries = nnx.Param(
                 jax.random.normal(
                     rngs.params(),
-                    (config.num_fingers, config.tactile_local_tokens_per_finger, d),
+                    (query_finger_count, config.tactile_local_tokens_per_finger, d),
                     dtype=jnp.float32,
                 )
                 * 0.02
             )
-            self.tactile_summary_queries = nnx.Param(
-                jax.random.normal(rngs.params(),
-                                  (config.num_fingers, config.tactile_summary_tokens_per_finger, d),
-                                  dtype=jnp.float32) * 0.02
-            )
+            self.tactile_summary_queries = None
+            if config.tactile_summary_tokens_per_finger:
+                self.tactile_summary_queries = nnx.Param(
+                    jax.random.normal(
+                        rngs.params(),
+                        (query_finger_count, config.tactile_summary_tokens_per_finger, d),
+                        dtype=jnp.float32,
+                    ) * 0.02
+                )
 
     def __call__(self, inputs: SpatialEncoderInput) -> SpatialEncoderOutput:
         token_parts = []
@@ -279,7 +292,8 @@ class StructuredSpatialEncoder(nnx.Module):
                 finger_mask=finger_mask,
             )
 
-            queries = self.tactile_pool_queries.value[finger_index]
+            query_index = 0 if self.config.share_tactile_queries_across_fingers else finger_index
+            queries = self.tactile_pool_queries.value[query_index]
             local_tokens, local_xyz, local_mask = self._pool_tactile_queries(
                 contextual=contextual,
                 xyz_feature=xyz_feature,
@@ -289,19 +303,24 @@ class StructuredSpatialEncoder(nnx.Module):
                 finger_index=finger_index,
             )
 
-            summary_queries = self.tactile_summary_queries.value[finger_index]
-            summary_tokens, summary_xyz, summary_mask = self._pool_tactile_queries(
-                contextual=contextual,
-                xyz_feature=xyz_feature,
-                xyz_raw=xyz_raw,
-                mask=finger_mask,
-                queries=summary_queries,
-                finger_index=finger_index,
-            )
-
-            finger_tokens.append(jnp.concatenate([local_tokens, summary_tokens], axis=1))
-            finger_masks.append(jnp.concatenate([local_mask, summary_mask], axis=1))
-            finger_xyzs.append(jnp.concatenate([local_xyz, summary_xyz], axis=1))
+            if self.config.tactile_summary_tokens_per_finger:
+                assert self.tactile_summary_queries is not None
+                summary_queries = self.tactile_summary_queries.value[query_index]
+                summary_tokens, summary_xyz, summary_mask = self._pool_tactile_queries(
+                    contextual=contextual,
+                    xyz_feature=xyz_feature,
+                    xyz_raw=xyz_raw,
+                    mask=finger_mask,
+                    queries=summary_queries,
+                    finger_index=finger_index,
+                )
+                finger_tokens.append(jnp.concatenate([local_tokens, summary_tokens], axis=1))
+                finger_masks.append(jnp.concatenate([local_mask, summary_mask], axis=1))
+                finger_xyzs.append(jnp.concatenate([local_xyz, summary_xyz], axis=1))
+            else:
+                finger_tokens.append(local_tokens)
+                finger_masks.append(local_mask)
+                finger_xyzs.append(local_xyz)
             valid_counts.append(jnp.sum(finger_mask, axis=1, dtype=jnp.int32))
 
         tokens = jnp.concatenate(finger_tokens, axis=1)
