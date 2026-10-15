@@ -135,6 +135,11 @@ def prepare_environment(args, torch, np):
         link = cfg_root / name
         if not link.exists():
             link.symlink_to(target.resolve())
+    # The task constructor calls hydra.compose again while loading the
+    # environment YAML (see TacSLEnvInsertion._get_env_yaml_params).
+    # Keep Hydra initialized through construction; leaving this context
+    # after composing the outer config causes ``GlobalHydra is not
+    # initialized`` before the first trial starts.
     with hydra.initialize_config_dir(config_dir=str(cfg_root.resolve()), version_base="1.1"):
         cfg = hydra.compose(config_name="isaacgym_config_" + spec.hydra_config,
                             overrides=["num_envs=1", "headless=true"])
@@ -143,11 +148,11 @@ def prepare_environment(args, torch, np):
         task_cfg = OmegaConf.to_container(cfg.task, resolve=True)
         task_cfg["env"].setdefault("obsDims", {})["tactile_force_field_left"] = [10, 14, 3]
         (args.output / "task_config.json").write_text(json.dumps(task_cfg, indent=2) + "\n")
-    np.random.seed(args.seed_base)
-    torch.manual_seed(args.seed_base)
-    return task_class(cfg=task_cfg, rl_device="cuda:0", sim_device="cuda:0",
-                      graphics_device_id=0, headless=True,
-                      virtual_screen_capture=False, force_render=False)
+        np.random.seed(args.seed_base)
+        torch.manual_seed(args.seed_base)
+        return task_class(cfg=task_cfg, rl_device="cuda:0", sim_device="cuda:0",
+                          graphics_device_id=0, headless=True,
+                          virtual_screen_capture=False, force_render=False)
 
 
 def main() -> None:
