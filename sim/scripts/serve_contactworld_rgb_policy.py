@@ -24,6 +24,10 @@ def main() -> None:
     if args.socket.exists():
         parser.error(f"Socket already exists: {args.socket}")
     config = get_config(args.config)
+    # ContactWorld trains with the shared 32D Pi0 action/state padding, then
+    # ContactWorldOutputs truncates the action back to the task's 6D or 7D
+    # control vector.  The socket protocol carries the post-transform shape.
+    output_action_dim = int(getattr(config.data, "action_dim", config.model.action_dim))
     policy = create_trained_policy(
         config, args.checkpoint,
         sample_kwargs={"num_steps": args.num_steps},
@@ -52,7 +56,8 @@ def main() -> None:
                         else:
                             result = policy.infer(request)
                         actions = np.asarray(result["actions"], dtype=np.float32)
-                        if actions.shape != (16, 6) or not np.isfinite(actions).all():
+                        expected_shape = (config.model.action_horizon, output_action_dim)
+                        if actions.shape != expected_shape or not np.isfinite(actions).all():
                             raise ValueError(f"Invalid policy actions: {actions.shape}")
                         connection.send({"actions": actions, "infer_ms": (time.monotonic() - start) * 1000})
                     except Exception:
