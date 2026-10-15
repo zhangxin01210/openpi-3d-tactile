@@ -1692,6 +1692,45 @@ _CONTACTWORLD_WEIGHTS = os.environ.get(
 )
 
 
+def _xhand_rgb_baseline_config(name: str) -> TrainConfig:
+    """Native Pi0 RGB-only baseline for the 07/10 real-data comparison."""
+    base = next(
+        config for config in _CONFIGS
+        if config.name == "pi0_xhand_spatial_structured_suffix_front"
+    )
+    assert isinstance(base.data, LeRobotXHandDataConfig)
+    model = pi0_config.Pi0Config(
+        paligemma_variant="gemma_2b_lora",
+        action_expert_variant="gemma_300m",
+    )
+    return dataclasses.replace(
+        base,
+        name=name,
+        model=model,
+        # Native Pi0 consumes the three XHand RGB views through the standard
+        # image path; it must not read the derived spatial sidecar.
+        data=dataclasses.replace(base.data, spatial=None),
+        weight_loader=weight_loaders.CheckpointWeightLoader(_CONTACTWORLD_WEIGHTS),
+        freeze_filter=model.get_freeze_filter(),
+        ema_decay=None,
+        batch_size=8,
+        num_workers=0,
+        num_train_steps=20_000,
+        save_interval=5_000,
+        keep_period=5_000,
+        policy_metadata={
+            "rgb_only_baseline": True,
+            "spatial_use_visual": False,
+            "spatial_use_tactile": False,
+            "vlm_finetune": "lora",
+            "action_expert_finetune": "full",
+        },
+    )
+
+
+_CONFIGS.append(_xhand_rgb_baseline_config("pi0_xhand_rgb_baseline"))
+
+
 def _front_contactworld_method_config(name: str, *, method: str) -> TrainConfig:
     """Adapt reviewed ContactWorld USB 07/10 encoders to real XHand data.
 
@@ -1714,7 +1753,7 @@ def _front_contactworld_method_config(name: str, *, method: str) -> TrainConfig:
     map_matched = method == "10_base_map_matched"
     model = contactworld_pi0_config.ContactWorldPi0Config(
         paligemma_variant="gemma_2b_lora",
-        action_expert_variant="gemma_300m_lora",
+        action_expert_variant="gemma_300m",
         action_horizon=base.model.action_horizon,
         use_visual=True,
         use_tactile=True,
@@ -1760,6 +1799,8 @@ def _front_contactworld_method_config(name: str, *, method: str) -> TrainConfig:
                 "visual_17_plus_tactile_15"
                 if map_matched else "visual_17_plus_tactile_6"
             ),
+            "vlm_finetune": "lora",
+            "action_expert_finetune": "full",
         },
     )
 

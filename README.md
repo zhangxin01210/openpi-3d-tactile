@@ -39,6 +39,7 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync --frozen --no-group rlds
 | `pi0_xhand_spatial_structured_prefix` | Structured Spatial Encoder | prefix | LoRA |
 | `pi0_xhand_spatial_structured_suffix` | Structured Spatial Encoder | suffix，front+left 视觉+触觉 | full，旧配置不变 |
 | `pi0_xhand_spatial_structured_suffix_front` | Structured Spatial Encoder | suffix，front-only 视觉+触觉 | full，三卡基线 |
+| `pi0_xhand_rgb_baseline` | 原生 Pi0 | 三路 RGB，无 spatial/tactile | VLM LoRA + Action Expert full |
 | `pi0_xhand_spatial_structured_suffix_front_07_base_pooled` | ContactWorld structured encoder | suffix，front-only 视觉 + 600 点 pooled base3d tactile | USB-07 真机适配 |
 | `pi0_xhand_spatial_structured_suffix_front_10_base_map_matched` | ContactWorld structured + matched 3D tactile queries | suffix，front-only 视觉 + 5×120 base-frame tactile points | USB-10 真机适配 |
 | `pi0_xhand_spatial_structured_suffix_front_visual` | Structured Spatial Encoder | suffix，front-only 视觉 | full，消融触觉 |
@@ -49,9 +50,9 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync --frozen --no-group rlds
 
 USB v3 的 07/10 不能把输入尺寸原样复制到真机：仿真是 2 个 `140`-taxel pad（280 点），真机是 5 根手指、每根 120 点（600 点）。因此两个新配置保留方法本身但适配真实 tactile 链路：07 将全部真机 base-frame tactile pooled 成 4 个 local + 2 个 summary token；10 按五根手指分别处理真实三维 taxel 点集，每根手指使用 3 个共享 matched query token，不再把真实三维阵列伪造成 `10×12` force map。视觉仍严格使用当前 front-only sidecar，动作 horizon 继承真机配置（不是仿真的 16），force scale 也使用真机现有 `_XHAND_SPATIAL_FORCE_SCALE`，不能直接使用仿真的 `0.002`。
 
-两者都使用 `gemma_2b_lora` + `gemma_300m_lora`、base checkpoint 的 spatial loader、20k steps/8 batch，和 USB 07/10 的训练方式对齐；它们不是已有 full-finetune front 配置的 checkpoint 兼容替代品，必须分别计算真机数据的 norm stats 并从 base checkpoint 新开实验。
+`pi0_xhand_rgb_baseline`、07 和 10 三者统一使用 `gemma_2b_lora` + `gemma_300m`：VLM 只训练 LoRA，Action Expert 全量微调。RGB baseline 使用原生 Pi0 checkpoint loader 且不读取 spatial sidecar；07/10 使用 spatial loader 初始化新增 tactile/视觉空间分支。三者均为 20k steps/8 batch 的独立实验，不是已有 full-finetune front 配置的 checkpoint 兼容替代品。
 
-三个新配置共用 [`config.py`](src/openpi/training/config.py) 中的 `FRONT_SPATIAL_VERSION` 和 `FRONT_CALIBRATION_PROFILE`。默认是未纠正的 `v1_front` 与 `None`；确认要用候选或新拟合的标定后，改成新 sidecar 版本名和相应 profile 路径。旧 suffix 配置不会跟着变。不要覆盖旧 sidecar，也不要在 checkpoint 训练后改动对应 profile 文件。
+07/10 共用 [`config.py`](src/openpi/training/config.py) 中的 `FRONT_SPATIAL_VERSION` 和 `FRONT_CALIBRATION_PROFILE`。当前工作区默认使用 `v1_front_candidate` 与 `front_calibration_candidate.json`；RGB baseline 不读取 spatial sidecar。若要切回未修正 baseline，改为 `v1_front` 与 `None`；不要覆盖旧 sidecar，也不要在 checkpoint 训练后改动对应 profile 文件。
 
 ### 0. 检查 front 标定
 
@@ -297,9 +298,16 @@ CUDA_VISIBLE_DEVICES=2 XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 python scripts/train.p
 USB 07/10 真机实验则使用 `pi0_xhand_spatial_structured_suffix_front_07_base_pooled`
 和 `pi0_xhand_spatial_structured_suffix_front_10_base_map_matched`；10 的配置名保留
 `map_matched` 作为 USB 实验编号兼容名，但实际已经改为真实三维 taxel 的 matched query。
-二者是新的 LoRA spatial 实验，不要加载已有 full-finetune front checkpoint。
+二者是新的 spatial 实验（VLM LoRA、Action Expert full），不要加载已有 full-finetune front checkpoint。
 
-上述配置继承旧 suffix 中训练机的绝对 `repo_id`/`weight_loader` 路径，换机器要先改。三路 RGB 和 proprio 始终保留，因此消融结论只针对新增的**结构化空间分支**，不是“完全无视觉/无触觉”的机器人。
+RGB-only 对照实验使用：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python scripts/train.py \
+  pi0_xhand_rgb_baseline --exp-name rgb_baseline
+```
+
+上述三个配置继承旧 suffix 中训练机的绝对 `repo_id`/`weight_loader` 路径，换机器要先改。RGB baseline 使用三路 RGB 和 proprio；07/10 在此基础上再加入 front-only visual/tactile spatial 分支。
 
 ## 远程推理与机器人部署
 
