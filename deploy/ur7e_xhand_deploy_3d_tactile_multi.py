@@ -1,11 +1,13 @@
 #!/usr/bin/env python3 
 """
-Deploy the current OpenPI / pi0 spatial policy on the UR7e + XHand robot.
+Deploy the current OpenPI / pi0 policy on the UR7e + XHand robot.
 
-This client runs on the robot machine. It sends only raw online observations
-(state, RGB images, and front/left depth images) to the policy server. The
-server builds the RGB-D point cloud and tactile spatial input with the same
-SpatialPreprocessor used during training.
+This client runs on the robot machine. It sends raw online observations to the
+policy server. The exact payload is selected from the server policy metadata:
+the native RGB baseline sends RGB and state only, while the spatial policies
+also send the configured depth images. The server builds the RGB-D point cloud
+and tactile spatial input with the same SpatialPreprocessor used during
+training.
 
 Useful safety/debug flags:
 
@@ -22,7 +24,7 @@ Render a completed run offline with deploy/render_pi0_diagnostics.py.
 
 
 sudo -E "$(which python)" \
-  deploy/ur7e_xhand_deploy_pi0_client_0707_multi.py \
+  deploy/ur7e_xhand_deploy_3d_tactile_multi.py \
   --server-ip 192.168.1.100 \
   --server-port 8990 \
   --dataset-dir /path/to/dataset \
@@ -141,8 +143,8 @@ def summarize_array(value: np.ndarray) -> str:
     return summary
 
 
-def debug_print_client_observation(observation: dict, *, query_index: int) -> None:
-    print(f"=== CLIENT OBS BEFORE SEND #{query_index} mode=spatial ===", flush=True)
+def debug_print_client_observation(observation: dict, *, query_index: int, mode: str) -> None:
+    print(f"=== CLIENT OBS BEFORE SEND #{query_index} mode={mode} ===", flush=True)
     for key in sorted(observation):
         value = observation[key]
         if isinstance(value, np.ndarray):
@@ -211,6 +213,7 @@ class DiagnosticRecorder:
         self._control_records: list[dict[str, object]] = []
         self._control_block_index = 0
         self._closed = False
+        self._record_tactile = bool(getattr(args, "spatial_use_tactile", True))
         recorded_args = dict(vars(args))
         if recorded_args.get("api_key"):
             recorded_args["api_key"] = "<redacted>"
@@ -225,6 +228,7 @@ class DiagnosticRecorder:
             "camera_names": camera_names,
             "spatial_camera_roles": list(args.spatial_cameras),
             "tactile": {
+                "enabled": self._record_tactile,
                 "finger_names": list(TACTILE_FINGER_NAMES),
                 "block_size": TACTILE_BLOCK_SIZE,
                 "raw_force_offset": TACTILE_RAW_FORCE_OFFSET,
@@ -281,7 +285,6 @@ class DiagnosticRecorder:
 
     def record_query_input(self, *, query_id: int, observation: dict, elapsed_s: float) -> None:
         state = np.asarray(observation["observation.state"], dtype=np.float32).copy()
-        tactile_blocks, tactile_raw_force, tactile_raw_force_norm = extract_tactile_diagnostics(state)
         arrays: dict[str, object] = {
             "query_id": np.asarray(query_id, dtype=np.int64),
             "frame_index": np.asarray(observation["frame_index"], dtype=np.int64),
@@ -289,11 +292,17 @@ class DiagnosticRecorder:
             "client_elapsed_s": np.asarray(elapsed_s, dtype=np.float64),
             "wall_time_ns": np.asarray(time.time_ns(), dtype=np.int64),
             "state": state,
-            "tactile_blocks": tactile_blocks,
-            "tactile_raw_force": tactile_raw_force,
-            "tactile_raw_force_norm": tactile_raw_force_norm,
             "prompt": np.asarray(str(observation.get("prompt", ""))),
         }
+        if self._record_tactile:
+            tactile_blocks, tactile_raw_force, tactile_raw_force_norm = extract_tactile_diagnostics(state)
+            arrays.update(
+                {
+                    "tactile_blocks": tactile_blocks,
+                    "tactile_raw_force": tactile_raw_force,
+                    "tactile_raw_force_norm": tactile_raw_force_norm,
+                }
+            )
         for key, value in observation.items():
             if key.startswith("observation.images."):
                 arrays[f"rgb_{key.removeprefix('observation.images.')}"] = np.asarray(value).copy()
@@ -557,9 +566,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--realsense-fps", type=int, default=15)
     parser.add_argument(
         "--spatial-cameras",
-        choices=("front,left", "front", "none"),
-        default="front,left",
-        help="Depth images sent for spatial input; use front for front-only models, none for tactile-only.",
+        choices=("auto", "front,left", "front", "none"),
+        default="auto",
+        help=(
+            "Depth camera roles. 'auto' follows server policy metadata: front for the new front-only "
+            "models and none for the RGB baseline."
+        ),
     )
     parser.add_argument("--camera-read-timeout-ms", type=float, default=80.0)
     parser.add_argument("--query-frequency", type=int, default=48, help="Request a new action chunk every N frames.")
@@ -613,8 +625,81 @@ def parse_args() -> argparse.Namespace:
     )
 
     args = parser.parse_args()
-    args.spatial_cameras = () if args.spatial_cameras == "none" else tuple(args.spatial_cameras.split(","))
+    args.spatial_cameras = (
+        None
+        if args.spatial_cameras == "auto"
+        else ()
+        if args.spatial_cameras == "none"
+        else tuple(args.spatial_cameras.split(","))
+    )
     return args
+
+
+def _normalize_spatial_camera_roles(value) -> tuple[str, ...] | None:
+    """Normalize policy metadata roles while accepting old server representations."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        roles = () if value in {"", "none"} else tuple(value.split(","))
+    else:
+        roles = tuple(value)
+    normalized = tuple(str(role).removeprefix("cam_") for role in roles)
+    unsupported = set(normalized) - {"front", "left"}
+    if unsupported:
+        raise ValueError(
+            f"Server policy requests unsupported spatial camera roles {sorted(unsupported)}; "
+            "this deployment client supports front and left."
+        )
+    return normalized
+
+
+def configure_input_mode_from_metadata(args: argparse.Namespace, metadata: dict | None) -> None:
+    """Resolve camera/depth/tactile requirements from the policy server metadata.
+
+    The deployment client remains usable with older servers that did not publish
+    spatial metadata. In that case it keeps the historical front+left+tactile
+    behavior. New models publish explicit ``spatial_use_*`` fields, so the RGB
+    baseline does not accidentally receive depth or require tactile recording.
+    """
+    metadata = metadata or {}
+    has_spatial_metadata = any(
+        key in metadata
+        for key in ("spatial_camera_roles", "spatial_use_visual", "spatial_use_tactile", "rgb_only_baseline")
+    )
+    metadata_roles = _normalize_spatial_camera_roles(metadata.get("spatial_camera_roles"))
+    if metadata_roles is None:
+        if "spatial_use_visual" in metadata:
+            metadata_roles = ("front", "left") if bool(metadata["spatial_use_visual"]) else ()
+        elif args.spatial_cameras is not None:
+            # A pre-metadata server can still be driven with the explicit CLI
+            # choice that the old deployment script supported.
+            metadata_roles = tuple(args.spatial_cameras)
+        else:
+            # Legacy server: preserve the old client default.
+            metadata_roles = ("front", "left")
+
+    if args.spatial_cameras is None:
+        args.spatial_cameras = metadata_roles
+    elif tuple(args.spatial_cameras) != metadata_roles:
+        raise ValueError(
+            f"Client --spatial-cameras={args.spatial_cameras} differs from server "
+            f"spatial_camera_roles={metadata_roles}. Use --spatial-cameras auto or match the server policy."
+        )
+
+    legacy_server = not has_spatial_metadata
+    args.spatial_use_visual = bool(
+        metadata.get("spatial_use_visual", bool(args.spatial_cameras))
+    )
+    args.spatial_use_tactile = bool(
+        metadata.get("spatial_use_tactile", True if legacy_server else bool(args.spatial_cameras))
+    )
+    args.rgb_only_baseline = bool(metadata.get("rgb_only_baseline", False))
+    args.policy_input_mode = "rgb" if not args.spatial_use_visual and not args.spatial_use_tactile else "spatial"
+    # Some older/native servers invoke XHandInputs directly and expect the
+    # canonical {"images": ..., "state": ...} schema instead of running the
+    # deployment repack transform first. Keep the normal raw schema, but add
+    # these aliases when metadata is absent or the selected policy is RGB-only.
+    args.send_native_input_aliases = legacy_server or args.policy_input_mode == "rgb"
 
 
 def read_json(path: Path) -> dict:
@@ -674,19 +759,21 @@ def build_robot(args: argparse.Namespace):
         width=args.realsense_width,
         height=args.realsense_height,
         color_mode=camera_configs.ColorMode.RGB,
-        use_depth=bool(args.spatial_cameras),
     )
     cameras = {
         "cam_front": realsense.RealSenseCameraConfig(
             serial_number_or_name=args.realsense_front_serial,
+            use_depth="front" in args.spatial_cameras,
             **common_camera,
         ),
         "cam_left": realsense.RealSenseCameraConfig(
             serial_number_or_name=args.realsense_left_serial,
+            use_depth="left" in args.spatial_cameras,
             **common_camera,
         ),
         "cam_right": realsense.RealSenseCameraConfig(
             serial_number_or_name=args.realsense_right_serial,
+            use_depth=False,
             **common_camera,
         ),
     }
@@ -729,6 +816,23 @@ def build_env_state(obs: dict, state_names: list[str]) -> np.ndarray:
 def state_schema_has_raw_xhand_state(state_names: list[str]) -> bool:
     required_dim = TACTILE_BLOCK_START + TACTILE_SENSOR_COUNT * TACTILE_BLOCK_SIZE
     return len(state_names) == required_dim
+
+
+def validate_state_schema(state_names: list[str], args: argparse.Namespace) -> None:
+    """Validate the minimum state needed by the selected server-side policy."""
+    native_xhand_dim = TACTILE_BLOCK_START
+    if len(state_names) < native_xhand_dim:
+        raise ValueError(
+            "XHand deployment requires at least the 52-value arm/hand state prefix, "
+            f"got {len(state_names)}. Check --dataset-dir/--dataset-root/--dataset-name."
+        )
+    if args.spatial_use_tactile and not state_schema_has_raw_xhand_state(state_names):
+        required_dim = TACTILE_BLOCK_START + TACTILE_SENSOR_COUNT * TACTILE_BLOCK_SIZE
+        raise ValueError(
+            "The selected spatial policy uses tactile input and requires the full raw UR7e + XHand "
+            f"observation.state with exactly {required_dim} values, got {len(state_names)}. "
+            "Check --dataset-dir/--dataset-root/--dataset-name."
+        )
 
 
 def get_current_action(obs: dict, action_names: list[str]) -> np.ndarray:
@@ -789,9 +893,14 @@ def build_pi0_observation(
         "frame_index": np.asarray(frame_idx, dtype=np.int64),
         "timestamp_s": np.asarray(frame_idx / max(args.fps, 1), dtype=np.float64),
     }
+    native_images = {}
     for camera_name in camera_names:
         image = get_image(obs, camera_name, args.realsense_height, args.realsense_width)
         observation[f"observation.images.{camera_name}"] = image
+        native_images[camera_name] = image
+    if getattr(args, "send_native_input_aliases", False):
+        observation["images"] = native_images
+        observation["state"] = observation["observation.state"]
     for role in args.spatial_cameras:
         camera_name = f"cam_{role}"
         observation[f"observation.depths.{camera_name}"] = get_depth(obs, camera_name)
@@ -1050,7 +1159,9 @@ def reset_robot_to_home_for_run(robot, args: argparse.Namespace, run_index: int)
         print("Skipping home reset (--no-home); initial observation uses the robot's current pose.")
 
     seed_action_target_fallback(robot)
-    if not args.no_tactile_reset:
+    if not args.spatial_use_tactile:
+        print("Skipping tactile reset: the selected policy does not use tactile input.")
+    elif not args.no_tactile_reset:
         reset_tactile_sensors_before_run(
             robot,
             run_index=run_index,
@@ -1158,6 +1269,7 @@ def run_policy_once(
                         debug_print_client_observation(
                             observation,
                             query_index=current_action_step,
+                            mode=args.policy_input_mode,
                         )
                     infer_attempt_start = time.perf_counter()
                     try:
@@ -1166,7 +1278,7 @@ def run_policy_once(
                             observation=observation,
                             action_names=action_names,
                             max_action_chunk_size=args.max_action_chunk_size,
-                            label="spatial",
+                            label=args.policy_input_mode,
                         )
                         if recorder is not None:
                             recorder.record_query_output(
@@ -1308,18 +1420,11 @@ def main() -> int:
     missing_cameras = supported_cameras - set(camera_names)
     if missing_cameras:
         raise ValueError(
-            f"Spatial deployment requires all three RGB cameras; missing {sorted(missing_cameras)} "
+            f"This XHand policy requires all three RGB cameras; missing {sorted(missing_cameras)} "
             f"from {dataset_dir / 'meta' / 'info.json'}"
         )
     if len(action_names) != len(FALLBACK_ACTION_NAMES):
-        raise ValueError(f"Spatial deployment requires 18 action names, got {len(action_names)}")
-    if not state_schema_has_raw_xhand_state(state_names):
-        required_dim = TACTILE_BLOCK_START + TACTILE_SENSOR_COUNT * TACTILE_BLOCK_SIZE
-        raise ValueError(
-            "Spatial deployment requires the full raw UR7e + XHand observation.state with exactly "
-            f"{required_dim} values so the server can build tactile spatial inputs, got {len(state_names)}. "
-            "Check --dataset-dir/--dataset-root/--dataset-name."
-        )
+        raise ValueError(f"This XHand deployment requires 18 action names, got {len(action_names)}")
 
     print("=== UR7e + XHand PI0 Deployment Client ===")
     print(f"Server: {args.server_ip}:{args.server_port}")
@@ -1327,15 +1432,23 @@ def main() -> int:
     print(f"State dim: {len(state_names)}")
     print(f"Action dim: {len(action_names)}")
     print(f"Cameras: {', '.join(camera_names)}")
-    print(f"Spatial depth cameras: {', '.join(args.spatial_cameras) if args.spatial_cameras else 'none'}")
+    requested_depth = (
+        "auto (server metadata)"
+        if args.spatial_cameras is None
+        else ", ".join(args.spatial_cameras) if args.spatial_cameras else "none"
+    )
+    print(f"Requested spatial depth cameras: {requested_depth}")
     print(f"Prompt: {args.prompt or args.task}")
     print(f"FPS: {args.fps}, duration: {args.duration}s")
-    print("Policy input mode: spatial raw obs")
     print(f"Run mode: {args.run_mode}, num_runs: {'until Ctrl+C' if args.num_runs == 0 else args.num_runs}")
     print(f"Dry run: {args.dry_run}")
     print(f"Diagnostic recording: {args.record_dir if args.record_dir is not None else 'disabled'}")
 
     if args.check_config:
+        configure_input_mode_from_metadata(args, metadata=None)
+        validate_state_schema(state_names, args)
+        print(f"Resolved policy input mode: {args.policy_input_mode}")
+        print(f"Resolved spatial depth cameras: {', '.join(args.spatial_cameras) if args.spatial_cameras else 'none'}")
         print("Config check passed. Exiting before server/robot connection.")
         return 0
 
@@ -1350,12 +1463,20 @@ def main() -> int:
     args.server_metadata = metadata
     if metadata:
         print(f"Server metadata: {metadata}")
-        expected_roles = metadata.get("spatial_camera_roles")
-        if expected_roles is not None and tuple(expected_roles) != args.spatial_cameras:
-            raise ValueError(
-                f"Client --spatial-cameras={args.spatial_cameras} differs from server "
-                f"spatial_camera_roles={tuple(expected_roles)}"
-            )
+    else:
+        print(
+            "WARNING: server returned no policy metadata; using legacy spatial defaults and "
+            "including native XHand input aliases for compatibility. Update/restart the policy "
+            "server if this is not the intended model.",
+            flush=True,
+        )
+    configure_input_mode_from_metadata(args, metadata)
+    validate_state_schema(state_names, args)
+    print(f"Policy input mode: {args.policy_input_mode}")
+    print(f"Spatial depth cameras: {', '.join(args.spatial_cameras) if args.spatial_cameras else 'none'}")
+    print(f"Spatial visual input: {args.spatial_use_visual}")
+    print(f"Spatial tactile input: {args.spatial_use_tactile}")
+    print(f"Native XHand input aliases: {args.send_native_input_aliases}")
 
     robot = build_robot(args)
 

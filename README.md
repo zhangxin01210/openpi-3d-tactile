@@ -376,7 +376,7 @@ sudo -E "$PYTHON_BIN" deploy/ur7e_xhand_deploy_3d_tactile_multi.py \
 
 ## 失败诊断
 
-启用 `--record-dir` 后，每轮生成 `diagnostic_runs/<时间>_run_<编号>/`，包含 `manifest.json`、`control/*.npz` 和 `inference/query_*_{input,output}.npz`。输入记录保留三路 RGB、**按配置发送的**原始深度、完整 state 和五指触觉；输出记录保留返回的 action chunk、实际使用的 chunk 和耗时；控制记录包含逐帧实际发送动作与 fallback 状态。检查 `manifest.json` 中的 `dropped_records` 和 `writer_errors` 可判断记录是否完整。
+启用 `--record-dir` 后，每轮生成 `diagnostic_runs/<时间>_run_<编号>/`，包含 `manifest.json`、`control/*.npz` 和 `inference/query_*_{input,output}.npz`。输入记录总会保留三路 RGB 和完整 state；深度与五指触觉只在所选策略实际使用时记录。输出记录保留返回的 action chunk、实际使用的 chunk 和耗时；控制记录包含逐帧实际发送动作与 fallback 状态。检查 `manifest.json` 中的 `dropped_records` 和 `writer_errors` 可判断记录是否完整。
 
 在只有 `deploy/` 的机器人电脑上，只要环境有 NumPy、Matplotlib、OpenCV，即可生成汇总图和每次推理图；点云面板会缺失。完整的 4096 点视觉点云及 600 个触觉空间点，需要在有 `src/openpi/spatial` 与标定文件的本仓库中离线重建。报告按 manifest 的相机角色重建；如运行使用了校准 profile，默认从服务端 metadata 读取其相对路径，也可用 `--front-calibration-profile` 明确指定。
 
@@ -392,7 +392,7 @@ python deploy/render_pi0_diagnostics.py \
   --repo-root "$PWD" --video
 ```
 
-报告位于该运行目录的 `report/`：`summary.png` 是全程总览，`query_*.png` 是每次推理的输入、触觉、空间点和 chunk 对比，`diagnostic.mp4` 由逐 query 图组成，**不是** 15 Hz 控制帧视频。只需图片时去掉 `--video`。若本机提示缺少 Matplotlib，应切换到装有绘图依赖的分析环境；无需在机器人控制环境里安装整套训练依赖。
+报告位于该运行目录的 `report/`：`summary.png` 是全程总览，`query_*.png` 会按录制内容自动显示 RGB-only 或 spatial/tactile 面板，`diagnostic.mp4` 由逐 query 图组成，**不是** 15 Hz 控制帧视频。空间运行还会产生 `cloud_index.html` 与代表帧的 `query_*_cloud.html`：页面包含 dense ROI RGB-D 点云、最终模型点云和 tactile 点，可旋转/缩放，并可点击任意两点测量毫米距离。默认导出 3 个代表帧；用 `--max-cloud-keyframes 0` 导出所有 query，或用 `--max-cloud-points 0` 取消 dense-cloud 显示抽样。只需图片时去掉 `--video`；若提示缺少 Plotly，使用 `uv run --group dev ...` 或在分析环境安装 `plotly`。无需在机器人控制环境里安装整套训练依赖。
 
 ## 常见问题
 
