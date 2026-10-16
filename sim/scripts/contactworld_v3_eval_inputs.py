@@ -86,7 +86,8 @@ def snapshot(env):
     cloud, _, source_camera, source_uv, counts = base_cloud(
         depth, rgb, views, projections,
         np.zeros(3, np.float32), np.array([0, 0, 0, 1], np.float32),
-        cameras=("front", "wrist"), sampler="surface", points=POINTS)
+        cameras=("front", "wrist"), sampler="surface", points=POINTS,
+        allow_sparse=True)
     result = {
         "front": rgb["front"], "wrist": rgb["wrist"],
         "front_depth": depth["front"], "wrist_depth": depth["wrist"],
