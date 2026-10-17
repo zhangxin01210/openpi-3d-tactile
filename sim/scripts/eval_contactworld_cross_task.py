@@ -147,6 +147,11 @@ def prepare_environment(args, torch, np):
         cfg.force_render = False
         task_cfg = OmegaConf.to_container(cfg.task, resolve=True)
         task_cfg["env"].setdefault("obsDims", {})["tactile_force_field_left"] = [10, 14, 3]
+        # The released Valve task is a screwing task.  Its shared TacSL YAML
+        # defaults to insertion, which would bypass the official terminal
+        # screw primitive and evaluate the wrong success condition.
+        if args.task == "valve":
+            task_cfg["env"]["task_type"] = "screwing"
         (args.output / "task_config.json").write_text(json.dumps(task_cfg, indent=2) + "\n")
         np.random.seed(args.seed_base)
         torch.manual_seed(args.seed_base)
