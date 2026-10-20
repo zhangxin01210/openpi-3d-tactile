@@ -1399,14 +1399,14 @@ _CONFIGS = [
             ),
         ),
         data=LeRobotXHandDataConfig(
-            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean",
+            repo_id="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/1018_peg_all",
             assets=AssetsConfig(
                 assets_dir="./assets/xhand",
-                asset_id="press_button_4_times_clean",
+                asset_id="1018_peg_all",
             ),
             spatial=SpatialDataConfig(
                 dataset_root=(
-                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/press_button_4_times_clean"
+                    "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/1018_peg_all"
                 ),
                 version="v1",
             ),
@@ -1718,6 +1718,7 @@ def _xhand_rgb_baseline_config(name: str) -> TrainConfig:
         num_train_steps=20_000,
         save_interval=5_000,
         keep_period=5_000,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
         policy_metadata={
             "rgb_only_baseline": True,
             "spatial_use_visual": False,
@@ -1729,6 +1730,36 @@ def _xhand_rgb_baseline_config(name: str) -> TrainConfig:
 
 
 _CONFIGS.append(_xhand_rgb_baseline_config("pi0_xhand_rgb_baseline"))
+
+# ============================================================
+# Pi0.5 RGB baseline for UR7e + XHand
+# ============================================================
+
+_pi05_xhand_model = pi0_config.Pi0Config(
+    pi05=True,
+    paligemma_variant="gemma_2b_lora",
+    action_expert_variant="gemma_300m",
+)
+
+_pi05_xhand_base = next(
+    cfg for cfg in _CONFIGS
+    if cfg.name == "pi0_xhand_rgb_baseline"
+)
+
+_CONFIGS.append(
+    dataclasses.replace(
+        _pi05_xhand_base,
+        name="pi05_xhand_rgb_baseline",
+        model=_pi05_xhand_model,
+        weight_loader=weight_loaders.CheckpointWeightLoader(
+            "/workspace/mnt/sqzhang26/hf_weight/pi05_base/params"
+        ),
+        freeze_filter=_pi05_xhand_model.get_freeze_filter(),
+        lr_schedule=_optimizer.CosineDecaySchedule(
+            decay_steps=20_000
+        ),
+    )
+)
 
 
 def _front_contactworld_method_config(name: str, *, method: str) -> TrainConfig:
