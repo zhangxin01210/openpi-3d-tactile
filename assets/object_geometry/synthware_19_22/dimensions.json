@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "asset_version": "metric_v1",
+  "description": "Funnel and flask meshes for RGBTrack pose estimation",
+  "common_unit": "meter",
+  "models": {
+    "funnel": {
+      "file": "funnel_F181975.glb",
+      "sha256": "84f1dee2f8e24a215d2e8b4364e2858f3ab8a484ea5619ec27388c79672a0627",
+      "brand": "Synthware",
+      "model": "F181975",
+      "unit": "meter",
+      "mesh_dimensions_mm": [
+        80.6848918156551,
+        81.0,
+        99.74806369038028
+      ],
+      "scale_method": "uniform",
+      "scale_reference_mm": 81.0,
+      "uniform_scale_factor": 0.0996983325370403,
+      "measurements_mm": {
+        "rim_outer_diameter": 81.0,
+        "rim_inner_diameter": 76.0,
+        "stem_bottom_outer_diameter": 15.0,
+        "stem_bottom_inner_diameter": 12.0,
+        "ground_stem_length": 22.0,
+        "funnel_bowl_height_approx": 50.0
+      },
+      "catalog": {
+        "brand": "Synthware",
+        "model": "F181975",
+        "nominal_top_diameter_mm": 75.0,
+        "ground_joint": "19/22"
+      },
+      "coordinate_frame": "object_local",
+      "orientation_status": "heuristic_pending_pose_validation",
+      "geometry_status": "visual_review_accepted"
+    },
+    "target_flask": {
+      "file": "flask_F301950.glb",
+      "sha256": "165f7264d49d710b8140218bb1bfadcafc52906b48935665ce67e5d64e17e902",
+      "brand": "Synthware",
+      "model": "F301950",
+      "unit": "meter",
+      "mesh_dimensions_mm": [
+        54.78575431874722,
+        54.90392722844883,
+        81.3
+      ],
+      "scale_method": "uniform",
+      "scale_reference_mm": 81.3,
+      "uniform_scale_factor": 0.08150099081388207,
+      "measurements_mm": {
+        "mouth_inner_diameter_approx": 20.0,
+        "mouth_outer_diameter_approx": 25.0,
+        "rim_height_approx": 5.0,
+        "ground_neck_length_approx": 17.0,
+        "lower_neck_length_approx": 14.0,
+        "body_height_approx": 40.0
+      },
+      "catalog": {
+        "brand": "Synthware",
+        "model": "F301950",
+        "capacity_ml": 50,
+        "body_diameter_mm": 48.0,
+        "total_height_mm": 81.3,
+        "ground_joint": "19/22"
+      },
+      "coordinate_frame": "object_local",
+      "orientation_status": "heuristic_pending_pose_validation",
+      "geometry_status": "visual_review_accepted"
+    }
+  },
+  "standard_ground_joint": {
+    "designation": "19/22",
+    "nominal_large_end_diameter_mm": 19.0,
+    "nominal_ground_length_mm": 22.0,
+    "taper": "1:10"
+  },
+  "provenance": {
+    "funnel": "SAM3D reconstruction, e23 frame 212",
+    "target_flask": "SAM3D reconstruction, manually photographed flask"
+  },
+  "known_limitations": [
+    "Meshes are uniformly scaled SAM3D reconstructions.",
+    "Object-local axis orientation requires pose-tracking validation.",
+    "Ground-joint internal geometry is not metrically validated.",
+    "Flask mesh diameter is approximately 54.9 mm versus catalog 48 mm.",
+    "Assets are suitable for initial pose-tracking experiments, not contact ground truth."
+  ]
+}
