@@ -58,3 +58,49 @@ PYTHONPATH=src .venv/bin/python scripts/object_geometry/export_sidecar.py \
   --memory-run-name abc_v1_front_candidate_stride1 --version v1_front_candidate \
   --generation-commit "$(git rev-parse HEAD)"
 ```
+
+## Sparse 3-D keypoint pilot
+
+`pilot_sparse_3d_relations.py` is a separate lightweight prototype. It reads
+the reviewed `funnel/` and `target_flask/` PNG masks, never runs SAM2, and
+requires a small manual RGB initialization so it does not pretend a mask alone
+identifies a funnel tip or bottle mouth. The initialization contains
+`initial_frame` plus `shaft_end`/`mouth_center` and `axis_reference` pixel
+coordinates for each object. The script writes causal per-frame
+`keypoints.jsonl`, RGB overlays, `keypoints_3d.html`, `report.json`, and timing
+statistics. Predicted points during occlusion are explicitly `valid=false`.
+
+Initialization template (replace every `null` with reviewed RGB pixels; these
+are deliberately not fabricated here):
+
+```json
+{
+  "schema_version": 1,
+  "objects": {
+    "funnel": {
+      "initial_frame": 212,
+      "keypoints": {"shaft_end": [null, null], "axis_reference": [null, null]}
+    },
+    "target_flask": {
+      "initial_frame": 0,
+      "keypoints": {"mouth_center": [null, null], "axis_reference": [null, null]}
+    }
+  }
+}
+```
+
+Example e23 invocation on computer 4 (fill in the two manual anchors in the
+JSON first):
+
+```bash
+REPO=/workspace/mnt/sqzhang26/openpi-3d-tactile
+HOI=/workspace/mnt/sqzhang26/hoi
+python "$REPO/scripts/object_geometry/pilot_sparse_3d_relations.py" \
+  --repo-root "$REPO" \
+  --dataset "$REPO/data/1018_peg_all" \
+  --episode 23 \
+  --mask-root "$HOI/outputs/level1_sequence_e23/masks" \
+  --init-json "$HOI/outputs/level1_sequence_e23/keypoint_init_e23.json" \
+  --front-calibration-profile "$REPO/configs/ur7e_xhand/front_calibration_candidate.json" \
+  --output "$HOI/outputs/level1_sequence_e23/sparse_3d_relations_front_candidate"
+```
