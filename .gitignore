@@ -173,11 +173,17 @@ cython_debug/
 /review/
 diagnostic*
 3D_tactile
-<<<<<<< HEAD
 contactworld_failure_comparison_offline
-configs 
-=======
 
 # Generated offline review archive (large binary artifact).
 /sim/reports/2026-10-10/contactworld_failure_comparison_offline.zip*
->>>>>>> 05d7491163776fb9256ec5918b9e2f9a0c402e11
+
+# Keep normal repository configuration files trackable. Only ignore the
+# generated archive, not the configs/ tree itself.
+configs/*.zip
+
+# RGBTrack local weights, evaluation data, and generated outputs are machine
+# local and intentionally never committed.
+/checkpoints/rgbtrack/
+/data/pose_eval/
+/output/pose_eval/
