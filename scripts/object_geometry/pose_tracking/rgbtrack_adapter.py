@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import math
 from dataclasses import dataclass
@@ -41,6 +42,7 @@ from dataclasses import field
 from pathlib import Path
 import sys
 import time
+import types
 from typing import Any
 from typing import Iterable
 from typing import Iterator
@@ -57,6 +59,10 @@ OBJECT_ALIASES = {
     "target_flask": ("target_flask", "flask", "target-flask", "bottle"),
 }
 POSE_MODES = ("depth", "no_depth", "unknown_scale")
+RGBTRACK_WEIGHT_RUNS = {
+    "score": "2024-01-11-20-02-45",
+    "refine": "2023-10-28-18-33-37",
+}
 
 
 def _as_transform(value: Any, name: str) -> np.ndarray:
@@ -175,6 +181,108 @@ def _require_trimesh():
             "install it as part of this adapter."
         ) from exc
     return trimesh
+
+
+def expected_rgbtrack_weights(weights_root: str | Path) -> dict[str, Path]:
+    """Return the two ordinary PyTorch checkpoint paths used upstream."""
+    root = Path(weights_root).expanduser().resolve()
+    return {
+        name: root / run_name / "model_best.pth"
+        for name, run_name in RGBTRACK_WEIGHT_RUNS.items()
+    }
+
+
+def validate_rgbtrack_weights(repo_root: str | Path, weights_root: str | Path) -> dict[str, Any]:
+    """Validate main-repository weights and the submodule's legacy lookup path.
+
+    The upstream predictors construct paths relative to
+    ``third_party/RGBTrack/weights``.  Keeping that path as a local symlink to
+    ``checkpoints/rgbtrack`` avoids changing tracked submodule files while
+    preserving the upstream checkpoint loader.
+    """
+    root = Path(repo_root).expanduser().resolve()
+    source_root = Path(weights_root).expanduser().resolve()
+    expected = expected_rgbtrack_weights(source_root)
+    missing = [str(path) for path in expected.values() if not path.is_file()]
+    legacy_root = root / "third_party" / "RGBTrack" / "weights"
+    legacy_expected = {
+        name: legacy_root / run_name / "model_best.pth"
+        for name, run_name in RGBTRACK_WEIGHT_RUNS.items()
+    }
+    legacy_missing = [str(path) for path in legacy_expected.values() if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            "Missing RGBTrack PyTorch weights: " + ", ".join(missing)
+        )
+    if legacy_missing:
+        raise FileNotFoundError(
+            "RGBTrack legacy weights path is not linked. Create it with:\n"
+            f"  python scripts/object_geometry/pose_tracking/check_rgbtrack_runtime.py "
+            f"--repo-root {root} --weights-root {source_root} --setup-weights-link\n"
+            "Missing: " + ", ".join(legacy_missing)
+        )
+    return {
+        "weights_root": str(source_root),
+        "legacy_weights_root": str(legacy_root),
+        "legacy_weights_is_symlink": legacy_root.is_symlink(),
+        "runs": {name: str(path) for name, path in expected.items()},
+    }
+
+
+def validate_mycpp(repo_root: str | Path) -> dict[str, Any]:
+    """Require the compiled pose-grid clustering extension.
+
+    ``FoundationPose.make_rotation_grid`` calls ``mycpp.cluster_poses``
+    unconditionally; treating an import failure as ``mycpp=None`` only moves
+    the error to estimator initialization.
+    """
+    root = Path(repo_root).expanduser().resolve()
+    build_root = root / "third_party" / "RGBTrack" / "mycpp" / "build"
+    rgbtrack_root = str((root / "third_party" / "RGBTrack").resolve())
+    if rgbtrack_root not in sys.path:
+        sys.path.insert(0, rgbtrack_root)
+    try:
+        module = importlib.import_module("mycpp.build.mycpp")
+        has_cluster = callable(getattr(module, "cluster_poses", None))
+    except Exception as exc:
+        raise RuntimeError(
+            "RGBTrack mycpp extension is unavailable or lacks cluster_poses. "
+            "Build it with the cmake command in docs/object_geometry/"
+            "rgbtrack_pose_tracking.md."
+        ) from exc
+    if not has_cluster:
+        raise RuntimeError("RGBTrack mycpp extension has no callable cluster_poses")
+    return {"build_root": str(build_root), "cluster_poses": True}
+
+
+def install_tensorrt_compat_shim() -> dict[str, Any]:
+    """Provide import-only TensorRT stubs when the normal PyTorch path is used.
+
+    The pinned upstream files import ``RefineNetTrt``/``ScoreNetTrt`` even
+    though both predictor modules set ``USE_TRT=False``.  The shim is only
+    installed when importing TensorRT itself raises ``ModuleNotFoundError``;
+    attempting to instantiate either class still raises a clear error.
+    """
+    try:
+        import tensorrt  # type: ignore  # noqa: F401
+    except ModuleNotFoundError:
+        module_name = "learning.models.tensorrt_models"
+        if module_name not in sys.modules:
+            module = types.ModuleType(module_name)
+
+            class TensorRTDisabled:
+                def __init__(self, *args: Any, **kwargs: Any) -> None:
+                    raise RuntimeError(
+                        "TensorRT path was requested, but this adapter is configured "
+                        "for ordinary PyTorch inference (USE_TRT=False)."
+                    )
+
+            module.RefineNetTrt = TensorRTDisabled
+            module.ScoreNetTrt = TensorRTDisabled
+            module.__all__ = ["RefineNetTrt", "ScoreNetTrt"]
+            sys.modules[module_name] = module
+        return {"tensorrt": "absent", "pytorch_import_shim": True}
+    return {"tensorrt": "available", "pytorch_import_shim": False}
 
 
 def _mesh_visual_metadata(mesh: Any) -> dict[str, Any]:
@@ -379,6 +487,7 @@ def _import_rgbtrack(repo_root: Path):  # pragma: no cover - unavailable on comp
     source_text = str(source)
     if source_text not in sys.path:
         sys.path.insert(0, source_text)
+    compatibility = install_tensorrt_compat_shim()
     try:
         from estimater import FoundationPose
     except Exception as exc:
@@ -391,7 +500,7 @@ def _import_rgbtrack(repo_root: Path):  # pragma: no cover - unavailable on comp
         import trimesh
     except ImportError as exc:
         raise RuntimeError("RGBTrack inference requires trimesh in the computer-4 environment") from exc
-    return FoundationPose, trimesh
+    return FoundationPose, trimesh, compatibility
 
 
 @dataclass
@@ -462,6 +571,8 @@ class RGBTrackObject:
         mesh_path: str | Path,
         mode: str,
         debug_dir: str | Path,
+        weights_root: str | Path | None = None,
+        init_frame: int | None = None,
         init_iterations: int = 5,
         track_iterations: int = 2,
         min_mask_area_px: int = 40,
@@ -471,21 +582,35 @@ class RGBTrackObject:
         self.repo_root = Path(repo_root).expanduser().resolve()
         self.object_name = object_name
         self.mesh_path = Path(mesh_path).expanduser().resolve()
+        self.weights_root = (
+            Path(weights_root).expanduser().resolve()
+            if weights_root is not None
+            else self.repo_root / "checkpoints" / "rgbtrack"
+        )
         self.mode = mode
         self.debug_dir = Path(debug_dir).expanduser().resolve()
         self.init_iterations = int(init_iterations)
         self.track_iterations = int(track_iterations)
         self.min_mask_area_px = int(min_mask_area_px)
+        self.requested_init_frame = None if init_frame is None else int(init_frame)
+        if self.requested_init_frame is not None and self.requested_init_frame < 0:
+            raise ValueError("init_frame must be >= 0")
+        self.actual_init_frame: int | None = None
         self._estimator = None
         self._mesh = None
         self._initialized = False
         self._state = _CausalState()
         self._scale_recovery: float | None = None
+        self.runtime_compatibility: dict[str, Any] = {}
+        self.weights_provenance: dict[str, Any] | None = None
+        self.mycpp_provenance: dict[str, Any] | None = None
 
     def _ensure_estimator(self) -> None:
         if self._estimator is not None:
             return
-        FoundationPose, trimesh = _import_rgbtrack(self.repo_root)
+        self.weights_provenance = validate_rgbtrack_weights(self.repo_root, self.weights_root)
+        self.mycpp_provenance = validate_mycpp(self.repo_root)
+        FoundationPose, trimesh, self.runtime_compatibility = _import_rgbtrack(self.repo_root)
         mesh = trimesh.load(str(self.mesh_path), force="mesh", process=False)
         if not hasattr(mesh, "vertices") or len(mesh.vertices) == 0:
             raise ValueError(f"RGBTrack mesh has no vertices: {self.mesh_path}")
@@ -504,11 +629,22 @@ class RGBTrackObject:
             return None
         return np.asarray(self._mesh.vertices, dtype=np.float64)
 
-    def _prediction_record(self, frame_index: int, mask_area: int, start: float, T_base_color: np.ndarray) -> PoseRecord:
+    def _prediction_record(
+        self,
+        frame_index: int,
+        mask_area: int,
+        start: float,
+        T_base_color: np.ndarray,
+        *,
+        status_override: str | None = None,
+    ) -> PoseRecord:
         predicted = self._state.predict(frame_index)
         elapsed = (time.perf_counter() - start) * 1000.0
         if predicted is None:
             predicted = np.eye(4, dtype=np.float64)
+        if status_override is not None:
+            status = status_override
+        elif self._state.last_pose is None:
             status = "invalid_no_observation"
         else:
             status = "occluded_causal_prediction"
@@ -541,6 +677,18 @@ class RGBTrackObject:
         if mask_bool.ndim != 2 or rgb.shape[:2] != mask_bool.shape:
             raise ValueError(f"RGB/mask shape mismatch: rgb={rgb.shape}, mask={mask_bool.shape}")
         mask_area = int(mask_bool.sum())
+        if (
+            not self._initialized
+            and self.requested_init_frame is not None
+            and int(frame_index) < self.requested_init_frame
+        ):
+            return self._prediction_record(
+                frame_index,
+                mask_area,
+                start,
+                T_base_color,
+                status_override="before_requested_initialization",
+            )
         if mask_area < self.min_mask_area_px:
             return self._prediction_record(frame_index, mask_area, start, T_base_color)
         if self.mode != "no_depth" and depth_m is None:
@@ -578,6 +726,7 @@ class RGBTrackObject:
                         K=K, rgb=rgb, depth=depth_m, ob_mask=mask_bool, iteration=self.init_iterations
                     )
                 self._initialized = True
+                self.actual_init_frame = int(frame_index)
             elif self.mode == "no_depth":
                 pose = self._estimator.track_one_new_without_depth(
                     rgb=rgb, K=K, iteration=self.track_iterations, mask=mask_bool
@@ -713,6 +862,21 @@ def _load_scale_manifest(path: Path, objects: Sequence[str]) -> dict[str, float]
     return result
 
 
+def _parse_init_frames(values: Sequence[str], objects: Sequence[str]) -> dict[str, int | None]:
+    result: dict[str, int | None] = {name: None for name in objects}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"--init-frame expects OBJECT=FRAME, got {value!r}")
+        name, frame_text = value.split("=", 1)
+        if name not in result:
+            raise ValueError(f"--init-frame names an unselected object: {name}")
+        frame = int(frame_text)
+        if frame < 0:
+            raise ValueError(f"--init-frame must be >= 0, got {frame}")
+        result[name] = frame
+    return result
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, required=True)
@@ -722,6 +886,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--funnel-glb", type=Path, required=True)
     parser.add_argument("--flask-glb", type=Path, required=True)
     parser.add_argument("--scale-manifest", type=Path, required=True, help="JSON with explicit metres-per-GLB-unit values")
+    parser.add_argument("--weights-root", type=Path, default=None, help="Main-repository RGBTrack checkpoint root (default: checkpoints/rgbtrack)")
     parser.add_argument("--front-calibration-profile", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--objects", nargs="+", choices=("funnel", "target_flask"), default=("funnel",))
@@ -729,6 +894,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--camera-role", default="front")
     parser.add_argument("--viz-frames", default=",".join(str(value) for value in VIZ_FRAMES))
     parser.add_argument("--max-frames", type=int, default=None)
+    parser.add_argument(
+        "--init-frame",
+        action="append",
+        default=[],
+        metavar="OBJECT=FRAME",
+        help="Per-object causal initialization frame; repeat for funnel/target_flask",
+    )
     parser.add_argument("--prepare-only", action="store_true", help="Convert meshes and calibration only; do not import RGBTrack")
     return parser
 
@@ -739,6 +911,7 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
     output.mkdir(parents=True, exist_ok=True)
     (output / "rgb_overlays").mkdir(parents=True, exist_ok=True)
     objects = tuple(dict.fromkeys(args.objects))
+    init_frames = _parse_init_frames(args.init_frame, objects)
     mesh_sources = {"funnel": args.funnel_glb, "target_flask": args.flask_glb}
     scales = _load_scale_manifest(args.scale_manifest.expanduser().resolve(), objects)
     calibration = load_front_calibration(repo_root, args.front_calibration_profile)
@@ -752,11 +925,13 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
         "episode": int(args.episode),
         "objects": list(objects),
         "mode": args.mode,
+        "requested_init_frames": init_frames,
         "dataset": str(args.dataset.expanduser().resolve()),
         "mask_root": str(args.mask_root.expanduser().resolve()),
         "calibration": calibration.provenance,
         "rgbtrack_commit": _rgbtrack_commit(repo_root),
         "scale_manifest": str(args.scale_manifest.expanduser().resolve()),
+        "weights_root": str((args.weights_root or (repo_root / "checkpoints" / "rgbtrack")).expanduser().resolve()),
         "mesh_conversions": mesh_manifests,
         "causal_online": True,
         "future_frames_used": False,
@@ -772,6 +947,8 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
             mesh_path=mesh_manifests[name]["output_mesh"],
             mode=args.mode,
             debug_dir=output / "rgbtrack_debug",
+            weights_root=args.weights_root or (repo_root / "checkpoints" / "rgbtrack"),
+            init_frame=init_frames[name],
         )
         for name in objects
     }
@@ -847,6 +1024,18 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
     manifest["visualization_frames"] = sorted(viz_frames)
     manifest["timing_summary"] = timing_summary
     manifest["tracking_report"] = report
+    manifest["actual_init_frames"] = {
+        name: trackers[name].actual_init_frame for name in objects
+    }
+    manifest["runtime_compatibility"] = {
+        name: trackers[name].runtime_compatibility for name in objects
+    }
+    manifest["weights_provenance"] = {
+        name: trackers[name].weights_provenance for name in objects
+    }
+    manifest["mycpp_provenance"] = {
+        name: trackers[name].mycpp_provenance for name in objects
+    }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return 0
 

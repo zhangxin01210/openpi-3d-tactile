@@ -174,3 +174,48 @@ def test_no_depth_and_depth_modes_call_distinct_upstream_paths(tmp_path: Path) -
     tracker.estimate(frame_index=0, rgb=rgb, depth_m=None, mask=mask, K=np.eye(3), T_base_color=np.eye(4))
     tracker.estimate(frame_index=1, rgb=rgb, depth_m=None, mask=mask, K=np.eye(3), T_base_color=np.eye(4))
     assert fake.calls == ["register_without_depth", "track_one_new_without_depth"]
+
+
+def test_per_object_initialization_frame_is_causal(tmp_path: Path) -> None:
+    adapter = _module()
+
+    class FakeEstimator:
+        track_good = True
+
+        def register_without_depth(self, **kwargs):
+            pose = np.eye(4)
+            pose[2, 3] = 1.0
+            return pose
+
+        def track_one_new_without_depth(self, **kwargs):
+            return self.register_without_depth(**kwargs)
+
+    tracker = adapter.RGBTrackObject(
+        repo_root=ROOT,
+        object_name="funnel",
+        mesh_path=tmp_path / "mesh.ply",
+        mode="no_depth",
+        debug_dir=tmp_path / "debug",
+        init_frame=2,
+        min_mask_area_px=1,
+    )
+    tracker._estimator = FakeEstimator()  # noqa: SLF001 - isolate frame gating.
+    rgb = np.zeros((3, 3, 3), dtype=np.uint8)
+    mask = np.ones((3, 3), dtype=bool)
+    before = tracker.estimate(frame_index=1, rgb=rgb, depth_m=None, mask=mask, K=np.eye(3), T_base_color=np.eye(4))
+    assert before.status == "before_requested_initialization"
+    assert not before.valid
+    first = tracker.estimate(frame_index=2, rgb=rgb, depth_m=None, mask=mask, K=np.eye(3), T_base_color=np.eye(4))
+    assert first.valid
+    assert tracker.actual_init_frame == 2
+
+
+def test_tensorRT_import_shim_is_explicit_when_tensorRT_is_absent() -> None:
+    adapter = _module()
+    status = adapter.install_tensorrt_compat_shim()
+    if status["tensorrt"] == "absent":
+        import importlib
+
+        module = importlib.import_module("learning.models.tensorrt_models")
+        with pytest.raises(RuntimeError, match="ordinary PyTorch"):
+            module.ScoreNetTrt("unused")
