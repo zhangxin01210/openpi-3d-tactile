@@ -253,6 +253,30 @@ class SpatialCheckpointWeightLoader:
         )
 
 
+@dataclasses.dataclass(frozen=True)
+class StrictObjectRelationExpansionCheckpointWeightLoader(SpatialCheckpointWeightLoader):
+    """Warm-start a relational encoder from a complete spatial checkpoint.
+
+    ``SpatialCheckpointWeightLoader`` intentionally accepts a whole missing
+    ``spatial_router`` when starting a spatial model from the public base π0
+    checkpoint.  That permissive behavior is unsafe once a *spatial*
+    checkpoint is expected: it could silently random-initialize old visual,
+    tactile, or router weights.  This loader is the narrow expansion variant
+    for that second stage.  It permits only the parameters added by the
+    optional HO/OO encoder.
+
+    The path is the NNX parameter path beneath ``Pi0.spatial_router``:
+    ``spatial_router/encoder/object_relation_encoder/...``.
+    """
+
+    @property
+    def allowed_missing_regexes(self) -> tuple[str, ...]:
+        return (
+            r"spatial_router/encoder/object_relation_encoder/.*",
+            *self.additional_missing_regexes,
+        )
+
+
 # =============================================================================
 # 2. Merge
 # =============================================================================

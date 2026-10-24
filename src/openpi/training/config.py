@@ -2153,30 +2153,31 @@ _CONFIGS.extend([
                                   use_tactile_scene_relation=True),
 ])
 
-# Optional Level-1 HO/OO relation pilot.  The baseline structured suffix config
-# above remains unchanged; this derives a separate config and sidecar join.
-_structured_suffix_base = next(
-    config for config in _CONFIGS if config.name == "pi0_xhand_spatial_structured_suffix"
+# Optional Level-1 HO/OO relation pilot.  The front baseline remains
+# unchanged; derive directly from it so its reviewed sidecar version,
+# calibration profile, metadata, and training settings cannot drift.
+_structured_suffix_front_base = next(
+    config for config in _CONFIGS if config.name == "pi0_xhand_spatial_structured_suffix_front"
 )
 _relational_encoder = dataclasses.replace(
-    _structured_suffix_base.model.encoder,
+    _structured_suffix_front_base.model.encoder,
     enable_object_relations=True,
 )
 _relational_model = dataclasses.replace(
-    _structured_suffix_base.model,
+    _structured_suffix_front_base.model,
     encoder=_relational_encoder,
 )
 _CONFIGS.append(
     dataclasses.replace(
-        _structured_suffix_base,
+        _structured_suffix_front_base,
         name="pi0_xhand_spatial_structured_suffix_front_relational",
         model=_relational_model,
+        # The encoder changed, so derive this filter from the exact model
+        # config rather than carrying an equivalent-looking filter object from
+        # another configuration.
+        freeze_filter=_relational_model.get_freeze_filter(),
         data=dataclasses.replace(
-            _structured_suffix_base.data,
-            spatial=dataclasses.replace(
-                _structured_suffix_base.data.spatial,
-                camera_roles=("front",),
-            ),
+            _structured_suffix_front_base.data,
             object_geometry=ObjectGeometryDataConfig(
                 dataset_root="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/1018_peg_all",
                 version="v1",

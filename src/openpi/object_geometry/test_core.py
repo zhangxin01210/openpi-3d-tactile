@@ -48,7 +48,7 @@ def test_coordinate_transform_and_shape_validation() -> None:
     transform = _identity()
     transform[:3, 3] = [1.0, 2.0, 3.0]
     assert np.allclose(transform_points([[0.0, 0.0, 0.0]], transform), [[1.0, 2.0, 3.0]])
-    with pytest.raises(ValueError, match="shape \(N, 3\)"):
+    with pytest.raises(ValueError, match=r"shape \(N, 3\)"):
         PointCloud(np.zeros((2, 2), dtype=np.float32))
 
 

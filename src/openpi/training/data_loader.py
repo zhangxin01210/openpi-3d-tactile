@@ -362,7 +362,8 @@ def transform_dataset(dataset: Dataset, data_config: _config.DataConfig, *, skip
             _transforms.Normalize(norm_stats, use_quantiles=data_config.use_quantile_norm),
             *data_config.model_transforms.inputs,
         ],
-        preserve_keys=("spatial",) if data_config.spatial is not None or data_config.univtac_pointcloud is not None
+        preserve_keys=("spatial",) if data_config.spatial is not None or data_config.object_geometry is not None
+        or data_config.univtac_pointcloud is not None
         or (data_config.contactworld is not None and
             (data_config.contactworld.visual or data_config.contactworld.force)) else (),
     )

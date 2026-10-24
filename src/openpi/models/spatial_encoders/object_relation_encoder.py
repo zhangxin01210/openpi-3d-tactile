@@ -6,7 +6,8 @@ from flax import nnx
 import jax
 import jax.numpy as jnp
 
-from openpi.models.spatial_encoders.types import ObjectGeometryInput, TactileSpatialInput
+from openpi.models.spatial_encoders.types import ObjectGeometryInput
+from openpi.models.spatial_encoders.types import TactileSpatialInput
 
 
 class ObjectRelationEncoder(nnx.Module):
@@ -113,9 +114,9 @@ class ObjectRelationEncoder(nnx.Module):
         pairs = []
         masks = []
         pair_xyz = []
-        for role, (delta, src, smask, sage, sconf, dst, dmask, dage, dconf) in enumerate(
-            ((delta_mt, m, m_mask, m_age, m_conf, t_xyz, t_mask, t_age, t_conf),
-             (delta_tm, t, t_mask, t_age, t_conf, m_xyz, m_mask, m_age, m_conf))
+        for role, (delta, smask, sage, sconf, dmask, dage) in enumerate(
+            ((delta_mt, m_mask, m_age, m_conf, t_mask, t_age),
+             (delta_tm, t_mask, t_age, t_conf, m_mask, m_age))
         ):
             src_xyz = m_xyz if role == 0 else t_xyz
             dst_xyz = t_xyz if role == 0 else m_xyz
@@ -149,14 +150,16 @@ class ObjectRelationEncoder(nnx.Module):
         ).reshape(flat_mask.shape[0], -1)
         local_xyz = jnp.einsum("brqn,brnd->brqd", weights, candidate_xyz.reshape(candidate_xyz.shape[0], 2, -1, 3))
         local_xyz = local_xyz.reshape(local_xyz.shape[0], -1, 3)
-        m_valid = jnp.any(m_mask, axis=1); t_valid = jnp.any(t_mask, axis=1)
-        m_center = _masked_mean(m_xyz, m_mask); t_center = _masked_mean(t_xyz, t_mask)
+        # Keep the global description on the original point sets.  In
+        # particular, summaries over local anchors would give each region the
+        # same weight rather than each observed point the same weight.
+        m_center, m_source_mean, m_age_mean, m_conf_mean, m_coverage, m_valid = _global_statistics(manipulated)
+        t_center, t_source_mean, t_age_mean, t_conf_mean, t_coverage, t_valid = _global_statistics(target)
         global_feature = jnp.concatenate(
             [m_center, t_center, t_center - m_center, jnp.linalg.norm(t_center - m_center, axis=-1, keepdims=True),
-             jnp.mean(m_source, axis=1, keepdims=True), jnp.mean(t_source, axis=1, keepdims=True),
-             jnp.mean(m_age, axis=1, keepdims=True) / 10.0, jnp.mean(t_age, axis=1, keepdims=True) / 10.0,
-             jnp.mean(m_conf, axis=1, keepdims=True), jnp.mean(t_conf, axis=1, keepdims=True),
-             jnp.mean(m_mask, axis=1, keepdims=True), jnp.mean(t_mask, axis=1, keepdims=True)], axis=-1
+             m_source_mean, t_source_mean,
+             m_age_mean / 10.0, t_age_mean / 10.0,
+             m_conf_mean, t_conf_mean, m_coverage, t_coverage], axis=-1
         )
         global_token = _apply_mlp(self.oo_global_layers, global_feature)[:, None, :]
         global_mask = (m_valid & t_valid)[:, None]
@@ -170,26 +173,107 @@ class ObjectRelationEncoder(nnx.Module):
 
 
 def _finite_geometry(xyz, mask, source, age, confidence):
-    finite = jnp.isfinite(xyz).all(axis=-1) & jnp.isfinite(confidence)
-    return xyz.astype(jnp.float32), mask.astype(jnp.bool_) & finite, source.astype(jnp.float32), age.astype(jnp.float32), confidence.astype(jnp.float32)
+    xyz = xyz.astype(jnp.float32)
+    source = source.astype(jnp.float32)
+    age = age.astype(jnp.float32)
+    confidence = confidence.astype(jnp.float32)
+    finite = (
+        jnp.isfinite(xyz).all(axis=-1)
+        & jnp.isfinite(source)
+        & jnp.isfinite(age)
+        & jnp.isfinite(confidence)
+    )
+    # Multiplication by a false mask does not neutralize NaNs.  Normalize
+    # malformed/inactive values here so they cannot poison reductions before
+    # their mask is consulted.
+    xyz = jnp.where(finite[..., None], xyz, 0.0)
+    source = jnp.where(finite, source, 0.0)
+    age = jnp.where(finite, age, 0.0)
+    confidence = jnp.where(finite, confidence, 0.0)
+    return xyz, mask.astype(jnp.bool_) & finite, source, age, confidence
 
 
 def _local_anchors(geometry, count):
+    """Pool valid points into deterministic, spatial FPS regions.
+
+    Array position is deliberately never used as a region identifier: anchors
+    are selected with masked farthest-point sampling, then every valid point is
+    assigned to its nearest selected anchor.  The first FPS anchor is the
+    lexicographically smallest valid point, which gives a stable geometric
+    origin instead of depending on input point order.
+    """
     xyz, mask, source, age, confidence = geometry
-    n = xyz.shape[1]
-    ids = jnp.minimum(jnp.arange(n) * count // n, count - 1)
-    parts = []
-    for index in range(count):
-        valid = mask & (ids[None, :] == index)
-        denom = jnp.maximum(jnp.sum(valid, axis=1, keepdims=True), 1)
-        parts.append((jnp.sum(xyz * valid[..., None], axis=1) / denom, jnp.any(valid, axis=1)))
-    centers = jnp.stack([part[0] for part in parts], axis=1)
-    valid = jnp.stack([part[1] for part in parts], axis=1)
-    # Deterministic chunk summaries for provenance fields.
-    summary = []
-    for values in (source, age, confidence):
-        summary.append(jnp.stack([_masked_mean(values[:, :, None], mask & (ids[None, :] == index))[:, 0] for index in range(count)], axis=1))
-    return centers, valid, *summary
+    anchor_xyz, anchor_mask = _masked_fps_anchors(xyz, mask, count)
+
+    distances = jnp.sum((xyz[:, :, None, :] - anchor_xyz[:, None, :, :]) ** 2, axis=-1)
+    distances = jnp.where(anchor_mask[:, None, :], distances, jnp.asarray(jnp.inf, distances.dtype))
+    nearest_anchor = jnp.argmin(distances, axis=-1)
+    regions = (
+        mask[:, :, None]
+        & anchor_mask[:, None, :]
+        & (nearest_anchor[:, :, None] == jnp.arange(count)[None, None, :])
+    )
+    counts = jnp.sum(regions, axis=1)
+    denom = jnp.maximum(counts, 1).astype(jnp.float32)
+    weights = regions.astype(jnp.float32)
+    centers = jnp.einsum("bnk,bnd->bkd", weights, xyz) / denom[..., None]
+    valid = counts > 0
+    summaries = tuple(
+        jnp.sum(weights * values[:, :, None], axis=1) / denom
+        for values in (source, age, confidence)
+    )
+    return centers, valid, *summaries
+
+
+def _masked_fps_anchors(xyz, mask, count):
+    """Select up to ``count`` unique valid points with order-stable FPS."""
+    batch_size, point_count, _ = xyz.shape
+    # lexsort keys are listed from least to most significant.  Invalid points
+    # sort after any finite valid point.
+    sort_xyz = jnp.where(mask[..., None], xyz, jnp.asarray(jnp.inf, xyz.dtype))
+    first_indices = jnp.lexsort((sort_xyz[..., 2], sort_xyz[..., 1], sort_xyz[..., 0]), axis=-1)[:, 0]
+    first_valid = jnp.any(mask, axis=1)
+
+    def gather(values, indices):
+        return jnp.take_along_axis(values, indices[:, None, None], axis=1)[:, 0, :]
+
+    first_anchor = gather(xyz, first_indices)
+    selected = jax.nn.one_hot(first_indices, point_count, dtype=jnp.bool_) & first_valid[:, None]
+    min_distance = jnp.sum((xyz - first_anchor[:, None, :]) ** 2, axis=-1)
+    anchors = [jnp.where(first_valid[:, None], first_anchor, 0.0)]
+    valid = [first_valid]
+
+    for _ in range(1, count):
+        available = mask & ~selected
+        has_candidate = jnp.any(available, axis=1)
+        candidate_distances = jnp.where(
+            available,
+            min_distance,
+            jnp.asarray(-jnp.inf, min_distance.dtype),
+        )
+        indices = jnp.argmax(candidate_distances, axis=1)
+        anchor = gather(xyz, indices)
+        anchors.append(jnp.where(has_candidate[:, None], anchor, 0.0))
+        valid.append(has_candidate)
+        selected = selected | (jax.nn.one_hot(indices, point_count, dtype=jnp.bool_) & has_candidate[:, None])
+        distance = jnp.sum((xyz - anchor[:, None, :]) ** 2, axis=-1)
+        min_distance = jnp.where(has_candidate[:, None], jnp.minimum(min_distance, distance), min_distance)
+
+    return jnp.stack(anchors, axis=1), jnp.stack(valid, axis=1)
+
+
+def _global_statistics(geometry):
+    """Masked point-wise global statistics with finite empty-object output."""
+    xyz, mask, source, age, confidence = geometry
+    count = jnp.sum(mask, axis=1, keepdims=True).astype(jnp.float32)
+    denom = jnp.maximum(count, 1.0)
+    weights = mask.astype(jnp.float32)
+    center = jnp.sum(xyz * weights[..., None], axis=1) / denom
+    source_mean = jnp.sum(source * weights, axis=1, keepdims=True) / denom
+    age_mean = jnp.sum(age * weights, axis=1, keepdims=True) / denom
+    confidence_mean = jnp.sum(confidence * weights, axis=1, keepdims=True) / denom
+    coverage = count / float(mask.shape[1])
+    return center, source_mean, age_mean, confidence_mean, coverage, count[:, 0] > 0
 
 
 def _masked_mean(values, mask):
