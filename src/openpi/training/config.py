@@ -128,7 +128,7 @@ class SpatialDataConfig:
 
 @dataclasses.dataclass(frozen=True)
 class ObjectGeometryDataConfig:
-    """Optional object_geometry/v1 sidecar joined after the spatial sidecar."""
+    """Optional object_geometry/<version> sidecar joined after the spatial sidecar."""
 
     dataset_root: str
     version: str = "v1"
@@ -2180,7 +2180,9 @@ _CONFIGS.append(
             _structured_suffix_front_base.data,
             object_geometry=ObjectGeometryDataConfig(
                 dataset_root="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/1018_peg_all",
-                version="v1",
+                # Keep the calibrated training geometry separate from the
+                # older unprofiled Level-1 prototype sidecar.
+                version=FRONT_SPATIAL_VERSION,
             ),
         ),
     )

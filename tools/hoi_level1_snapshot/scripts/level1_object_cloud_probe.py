@@ -162,13 +162,10 @@ def _fullmask_to_rgb(mask_path: Path, rgb_hw: tuple[int,int], *, crop_file: Path
 
 def _make_calibration(repo: Path, profile: Path | None):
     sys.path.insert(0,str(repo/'src'))
-    from openpi.spatial.config import make_baseline_config
+    from openpi.object_geometry.calibration import make_front_geometry_config
     from openpi.spatial.calibration import load_camera_calibrations
     from openpi.spatial.geometry import apply_diagnostic_overrides
-    cfg = make_baseline_config().with_camera_roles('front')
-    if profile is not None:
-        from openpi.spatial.calibration_profile import apply_front_calibration_profile
-        cfg = apply_front_calibration_profile(cfg,profile)
+    cfg, _ = make_front_geometry_config(repo, profile)
     bundle = load_camera_calibrations(repo_root=repo,calibration_config=cfg.calibration,
                                        camera_roles=cfg.visual.camera_roles)
     # build_visual_geometry() applies diagnostic overrides, so follow it here.

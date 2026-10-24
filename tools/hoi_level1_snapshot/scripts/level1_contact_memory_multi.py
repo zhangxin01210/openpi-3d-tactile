@@ -205,6 +205,16 @@ def load_clouds(input_dir: Path) -> dict[int, dict]:
     return result
 
 
+def sequence_report_for_clouds(cloud_dir: Path) -> Path:
+    """Map the coexistence-safe cloud directory name to its build report."""
+    if cloud_dir.name == 'cloud_frames':
+        return cloud_dir.parent / 'sequence_report.json'
+    prefix = 'cloud_frames_'
+    if cloud_dir.name.startswith(prefix):
+        return cloud_dir.parent / f'sequence_report_{cloud_dir.name[len(prefix):]}.json'
+    raise ValueError(f'Cannot infer sequence report from cloud directory: {cloud_dir}')
+
+
 def compact(points: np.ndarray, limit: int = 1000) -> list:
     p = as_points(points)
     if len(p) > limit:
@@ -330,15 +340,54 @@ get('focus').onclick=()=>{focus=true;draw()};get('all').onclick=()=>{focus=false
 
 def run(args):
     import cv2
-    sys.path.insert(0, str(args.repo.resolve() / 'src'))
+    repo = args.repo.resolve()
+    sys.path.insert(0, str(repo / 'src'))
+    # The formal path is versioned in this checkout; do not silently pick an
+    # older helper copied into the external HOI workspace.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.path.insert(0, str(HOI / 'scripts'))
-    from openpi.spatial.config import make_baseline_config
+    from openpi.object_geometry.calibration import calibration_provenance_error
+    from openpi.object_geometry.calibration import front_calibration_provenance
+    from openpi.object_geometry.calibration import resolve_front_calibration_profile
     from openpi.spatial.preprocess import SpatialPreprocessor
     from openpi.spatial.kinematics import joint_positions_from_state
     import level1_object_cloud_probe as cloud_common
     from plotly.offline import get_plotlyjs
 
     cloud_dir = Path(args.input_dir)
+    profile = (
+        resolve_front_calibration_profile(repo, args.front_calibration_profile)
+        if args.front_calibration_profile is not None else None
+    )
+    if profile is not None and args.run_name == 'abc_v1':
+        raise ValueError(
+            'Formal profiled memory requires a new --run-name (for example '
+            'abc_v1_front_candidate_stride1); refusing to reuse abc_v1.'
+        )
+    source_report_path = (
+        Path(args.source_sequence_report)
+        if args.source_sequence_report is not None else sequence_report_for_clouds(cloud_dir)
+    )
+    source_report = None
+    if source_report_path.is_file():
+        source_report = json.loads(source_report_path.read_text(encoding='utf8'))
+    if profile is not None:
+        if source_report is None:
+            raise FileNotFoundError(
+                f'Formal memory requires the stride=1 cloud report: {source_report_path}'
+            )
+        cfg_for_check, _ = cloud_common._make_calibration(repo, profile)
+        expected_calibration = front_calibration_provenance(repo, profile, config=cfg_for_check)
+        mismatch = calibration_provenance_error(source_report.get('calibration'), expected_calibration)
+        if mismatch:
+            raise ValueError(f'Source cloud report is incompatible: {mismatch}')
+        if int(source_report.get('stride', -1)) != 1:
+            raise ValueError('Formal memory requires stride=1 source clouds')
+    elif source_report is not None and source_report.get('calibration', {}).get('calibration_mode') == 'profile':
+        raise ValueError(
+            'Source clouds were built with a front profile; pass the same '
+            '--front-calibration-profile for mask association.'
+        )
     clouds = load_clouds(cloud_dir)
     frame_ids = sorted(clouds)
     output = Path(args.output_root) / args.run_name
@@ -348,11 +397,12 @@ def run(args):
     if not masks_dir.is_dir():
         raise FileNotFoundError(f'Funnel SAM2 mask dir missing: {masks_dir}')
     print(f'[LOAD] {len(frame_ids)} frame clouds from {cloud_dir}', flush=True)
-    states = read_states(args.repo, args.dataset, frame_ids, args.episode)
+    states = read_states(repo, args.dataset, frame_ids, args.episode)
     overlays = load_previous_overlays(Path(args.source_html)) if not args.no_rgb else {}
     print(f'[RGB] Reused {len(overlays)} previously exported overlay frames', flush=True)
-    cfg, cam = cloud_common._make_calibration(args.repo, None)
-    prep = SpatialPreprocessor.from_repo_root(repo_root=args.repo, config=make_baseline_config().with_camera_roles('front'))
+    cfg, cam = cloud_common._make_calibration(repo, profile)
+    calibration = front_calibration_provenance(repo, profile, config=cfg)
+    prep = SpatialPreprocessor.from_repo_root(repo_root=repo, config=cfg)
     if args.palm_link not in prep.kinematics.links:
         raise ValueError(f'Invalid --palm-link {args.palm_link}, absent in URDF')
 
@@ -580,7 +630,11 @@ def run(args):
                   f'asso={extra["n_assoc"]} B={len(B_funnel)} C={len(anchors)}', flush=True)
 
     # Save report/HTML last, with explicit metadata/assumptions for downstream code.
-    manifest = dict(schema_version=1,source_cloud_frames=str(cloud_dir),episode=args.episode,
+    manifest = dict(schema_version=1,source_cloud_frames=str(cloud_dir),
+        source_cloud_run=cloud_dir.name,
+        source_sequence_report=str(source_report_path) if source_report is not None else None,
+        source_calibration=source_report.get('calibration') if source_report is not None else None,
+        calibration=calibration,episode=args.episode,
         output_frames=str(output/'frames'),frame_count=len(frame_ids),
         params={k:(str(v) if isinstance(v,Path) else v) for k,v in vars(args).items()},
         semantic_notes=[
@@ -608,6 +662,10 @@ def main():
     a.add_argument('--output-root',type=Path,default=None)
     a.add_argument('--input-dir',type=Path,default=None)
     a.add_argument('--source-html',type=Path,default=None)
+    a.add_argument('--source-sequence-report',type=Path,default=None,
+                   help='Build report for --input-dir; inferred from cloud_frames_<run-name> when omitted')
+    a.add_argument('--front-calibration-profile',type=Path,default=None,
+                   help='Required when consuming formal profiled stride=1 clouds')
     a.add_argument('--no-rgb',action='store_true',help='Skip extracting the prior RGB+mask overlays')
     a.add_argument('--run-name',default='abc_v1')
     a.add_argument('--palm-link',default='right_hand_link')

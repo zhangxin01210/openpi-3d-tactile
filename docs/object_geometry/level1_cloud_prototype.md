@@ -32,7 +32,13 @@ derives the funnel clicks from the existing e0 funnel mask.
 Prototype outputs are under `/workspace/mnt/sqzhang26/hoi/outputs`, including
 `level1_sequence_e<ID>` directories and the all-70 preview contact sheet. They
 are intentionally not committed. Visualization builds used stride 3; formal
-training export must eventually use stride 1.
+training export uses stride 1 plus
+`configs/ur7e_xhand/front_calibration_candidate.json`. It writes the separate
+`cloud_frames_front_candidate_stride1` and
+`abc_v1_front_candidate_stride1` directories, so existing `cloud_frames` and
+`abc_v1` (including e23's old 468-frame prototype) remain untouched. A fixed
+translation is not a valid migration: the formal profile also changes the
+front color intrinsics used for RGB-mask association.
 
 Level-1 A is current RGB-D depth projected under reviewed object masks. B is
 strictly causal history: manipulated-object history is propagated in hand-local

@@ -26,7 +26,7 @@ def test_relational_config_derives_only_from_front_baseline() -> None:
     assert relational.model.encoder.enable_object_relations
     assert replace(relational.model.encoder, enable_object_relations=False) == baseline.model.encoder
     assert relational.data.object_geometry is not None
-    assert relational.data.object_geometry.version == "v1"
+    assert relational.data.object_geometry.version == baseline.data.spatial.version
     assert replace(relational.data, object_geometry=None) == baseline.data
 
     observation_spec, _ = relational.model.inputs_spec(batch_size=2)

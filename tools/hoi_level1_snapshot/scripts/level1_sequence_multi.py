@@ -25,6 +25,9 @@ COLORS = {'funnel':(245,138,39),'target_flask':(156,81,245)} # RGB
 
 def imports(repo:Path):
     sys.path.insert(0,str(repo/'src'))
+    # Formal generation must use the versioned helper beside this script, not
+    # an older copied helper under the external HOI workspace.
+    sys.path.insert(0,str(Path(__file__).resolve().parent))
     sys.path.insert(0,str(HOI/'scripts'))
     from openpi.spatial_dataset.source import RawSpatialDataset
     import level1_object_cloud_probe as common
@@ -215,6 +218,8 @@ for(let key in checks)checks[key].onchange=draw;document.querySelector('#focus')
 def build(args):
     import cv2
     Reader,common=imports(Path(args.repo))
+    from openpi.object_geometry.calibration import front_calibration_provenance
+    from openpi.object_geometry.calibration import resolve_front_calibration_profile
     from openpi.spatial.preprocess import SpatialPreprocessor
     from plotly.offline import get_plotlyjs
     root=Path(args.output)
@@ -239,11 +244,26 @@ def build(args):
                 mask_sha.update(path.read_bytes())
         if mask_sha.hexdigest()!=report_meta['masks_sha256']:
             raise RuntimeError('Mask bytes changed since tracking; revalidate and review before building')
+    if args.stride == 1 and args.front_calibration_profile is None:
+        raise ValueError(
+            'Formal stride=1 geometry requires --front-calibration-profile; '
+            'refusing to create an unprofiled training source.'
+        )
+    if args.stride == 1 and args.run_name == 'default':
+        raise ValueError(
+            'Formal stride=1 geometry requires a new --run-name (for example '
+            'front_candidate_stride1); refusing to reuse cloud_frames.'
+        )
+    profile = (
+        resolve_front_calibration_profile(Path(args.repo), args.front_calibration_profile)
+        if args.front_calibration_profile is not None else None
+    )
     ds=Reader(args.dataset,episode=args.episode)
     available=sorted(int(x) for x in ds.states()['frame_index'])
     if not available:raise ValueError(f'episode {args.episode} has no states')
     selected=sorted(set(available[::args.stride])|({0,200,212,240,available[-1]}&set(available)))
-    cfg,cam=common._make_calibration(Path(args.repo),None)
+    cfg,cam=common._make_calibration(Path(args.repo),profile)
+    calibration=front_calibration_provenance(Path(args.repo),profile,config=cfg)
     prep=SpatialPreprocessor.from_repo_root(repo_root=Path(args.repo),config=cfg)
     frames3=root/('cloud_frames' if args.run_name=='default' else f'cloud_frames_{args.run_name}')
     if frames3.exists():raise FileExistsError(f'Will not overwrite {frames3}, choose another --output or back up/delete previous derivatives')
@@ -292,7 +312,15 @@ def build(args):
             report.append({'frame':fid,'tactile_force_p95':p95,'funnel_candidates':counts['funnel'],'target_flask_candidates':counts['target_flask'],'missing_mask':missing,'mask_depth_projected':masked_depth_counts,'mask_depth_outside_roi':outside_roi,'frame_npz':str(output_file.relative_to(root))})
             if len(items)%10==0 or fid==selected[-1]:print(f'[BUILD] {len(items)}/{len(selected)} | frame {fid} | funnel {counts["funnel"]} | flask {counts["target_flask"]}',flush=True)
         if not items:raise RuntimeError('No frames processed')
-        save_json(root/('sequence_report.json' if args.run_name=='default' else f'sequence_report_{args.run_name}.json'),{'schema_version':1,'episode':args.episode,'frames':report,'stride':args.stride,'dataset':str(args.dataset),'warning':'Candidate points are measured depths projected under RGB masks; transparent objects may include background. Neighboring candidate points are not contact ground truth.'})
+        save_json(root/('sequence_report.json' if args.run_name=='default' else f'sequence_report_{args.run_name}.json'),{
+            'schema_version':1,
+            'episode':args.episode,
+            'frames':report,
+            'stride':args.stride,
+            'dataset':str(args.dataset),
+            'calibration':calibration,
+            'warning':'Candidate points are measured depths projected under RGB masks; transparent objects may include background. Neighboring candidate points are not contact ground truth.'
+        })
         viewer=root/('sequence_3d.html' if args.run_name=='default' else f'sequence_3d_{args.run_name}.html')
         build_html(items,get_plotlyjs(),viewer)
         print('[DONE]',viewer,'size MB',round(viewer.stat().st_size/1e6,2))
@@ -312,6 +340,8 @@ def main():
     a=sub.add_parser('build',help='Read original RGB-D + two object masks; write per-frame point clouds and standalone 3D timeline')
     a.add_argument('--repo',type=Path,default=REPO);a.add_argument('--dataset',type=Path,default=DATASET);a.add_argument('--episode',type=int,default=0)
     a.add_argument('--output',type=Path,default=None);a.add_argument('--stride',type=int,default=3)
+    a.add_argument('--front-calibration-profile',type=Path,default=None,
+                   help='Required for formal stride=1 output; relative paths are resolved from --repo')
     a.add_argument('--display-points',type=int,default=1000);a.add_argument('--scene-points',type=int,default=1800)
     a.add_argument('--run-name',default='default',help='Different build outputs can coexist, e.g. full to export stride=1')
     a.set_defaults(fn=build)
