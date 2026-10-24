@@ -333,6 +333,22 @@ class TactileSceneRelationInput(Generic[ArrayT]):
     candidate_mask: ArrayT
 
 
+@struct.dataclass
+class ObjectGeometryInput(Generic[ArrayT]):
+    """Fixed-size Level-1 manipulated/target object geometry sidecar."""
+
+    manipulated_xyz_m: ArrayT
+    manipulated_mask: ArrayT
+    manipulated_source: ArrayT
+    manipulated_age: ArrayT
+    manipulated_confidence: ArrayT
+    target_xyz_m: ArrayT
+    target_mask: ArrayT
+    target_source: ArrayT
+    target_age: ArrayT
+    target_confidence: ArrayT
+
+
 # =============================================================================
 # 5. Encoder input
 # =============================================================================
@@ -378,6 +394,8 @@ class SpatialEncoderInput(
     contact_centered_tactile: ContactCenteredTactileInput[ArrayT] | None = None
 
     tactile_scene_relation: TactileSceneRelationInput[ArrayT] | None = None
+
+    object_geometry: ObjectGeometryInput[ArrayT] | None = None
 
 
 # =============================================================================

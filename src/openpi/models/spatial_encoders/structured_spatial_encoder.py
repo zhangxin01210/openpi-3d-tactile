@@ -23,6 +23,7 @@ import jax
 import jax.numpy as jnp
 
 from openpi.models.spatial_encoders.transforms import SpatialFeatureTransforms
+from openpi.models.spatial_encoders.object_relation_encoder import ObjectRelationEncoder
 from openpi.models.spatial_encoders.types import SpatialEncoderInput
 from openpi.models.spatial_encoders.types import SpatialEncoderOutput
 
@@ -47,6 +48,9 @@ class StructuredSpatialEncoderConfig:
     # while supplying its own tactile encoder.  Avoid allocating an unused
     # PointNet-style tactile branch in that case.
     enable_tactile: bool = True
+    enable_object_relations: bool = False
+    relation_candidate_k: int = 16
+    relation_hidden_dim: int = 128
 
     hidden_dim: int = 128
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
@@ -60,6 +64,8 @@ class StructuredSpatialEncoderConfig:
             "tactile_knn",
             "tactile_local_tokens_per_finger",
             "hidden_dim",
+            "relation_candidate_k",
+            "relation_hidden_dim",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be > 0")
@@ -78,6 +84,7 @@ class StructuredSpatialEncoderConfig:
             + 1
             + (self.num_fingers * (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
                if self.enable_tactile else 0)
+            + (14 if self.enable_object_relations else 0)
         )
 
 
@@ -118,8 +125,7 @@ class StructuredSpatialEncoder(nnx.Module):
                     rngs.params(),
                     (query_finger_count, config.tactile_local_tokens_per_finger, d),
                     dtype=jnp.float32,
-                )
-                * 0.02
+                ) * 0.02
             )
             self.tactile_summary_queries = None
             if config.tactile_summary_tokens_per_finger:
@@ -130,6 +136,13 @@ class StructuredSpatialEncoder(nnx.Module):
                         dtype=jnp.float32,
                     ) * 0.02
                 )
+        if config.enable_object_relations:
+            self.object_relation_encoder = ObjectRelationEncoder(
+                token_dim=d,
+                hidden_dim=config.relation_hidden_dim,
+                candidate_k=config.relation_candidate_k,
+                rngs=rngs,
+            )
 
     def __call__(self, inputs: SpatialEncoderInput) -> SpatialEncoderOutput:
         token_parts = []
@@ -158,6 +171,18 @@ class StructuredSpatialEncoder(nnx.Module):
             aux.update(tactile_aux)
         else:
             aux["tactile_token_count"] = jnp.zeros((batch_size,), dtype=jnp.int32)
+
+        if self.config.enable_object_relations:
+            if inputs.object_geometry is None:
+                raise ValueError("Object relations are enabled but object_geometry input is missing")
+            relation_tokens, relation_mask, relation_xyz, relation_aux = self.object_relation_encoder(
+                inputs.object_geometry,
+                inputs.tactile,
+            )
+            token_parts.append(relation_tokens)
+            mask_parts.append(relation_mask)
+            xyz_parts.append(relation_xyz)
+            aux.update(relation_aux)
 
         if not token_parts:
             raise ValueError("SpatialEncoderInput must contain visual and/or tactile input")

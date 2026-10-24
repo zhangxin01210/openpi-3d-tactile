@@ -192,11 +192,28 @@ class Observation(Generic[ArrayT]):
                     candidate_mask=relation_data["candidate_mask"],
                 )
 
+            object_data = spatial_data.get("object_geometry")
+            object_geometry = None
+            if object_data is not None:
+                object_geometry = _spatial_types.ObjectGeometryInput(
+                    manipulated_xyz_m=object_data["manipulated_xyz_m"],
+                    manipulated_mask=object_data["manipulated_mask"],
+                    manipulated_source=object_data["manipulated_source"],
+                    manipulated_age=object_data["manipulated_age"],
+                    manipulated_confidence=object_data["manipulated_confidence"],
+                    target_xyz_m=object_data["target_xyz_m"],
+                    target_mask=object_data["target_mask"],
+                    target_source=object_data["target_source"],
+                    target_age=object_data["target_age"],
+                    target_confidence=object_data["target_confidence"],
+                )
+
             spatial = _spatial_types.SpatialEncoderInput(
                 visual=visual,
                 tactile=tactile,
                 contact_centered_tactile=contact_centered_tactile,
                 tactile_scene_relation=tactile_scene_relation,
+                object_geometry=object_geometry,
             )
 
         return cls(

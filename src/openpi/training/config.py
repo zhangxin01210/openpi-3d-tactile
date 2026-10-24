@@ -127,6 +127,16 @@ class SpatialDataConfig:
 
 
 @dataclasses.dataclass(frozen=True)
+class ObjectGeometryDataConfig:
+    """Optional object_geometry/v1 sidecar joined after the spatial sidecar."""
+
+    dataset_root: str
+    version: str = "v1"
+    copy_arrays: bool = True
+    missing: str = "error"
+
+
+@dataclasses.dataclass(frozen=True)
 class UniVTACPointcloudDataConfig:
     """Visual-only world RGB-D join for the local UniVTAC LeRobot set."""
 
@@ -164,6 +174,7 @@ class DataConfig:
 
     # 可选 derived spatial sidecar；None 时保持 upstream OpenPI 行为不变。
     spatial: SpatialDataConfig | None = None
+    object_geometry: ObjectGeometryDataConfig | None = None
     univtac_pointcloud: UniVTACPointcloudDataConfig | None = None
     contactworld: ContactWorldSidecarConfig | None = None
 
@@ -268,6 +279,7 @@ class DataConfigFactory(abc.ABC):
     assets: AssetsConfig = dataclasses.field(default_factory=AssetsConfig)
     # 可选 derived spatial sidecar 配置。
     spatial: SpatialDataConfig | None = None
+    object_geometry: ObjectGeometryDataConfig | None = None
     # Base config that will be updated by the factory.
     base_config: tyro.conf.Suppress[DataConfig | None] = None
 
@@ -280,12 +292,14 @@ class DataConfigFactory(abc.ABC):
         asset_id = self.assets.asset_id or repo_id
         base_config = self.base_config or DataConfig()
         spatial = self.spatial if self.spatial is not None else base_config.spatial
+        object_geometry = self.object_geometry if self.object_geometry is not None else base_config.object_geometry
         return dataclasses.replace(
             base_config,
             repo_id=repo_id,
             asset_id=asset_id,
             norm_stats=self._load_norm_stats(epath.Path(self.assets.assets_dir or assets_dirs), asset_id),
             spatial=spatial,
+            object_geometry=object_geometry,
             use_quantile_norm=model_config.model_type != ModelType.PI0,
         )
 
@@ -2138,6 +2152,38 @@ _CONFIGS.extend([
                                   tactile_representation="map_coupled_matched",
                                   use_tactile_scene_relation=True),
 ])
+
+# Optional Level-1 HO/OO relation pilot.  The baseline structured suffix config
+# above remains unchanged; this derives a separate config and sidecar join.
+_structured_suffix_base = next(
+    config for config in _CONFIGS if config.name == "pi0_xhand_spatial_structured_suffix"
+)
+_relational_encoder = dataclasses.replace(
+    _structured_suffix_base.model.encoder,
+    enable_object_relations=True,
+)
+_relational_model = dataclasses.replace(
+    _structured_suffix_base.model,
+    encoder=_relational_encoder,
+)
+_CONFIGS.append(
+    dataclasses.replace(
+        _structured_suffix_base,
+        name="pi0_xhand_spatial_structured_suffix_front_relational",
+        model=_relational_model,
+        data=dataclasses.replace(
+            _structured_suffix_base.data,
+            spatial=dataclasses.replace(
+                _structured_suffix_base.data.spatial,
+                camera_roles=("front",),
+            ),
+            object_geometry=ObjectGeometryDataConfig(
+                dataset_root="/workspace/mnt/sqzhang26/openpi-3d-tactile/data/1018_peg_all",
+                version="v1",
+            ),
+        ),
+    )
+)
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")

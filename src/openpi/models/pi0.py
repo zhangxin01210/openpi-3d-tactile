@@ -429,6 +429,7 @@ class Pi0(_model.BaseModel):
                 if self.spatial_use_tactile
                 else None
             ),
+            object_geometry=obs.spatial.object_geometry,
         )
 
         return self.spatial_router(

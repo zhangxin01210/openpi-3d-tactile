@@ -307,6 +307,21 @@ def create_torch_dataset(
             use_visual=getattr(model_config, "use_visual", True),
             use_tactile=getattr(model_config, "use_tactile", True),
         )
+    if data_config.object_geometry is not None:
+        from openpi.object_geometry_dataset.adapter import ObjectGeometryAugmentedDataset
+        from openpi.object_geometry_dataset.derived import ObjectGeometryDerivedDataset
+
+        settings = data_config.object_geometry
+        object_geometry_dataset = ObjectGeometryDerivedDataset(
+            settings.dataset_root,
+            version=settings.version,
+        )
+        dataset = ObjectGeometryAugmentedDataset(
+            dataset,
+            object_geometry_dataset,
+            copy_arrays=settings.copy_arrays,
+            missing=settings.missing,
+        )
     return dataset
 
 
