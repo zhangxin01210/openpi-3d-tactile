@@ -1,4 +1,4 @@
-"""Small optional HO/OO relation-token encoder for Level-1 object geometry."""
+"""Optional legacy HO/OO and Hand-Scene relation tokens for Level-1 geometry."""
 
 from __future__ import annotations
 
@@ -11,30 +11,71 @@ from openpi.models.spatial_encoders.types import TactileSpatialInput
 
 
 class ObjectRelationEncoder(nnx.Module):
-    """Produce 5 hand-object and 9 object-object tokens at width ``token_dim``."""
+    """Small causal relation-token encoder for Level-1 object geometry.
+
+    ``legacy_ho_oo`` preserves the original five Hand-Object plus nine
+    Object-Object token layout.  ``hand_scene_v0`` instead emits five
+    Hand-Funnel and five Hand-Target tokens.  Keeping both layouts here makes
+    old relational checkpoints and the new data contract independently usable.
+    """
 
     NUM_FINGERS = 5
     NUM_LOCAL_OBJECT_ANCHORS = 8
     NUM_LOCAL_RELATION_TOKENS = 4
 
-    def __init__(self, *, token_dim: int, hidden_dim: int, candidate_k: int, rngs: nnx.Rngs) -> None:
+    def __init__(
+        self,
+        *,
+        token_dim: int,
+        hidden_dim: int,
+        candidate_k: int,
+        relation_mode: str = "legacy_ho_oo",
+        enable_funnel_mask_encoder: bool = False,
+        funnel_mask_size: int = 32,
+        rngs: nnx.Rngs,
+    ) -> None:
         self.token_dim = int(token_dim)
         self.candidate_k = int(candidate_k)
-        if self.token_dim <= 0 or hidden_dim <= 0 or self.candidate_k <= 0:
+        self.relation_mode = str(relation_mode)
+        self.enable_funnel_mask_encoder = bool(enable_funnel_mask_encoder)
+        self.funnel_mask_size = int(funnel_mask_size)
+        if self.token_dim <= 0 or hidden_dim <= 0 or self.candidate_k <= 0 or self.funnel_mask_size <= 0:
             raise ValueError("relation dimensions must be positive")
-        self.ho_layers = _make_mlp(7, (hidden_dim, self.token_dim), rngs)
+        if self.relation_mode not in {"legacy_ho_oo", "hand_scene_v0"}:
+            raise ValueError(f"Unsupported relation_mode: {self.relation_mode!r}")
+
+        # Hand-Scene adds one scalar geometry-quality feature.  The legacy
+        # branch deliberately retains its old dimensions and parameter names.
+        ho_input_dim = 7 if self.relation_mode == "legacy_ho_oo" else 8
+        self.ho_layers = _make_mlp(ho_input_dim, (hidden_dim, self.token_dim), rngs)
         self.ho_query = nnx.Param(jax.random.normal(rngs.params(), (self.NUM_FINGERS, self.token_dim)) * 0.02)
         self.ho_finger_embedding = nnx.Param(
             jax.random.normal(rngs.params(), (self.NUM_FINGERS, self.token_dim)) * 0.02
         )
-        self.oo_layers = _make_mlp(9, (hidden_dim, self.token_dim), rngs)
-        self.oo_query = nnx.Param(
-            jax.random.normal(
-                rngs.params(), (2, self.NUM_LOCAL_RELATION_TOKENS, self.token_dim)
-            ) * 0.02
-        )
-        self.oo_role_embedding = nnx.Param(jax.random.normal(rngs.params(), (2, self.token_dim)) * 0.02)
-        self.oo_global_layers = _make_mlp(18, (hidden_dim, self.token_dim), rngs)
+        if self.relation_mode == "legacy_ho_oo":
+            self.oo_layers = _make_mlp(9, (hidden_dim, self.token_dim), rngs)
+            self.oo_query = nnx.Param(
+                jax.random.normal(
+                    rngs.params(), (2, self.NUM_LOCAL_RELATION_TOKENS, self.token_dim)
+                ) * 0.02
+            )
+            self.oo_role_embedding = nnx.Param(jax.random.normal(rngs.params(), (2, self.token_dim)) * 0.02)
+            self.oo_global_layers = _make_mlp(18, (hidden_dim, self.token_dim), rngs)
+        else:
+            self.hand_scene_role_embedding = nnx.Param(
+                jax.random.normal(rngs.params(), (2, self.token_dim)) * 0.02
+            )
+            # [current force magnitude, stable reference, difference, short
+            # delta, contact-valid, finger-local xyz].  Magnitudes are
+            # coordinate invariant and never compare base-frame force vectors
+            # from different hand poses.
+            self.grasp_taxel_layers = _make_mlp(8, (hidden_dim, self.token_dim), rngs)
+            self.grasp_adapter = nnx.Linear(self.token_dim, self.token_dim, rngs=rngs)
+            self.grasp_gate = nnx.Linear(self.token_dim, 1, rngs=rngs)
+            if self.enable_funnel_mask_encoder:
+                # Eight current-frame shape/hand-offset moments keep this
+                # optional branch intentionally lightweight.
+                self.funnel_mask_layers = _make_mlp(8, (hidden_dim, self.token_dim), rngs)
 
     def __call__(
         self,
@@ -57,20 +98,62 @@ class ObjectRelationEncoder(nnx.Module):
             geometry.target_age,
             geometry.target_confidence,
         )
-        ho_tokens, ho_mask, ho_xyz, ho_weights = self._hand_object(manipulated, tactile)
-        oo_tokens, oo_mask, oo_xyz, oo_weights = self._object_object(manipulated, target)
-        tokens = jnp.concatenate([ho_tokens, oo_tokens], axis=1)
-        token_mask = jnp.concatenate([ho_mask, oo_mask], axis=1)
-        token_xyz = jnp.concatenate([ho_xyz, oo_xyz], axis=1)
+        if self.relation_mode == "legacy_ho_oo":
+            ho_tokens, ho_mask, ho_xyz, ho_weights = self._hand_object(manipulated, tactile)
+            oo_tokens, oo_mask, oo_xyz, oo_weights = self._object_object(manipulated, target)
+            tokens = jnp.concatenate([ho_tokens, oo_tokens], axis=1)
+            token_mask = jnp.concatenate([ho_mask, oo_mask], axis=1)
+            token_xyz = jnp.concatenate([ho_xyz, oo_xyz], axis=1)
+            aux = {
+                "object_relation_token_count": jnp.sum(token_mask, axis=1, dtype=jnp.int32),
+                "ho_attention_weights": ho_weights,
+                "oo_attention_weights": oo_weights,
+            }
+        else:
+            hand_scene = geometry.hand_scene
+            batch_size = geometry.manipulated_xyz_m.shape[0]
+            funnel_valid, target_valid, funnel_quality, target_quality = _hand_scene_relation_state(
+                hand_scene, batch_size
+            )
+            funnel_tokens, funnel_mask, funnel_xyz, funnel_weights = self._hand_object(
+                manipulated,
+                tactile,
+                relation_valid=funnel_valid,
+                geometry_quality=funnel_quality,
+            )
+            target_tokens, target_mask, target_xyz, target_weights = self._hand_object(
+                target,
+                tactile,
+                relation_valid=target_valid,
+                geometry_quality=target_quality,
+            )
+            funnel_tokens = funnel_tokens + self.hand_scene_role_embedding.value[None, 0, None, :]
+            target_tokens = target_tokens + self.hand_scene_role_embedding.value[None, 1, None, :]
+
+            grasp_descriptor, grasp_gate = self._grasp_descriptor(tactile, hand_scene)
+            # This is an adapter rather than a replacement: target geometry
+            # remains present when contact is weak or absent, while valid
+            # per-finger tactile evidence directly conditions every target
+            # relation token.
+            target_tokens = target_tokens + grasp_gate[..., None] * self.grasp_adapter(grasp_descriptor)
+            funnel_mask_embedding, funnel_mask_feature_valid = self._funnel_mask_embedding(hand_scene, batch_size)
+            funnel_tokens = funnel_tokens + funnel_mask_embedding[:, None, :]
+
+            tokens = jnp.concatenate([funnel_tokens, target_tokens], axis=1)
+            token_mask = jnp.concatenate([funnel_mask, target_mask], axis=1)
+            token_xyz = jnp.concatenate([funnel_xyz, target_xyz], axis=1)
+            aux = {
+                "object_relation_token_count": jnp.sum(token_mask, axis=1, dtype=jnp.int32),
+                "hand_funnel_attention_weights": funnel_weights,
+                "hand_target_attention_weights": target_weights,
+                "grasp_finger_gate": grasp_gate,
+                "funnel_mask_feature_valid": funnel_mask_feature_valid,
+            }
         tokens = jnp.where(token_mask[..., None], tokens, jnp.zeros_like(tokens))
         token_xyz = jnp.where(token_mask[..., None], token_xyz, jnp.zeros_like(token_xyz))
-        return tokens, token_mask, token_xyz, {
-            "object_relation_token_count": jnp.sum(token_mask, axis=1, dtype=jnp.int32),
-            "ho_attention_weights": ho_weights,
-            "oo_attention_weights": oo_weights,
-        }
+        return tokens, token_mask, token_xyz, aux
 
-    def _hand_object(self, manipulated, tactile):
+    def _hand_object(self, manipulated, tactile, *, relation_valid=None, geometry_quality=None):
         xyz, mask, source, age, confidence = manipulated
         tactile_mask = tactile.point_mask.astype(jnp.bool_)
         finger_id = tactile.finger_id.astype(jnp.int32)
@@ -92,17 +175,112 @@ class ObjectRelationEncoder(nnx.Module):
         candidate_confidence = _take_finger_values(confidence, indices)
         candidate_mask = anchor_valid[..., None] & _take_finger_values(mask, indices)
         delta = candidate_xyz - anchors[:, :, None, :]
-        feature = jnp.concatenate(
-            [delta, jnp.linalg.norm(delta, axis=-1, keepdims=True), candidate_source[..., None],
-             candidate_age[..., None] / 10.0, candidate_confidence[..., None]], axis=-1
-        )
+        feature_parts = [
+            delta,
+            jnp.linalg.norm(delta, axis=-1, keepdims=True),
+            candidate_source[..., None],
+            candidate_age[..., None] / 10.0,
+            candidate_confidence[..., None],
+        ]
+        if self.relation_mode == "hand_scene_v0":
+            assert relation_valid is not None
+            assert geometry_quality is not None
+            finite_quality = jnp.where(jnp.isfinite(geometry_quality), geometry_quality, 0.0)
+            finite_quality = jnp.clip(finite_quality.astype(jnp.float32), 0.0, 1.0)
+            candidate_mask = candidate_mask & relation_valid[:, None, None] & (finite_quality[:, None, None] > 0.0)
+            feature_parts.append(jnp.broadcast_to(finite_quality[:, None, None, None], delta.shape[:-1] + (1,)))
+        feature = jnp.concatenate(feature_parts, axis=-1)
         embedded = _apply_mlp(self.ho_layers, feature)
         logits = jnp.einsum("bfkd,fd->bfk", embedded, self.ho_query.value)
         weights = _masked_softmax(logits, candidate_mask)
         tokens = jnp.einsum("bfk,bfkd->bfd", weights, embedded) + self.ho_finger_embedding.value[None, :, :]
         token_mask = jnp.any(candidate_mask, axis=-1)
         token_xyz = jnp.einsum("bfk,bfkd->bfd", weights, candidate_xyz)
+        if self.relation_mode == "hand_scene_v0":
+            tokens = tokens * finite_quality[:, None, None]
         return tokens, token_mask, token_xyz, weights
+
+    def _grasp_descriptor(self, tactile, hand_scene):
+        """Causally pool current/reference tactile force per finger."""
+        batch_size, _, _ = tactile.xyz_m.shape
+        if hand_scene is None:
+            zeros = jnp.zeros((batch_size, self.NUM_FINGERS, self.token_dim), dtype=jnp.float32)
+            return zeros, jnp.zeros((batch_size, self.NUM_FINGERS), dtype=jnp.float32)
+
+        force = jnp.where(jnp.isfinite(tactile.force), tactile.force, 0.0).astype(jnp.float32)
+        current = jnp.linalg.norm(force, axis=-1)
+        reference = jnp.where(
+            jnp.isfinite(hand_scene.grasp_reference_force_norm), hand_scene.grasp_reference_force_norm, 0.0
+        ).astype(jnp.float32)
+        short_delta = jnp.where(
+            jnp.isfinite(hand_scene.grasp_short_delta_force_norm), hand_scene.grasp_short_delta_force_norm, 0.0
+        ).astype(jnp.float32)
+        contact_valid = (
+            tactile.point_mask.astype(jnp.bool_)
+            & hand_scene.grasp_contact_valid.astype(jnp.bool_)
+        )
+        finger_id = tactile.finger_id.astype(jnp.int32)
+        safe_xyz = jnp.where(jnp.isfinite(tactile.xyz_m), tactile.xyz_m, 0.0).astype(jnp.float32)
+        descriptors, gates = [], []
+        grasp_quality = jnp.where(jnp.isfinite(hand_scene.grasp_quality), hand_scene.grasp_quality, 0.0)
+        grasp_quality = jnp.clip(grasp_quality.astype(jnp.float32), 0.0, 1.0)
+        for finger in range(self.NUM_FINGERS):
+            finger_mask = contact_valid & (finger_id == finger)
+            count = jnp.sum(finger_mask, axis=1, keepdims=True).astype(jnp.float32)
+            center = jnp.sum(safe_xyz * finger_mask[..., None], axis=1) / jnp.maximum(count, 1.0)
+            local_xyz = safe_xyz - center[:, None, :]
+            feature = jnp.concatenate(
+                [
+                    current[..., None],
+                    reference[..., None],
+                    (current - reference)[..., None],
+                    short_delta[..., None],
+                    finger_mask.astype(jnp.float32)[..., None],
+                    local_xyz,
+                ],
+                axis=-1,
+            )
+            encoded = _apply_mlp(self.grasp_taxel_layers, feature)
+            descriptor = _masked_mean(encoded, finger_mask)
+            has_contact = count[:, 0] > 0
+            descriptor = jnp.where(has_contact[:, None], descriptor, 0.0)
+            gate = jax.nn.sigmoid(self.grasp_gate(descriptor)[..., 0])
+            gates.append(gate * has_contact.astype(jnp.float32) * grasp_quality)
+            descriptors.append(descriptor * grasp_quality[:, None])
+        return jnp.stack(descriptors, axis=1), jnp.stack(gates, axis=1)
+
+    def _funnel_mask_embedding(self, hand_scene, batch_size):
+        """Encode a current-frame mask without making it required for training."""
+        zeros = jnp.zeros((batch_size, self.token_dim), dtype=jnp.float32)
+        invalid = jnp.zeros((batch_size,), dtype=jnp.bool_)
+        if not self.enable_funnel_mask_encoder or hand_scene is None:
+            return zeros, invalid
+        mask = hand_scene.funnel_mask.astype(jnp.bool_)
+        height, width = mask.shape[-2:]
+        y = jnp.linspace(-1.0, 1.0, height, dtype=jnp.float32)[None, :, None]
+        x = jnp.linspace(-1.0, 1.0, width, dtype=jnp.float32)[None, None, :]
+        weights = mask.astype(jnp.float32)
+        count = jnp.sum(weights, axis=(1, 2))
+        denom = jnp.maximum(count, 1.0)
+        mean_x = jnp.sum(weights * x, axis=(1, 2)) / denom
+        mean_y = jnp.sum(weights * y, axis=(1, 2)) / denom
+        std_x = jnp.sqrt(jnp.sum(weights * (x - mean_x[:, None, None]) ** 2, axis=(1, 2)) / denom)
+        std_y = jnp.sqrt(jnp.sum(weights * (y - mean_y[:, None, None]) ** 2, axis=(1, 2)) / denom)
+        quality = jnp.where(jnp.isfinite(hand_scene.funnel_mask_quality), hand_scene.funnel_mask_quality, 0.0)
+        quality = jnp.clip(quality.astype(jnp.float32), 0.0, 1.0)
+        hand_offset = jnp.where(
+            jnp.isfinite(hand_scene.funnel_mask_hand_offset_xy), hand_scene.funnel_mask_hand_offset_xy, 0.0
+        ).astype(jnp.float32)
+        valid = hand_scene.funnel_mask_valid.astype(jnp.bool_) & (count > 0) & (quality > 0.0)
+        features = jnp.stack(
+            [
+                count / float(height * width), mean_x, mean_y, std_x, std_y, quality,
+                hand_offset[:, 0], hand_offset[:, 1],
+            ],
+            axis=-1,
+        )
+        encoded = _apply_mlp(self.funnel_mask_layers, features) * quality[:, None]
+        return jnp.where(valid[:, None], encoded, 0.0), valid
 
     def _object_object(self, manipulated, target):
         m = _local_anchors(manipulated, self.NUM_LOCAL_OBJECT_ANCHORS)
@@ -170,6 +348,31 @@ class ObjectRelationEncoder(nnx.Module):
             jnp.concatenate([local_xyz, global_xyz], axis=1),
             weights,
         )
+
+
+def _hand_scene_relation_state(hand_scene, batch_size):
+    """Return safe current-frame relation state; absent means explicitly invalid.
+
+    In particular, this never falls back to treating the manipulated cloud as
+    hand-attached.  The causal sidecar producer is the only authority that can
+    state a Hand-Funnel relation remains valid after a lift.
+    """
+    if hand_scene is None:
+        zeros_bool = jnp.zeros((batch_size,), dtype=jnp.bool_)
+        zeros_float = jnp.zeros((batch_size,), dtype=jnp.float32)
+        return zeros_bool, zeros_bool, zeros_float, zeros_float
+    funnel_quality = jnp.where(
+        jnp.isfinite(hand_scene.manipulated_geometry_quality), hand_scene.manipulated_geometry_quality, 0.0
+    )
+    target_quality = jnp.where(
+        jnp.isfinite(hand_scene.target_geometry_quality), hand_scene.target_geometry_quality, 0.0
+    )
+    return (
+        hand_scene.manipulated_relation_valid.astype(jnp.bool_),
+        hand_scene.target_relation_valid.astype(jnp.bool_),
+        jnp.clip(funnel_quality.astype(jnp.float32), 0.0, 1.0),
+        jnp.clip(target_quality.astype(jnp.float32), 0.0, 1.0),
+    )
 
 
 def _finite_geometry(xyz, mask, source, age, confidence):

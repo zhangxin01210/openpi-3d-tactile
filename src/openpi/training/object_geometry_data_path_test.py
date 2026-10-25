@@ -26,6 +26,23 @@ def _geometry(batch_size: int = 1) -> dict[str, np.ndarray]:
     return fields
 
 
+def _hand_scene(batch_size: int = 1) -> dict[str, np.ndarray]:
+    return {
+        "manipulated_relation_valid": np.ones((batch_size,), dtype=bool),
+        "target_relation_valid": np.ones((batch_size,), dtype=bool),
+        "manipulated_geometry_quality": np.ones((batch_size,), dtype=np.float32),
+        "target_geometry_quality": np.full((batch_size,), 0.5, dtype=np.float32),
+        "grasp_reference_force_norm": np.zeros((batch_size, 600), dtype=np.float32),
+        "grasp_short_delta_force_norm": np.zeros((batch_size, 600), dtype=np.float32),
+        "grasp_contact_valid": np.zeros((batch_size, 600), dtype=bool),
+        "grasp_quality": np.zeros((batch_size,), dtype=np.float32),
+        "funnel_mask": np.zeros((batch_size, 32, 32), dtype=bool),
+        "funnel_mask_valid": np.zeros((batch_size,), dtype=bool),
+        "funnel_mask_quality": np.zeros((batch_size,), dtype=np.float32),
+        "funnel_mask_hand_offset_xy": np.zeros((batch_size, 2), dtype=np.float32),
+    }
+
+
 def test_object_geometry_only_sidecar_survives_transforms() -> None:
     raw = [{"state": np.array([1.0], dtype=np.float32), "spatial": {"object_geometry": _geometry(1)}}]
     config = DataConfig(
@@ -69,3 +86,21 @@ def test_observation_and_pi0_handoff_keep_object_geometry() -> None:
     encoded = Pi0._encode_spatial_conditioning(harness, observation)  # noqa: SLF001 - exercise the integration seam.
     assert encoded is harness.spatial_router.last_input
     assert encoded.object_geometry is observation.spatial.object_geometry
+
+
+def test_observation_constructs_optional_hand_scene_contract() -> None:
+    geometry = _geometry()
+    geometry["hand_scene"] = _hand_scene()
+    data = {
+        "image": {"base_0_rgb": np.zeros((1, 2, 2, 3), dtype=np.uint8)},
+        "image_mask": {"base_0_rgb": np.ones((1,), dtype=bool)},
+        "state": np.zeros((1, 18), dtype=np.float32),
+        "spatial": {"object_geometry": geometry},
+    }
+    observation = Observation.from_dict(data)
+    assert observation.spatial is not None
+    assert observation.spatial.object_geometry is not None
+    hand_scene = observation.spatial.object_geometry.hand_scene
+    assert hand_scene is not None
+    assert hand_scene.grasp_reference_force_norm.shape == (1, 600)
+    assert hand_scene.funnel_mask_hand_offset_xy.shape == (1, 2)

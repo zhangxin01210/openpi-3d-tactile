@@ -118,6 +118,7 @@ from openpi.models.spatial_encoders.structured_spatial_encoder import (
     StructuredSpatialEncoderConfig,
 )
 from openpi.models.spatial_encoders.types import (
+    HandSceneInput,
     ObjectGeometryInput,
     SpatialEncoderInput,
     TactileSpatialInput,
@@ -452,6 +453,29 @@ class StructuredSpatialPi0Config(
         # object_geometry/v1 is a fixed 512-point sidecar.  Advertising it in
         # the model spec prevents batching/sharding code from treating the
         # relation branch input as an unexpected field.
+        hand_scene = None
+        if self.encoder.object_relation_mode == "hand_scene_v0":
+            # v1_hand_scene keeps history-derived quantities in taxel force
+            # magnitude space and presents a current-frame 32x32 funnel mask.
+            # It is nested so older object_geometry sidecars remain valid for
+            # the legacy HO/OO branch.
+            hand_scene = HandSceneInput(
+                manipulated_relation_valid=jax.ShapeDtypeStruct((batch_size,), jnp.bool_),
+                target_relation_valid=jax.ShapeDtypeStruct((batch_size,), jnp.bool_),
+                manipulated_geometry_quality=jax.ShapeDtypeStruct((batch_size,), jnp.float32),
+                target_geometry_quality=jax.ShapeDtypeStruct((batch_size,), jnp.float32),
+                grasp_reference_force_norm=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.float32),
+                grasp_short_delta_force_norm=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.float32),
+                grasp_contact_valid=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.bool_),
+                grasp_quality=jax.ShapeDtypeStruct((batch_size,), jnp.float32),
+                funnel_mask=jax.ShapeDtypeStruct(
+                    (batch_size, self.encoder.hand_scene_funnel_mask_size, self.encoder.hand_scene_funnel_mask_size),
+                    jnp.bool_,
+                ),
+                funnel_mask_valid=jax.ShapeDtypeStruct((batch_size,), jnp.bool_),
+                funnel_mask_quality=jax.ShapeDtypeStruct((batch_size,), jnp.float32),
+                funnel_mask_hand_offset_xy=jax.ShapeDtypeStruct((batch_size, 2), jnp.float32),
+            )
         object_geometry = ObjectGeometryInput(
             manipulated_xyz_m=jax.ShapeDtypeStruct((batch_size, 512, 3), jnp.float32),
             manipulated_mask=jax.ShapeDtypeStruct((batch_size, 512), jnp.bool_),
@@ -463,6 +487,7 @@ class StructuredSpatialPi0Config(
             target_source=jax.ShapeDtypeStruct((batch_size, 512), jnp.int8),
             target_age=jax.ShapeDtypeStruct((batch_size, 512), jnp.int16),
             target_confidence=jax.ShapeDtypeStruct((batch_size, 512), jnp.float32),
+            hand_scene=hand_scene,
         )
         assert observation.spatial is not None
         with at.disable_typechecking():

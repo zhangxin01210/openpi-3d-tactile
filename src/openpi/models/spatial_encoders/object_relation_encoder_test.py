@@ -12,6 +12,7 @@ import numpy as np
 
 from openpi.models.spatial_encoders.object_relation_encoder import _finite_geometry
 from openpi.models.spatial_encoders.object_relation_encoder import _local_anchors
+from openpi.models.spatial_encoders.types import HandSceneInput
 from openpi.models.spatial_encoders.structured_spatial_encoder import StructuredSpatialEncoderConfig
 from openpi.models.spatial_encoders.types import ObjectGeometryInput
 from openpi.models.spatial_encoders.types import SpatialEncoderInput
@@ -19,8 +20,8 @@ from openpi.models.spatial_encoders.types import TactileSpatialInput
 from openpi.models.spatial_encoders.types import VisualSpatialInput
 
 
-def _inputs(*, with_object_geometry: bool) -> SpatialEncoderInput:
-    batch, visual_count, tactile_count, object_count = 1, 64, 60, 32
+def _inputs(*, with_object_geometry: bool, object_count: int = 32, tactile_count: int = 60) -> SpatialEncoderInput:
+    batch, visual_count = 1, 64
     keys = jax.random.split(jax.random.key(21), 4)
     visual = VisualSpatialInput(
         xyz_m=jax.random.normal(keys[0], (batch, visual_count, 3)),
@@ -28,7 +29,8 @@ def _inputs(*, with_object_geometry: bool) -> SpatialEncoderInput:
         rgb_valid=jnp.ones((batch, visual_count), dtype=jnp.bool_),
         point_mask=jnp.ones((batch, visual_count), dtype=jnp.bool_),
     )
-    finger_id = jnp.tile(jnp.arange(5, dtype=jnp.int32), 12)[None, :]
+    assert tactile_count % 5 == 0
+    finger_id = jnp.tile(jnp.arange(5, dtype=jnp.int32), tactile_count // 5)[None, :]
     tactile = TactileSpatialInput(
         xyz_m=jax.random.normal(keys[1], (batch, tactile_count, 3)),
         force=jax.random.normal(keys[2], (batch, tactile_count, 3)),
@@ -57,6 +59,25 @@ def _inputs(*, with_object_geometry: bool) -> SpatialEncoderInput:
             target_confidence=confidence,
         )
     return SpatialEncoderInput(visual=visual, tactile=tactile, object_geometry=geometry)
+
+
+def _hand_scene(*, tactile_count: int, contact_valid: bool = True, funnel_valid: bool = True) -> HandSceneInput:
+    mask = jnp.zeros((1, 32, 32), dtype=jnp.bool_)
+    mask = mask.at[:, 8:20, 10:22].set(True)
+    return HandSceneInput(
+        manipulated_relation_valid=jnp.asarray([True]),
+        target_relation_valid=jnp.asarray([True]),
+        manipulated_geometry_quality=jnp.asarray([0.8], dtype=jnp.float32),
+        target_geometry_quality=jnp.asarray([0.6], dtype=jnp.float32),
+        grasp_reference_force_norm=jnp.full((1, tactile_count), 0.2, dtype=jnp.float32),
+        grasp_short_delta_force_norm=jnp.full((1, tactile_count), 0.1, dtype=jnp.float32),
+        grasp_contact_valid=jnp.full((1, tactile_count), contact_valid, dtype=jnp.bool_),
+        grasp_quality=jnp.asarray([0.9], dtype=jnp.float32),
+        funnel_mask=mask,
+        funnel_mask_valid=jnp.asarray([funnel_valid]),
+        funnel_mask_quality=jnp.asarray([0.7], dtype=jnp.float32),
+        funnel_mask_hand_offset_xy=jnp.asarray([[0.1, -0.2]], dtype=jnp.float32),
+    )
 
 
 def test_relations_append_exactly_fourteen_tokens() -> None:
@@ -244,6 +265,109 @@ def test_relation_tokens_ignore_padding_values() -> None:
     np.testing.assert_array_equal(output_a.token_mask[:, -14:], output_b.token_mask[:, -14:])
     np.testing.assert_allclose(output_a.tokens[:, -14:], output_b.tokens[:, -14:], rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(output_a.token_xyz_m[:, -14:], output_b.token_xyz_m[:, -14:], rtol=1e-6, atol=1e-6)
+
+
+def test_hand_scene_v0_keeps_58_base_tokens_and_appends_two_five_token_groups() -> None:
+    base_config = StructuredSpatialEncoderConfig()
+    config = replace(
+        base_config,
+        enable_object_relations=True,
+        object_relation_mode="hand_scene_v0",
+        hand_scene_enable_funnel_mask_encoder=True,
+    )
+    base_inputs = _inputs(with_object_geometry=True, object_count=512, tactile_count=600)
+    geometry = replace(base_inputs.object_geometry, hand_scene=_hand_scene(tactile_count=600))
+    output = config.create(rngs=nnx.Rngs(41))(
+        SpatialEncoderInput(visual=base_inputs.visual, tactile=base_inputs.tactile, object_geometry=geometry)
+    )
+    assert base_config.default_token_count == 58
+    assert config.default_token_count == 68
+    assert output.tokens.shape == (1, 68, 128)
+    assert output.token_xyz_m.shape == (1, 68, 3)
+    assert bool(jnp.all(output.token_mask[:, 58:63]))
+    assert bool(jnp.all(output.token_mask[:, 63:68]))
+    assert output.aux["grasp_finger_gate"].shape == (1, 5)
+
+
+def test_hand_scene_invalid_lift_empty_cloud_and_missing_mask_are_safe() -> None:
+    config = StructuredSpatialEncoderConfig(
+        visual_num_centers=4,
+        visual_knn=4,
+        tactile_knn=4,
+        tactile_local_tokens_per_finger=2,
+        enable_object_relations=True,
+        object_relation_mode="hand_scene_v0",
+        hand_scene_enable_funnel_mask_encoder=True,
+    )
+    inputs = _inputs(with_object_geometry=True, tactile_count=60)
+    state = _hand_scene(tactile_count=60, contact_valid=False, funnel_valid=False)
+    state = replace(
+        state,
+        manipulated_relation_valid=jnp.asarray([False]),
+        manipulated_geometry_quality=jnp.asarray([0.0], dtype=jnp.float32),
+    )
+    lifted = config.create(rngs=nnx.Rngs(42))(
+        SpatialEncoderInput(
+            visual=inputs.visual,
+            tactile=inputs.tactile,
+            object_geometry=replace(inputs.object_geometry, hand_scene=state),
+        )
+    )
+    assert not bool(jnp.any(lifted.token_mask[:, -10:-5]))
+    assert bool(jnp.all(lifted.token_mask[:, -5:]))
+    empty = replace(
+        inputs.object_geometry,
+        manipulated_mask=jnp.zeros_like(inputs.object_geometry.manipulated_mask),
+        target_mask=jnp.zeros_like(inputs.object_geometry.target_mask),
+        hand_scene=state,
+    )
+    output = config.create(rngs=nnx.Rngs(42))(
+        SpatialEncoderInput(visual=inputs.visual, tactile=inputs.tactile, object_geometry=empty)
+    )
+    assert not bool(jnp.any(output.token_mask[:, -10:]))
+    assert not bool(jnp.any(output.aux["funnel_mask_feature_valid"]))
+    assert bool(jnp.all(jnp.isfinite(output.tokens)))
+    assert bool(jnp.all(jnp.isfinite(output.token_xyz_m)))
+
+
+def test_hand_scene_grasp_adapter_changes_only_hand_target_tokens_and_has_gradients() -> None:
+    config = StructuredSpatialEncoderConfig(
+        visual_num_centers=4,
+        visual_knn=4,
+        tactile_knn=4,
+        tactile_local_tokens_per_finger=2,
+        enable_object_relations=True,
+        object_relation_mode="hand_scene_v0",
+        hand_scene_enable_funnel_mask_encoder=True,
+    )
+    inputs = _inputs(with_object_geometry=True, tactile_count=60)
+    with_grasp = replace(inputs.object_geometry, hand_scene=_hand_scene(tactile_count=60, contact_valid=True))
+    without_grasp = replace(inputs.object_geometry, hand_scene=_hand_scene(tactile_count=60, contact_valid=False))
+    model = config.create(rngs=nnx.Rngs(43))
+    output_with = model(SpatialEncoderInput(visual=inputs.visual, tactile=inputs.tactile, object_geometry=with_grasp))
+    output_without = model(SpatialEncoderInput(visual=inputs.visual, tactile=inputs.tactile, object_geometry=without_grasp))
+    np.testing.assert_allclose(output_with.tokens[:, -10:-5], output_without.tokens[:, -10:-5], rtol=1e-6, atol=1e-6)
+    assert not np.allclose(output_with.tokens[:, -5:], output_without.tokens[:, -5:])
+    assert float(jnp.max(output_with.aux["grasp_finger_gate"])) > 0.0
+    assert float(jnp.max(output_without.aux["grasp_finger_gate"])) == 0.0
+
+    def loss_fn(encoder):
+        return jnp.mean(jnp.square(encoder(
+            SpatialEncoderInput(visual=inputs.visual, tactile=inputs.tactile, object_geometry=with_grasp)
+        ).tokens))
+
+    _, grads = nnx.value_and_grad(loss_fn, argnums=nnx.DiffState(0, nnx.Param))(model)
+    flat_grads = flax.traverse_util.flatten_dict(grads.to_pure_dict())
+    grasp_grads = [
+        jnp.ravel(value)
+        for path, value in flat_grads.items()
+        if "grasp_adapter" in path or "grasp_gate" in path or "grasp_taxel_layers" in path
+    ]
+    assert grasp_grads
+    assert float(jnp.linalg.norm(jnp.concatenate(grasp_grads))) > 0.0
+    mask_grads = [jnp.ravel(value) for path, value in flat_grads.items() if "funnel_mask_layers" in path]
+    assert mask_grads
+    assert float(jnp.linalg.norm(jnp.concatenate(mask_grads))) > 0.0
 
 
 def dataclass_replace(value, **changes):

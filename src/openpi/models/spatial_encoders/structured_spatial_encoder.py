@@ -49,8 +49,17 @@ class StructuredSpatialEncoderConfig:
     # PointNet-style tactile branch in that case.
     enable_tactile: bool = True
     enable_object_relations: bool = False
+    # ``legacy_ho_oo`` is the reviewed 5 Hand-Object + 9 Object-Object
+    # experiment.  ``hand_scene_v0`` keeps the base 58 tokens and appends
+    # five Hand-Funnel plus five Hand-Target tokens instead.
+    object_relation_mode: str = "legacy_ho_oo"
     relation_candidate_k: int = 16
     relation_hidden_dim: int = 128
+    # The optional funnel silhouette branch is deliberately off for the first
+    # Hand-Scene training run.  A missing/occluded mask is always safe; this
+    # flag only controls whether valid current-frame masks are consumed.
+    hand_scene_enable_funnel_mask_encoder: bool = False
+    hand_scene_funnel_mask_size: int = 32
 
     hidden_dim: int = 128
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
@@ -66,6 +75,7 @@ class StructuredSpatialEncoderConfig:
             "hidden_dim",
             "relation_candidate_k",
             "relation_hidden_dim",
+            "hand_scene_funnel_mask_size",
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be > 0")
@@ -73,6 +83,8 @@ class StructuredSpatialEncoderConfig:
             raise ValueError("tactile_summary_tokens_per_finger must be >= 0")
         if (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger) <= 0:
             raise ValueError("At least one tactile token per finger is required")
+        if self.object_relation_mode not in {"legacy_ho_oo", "hand_scene_v0"}:
+            raise ValueError(f"Unsupported object_relation_mode: {self.object_relation_mode!r}")
 
     def create(self, *, rngs: nnx.Rngs) -> "StructuredSpatialEncoder":
         return StructuredSpatialEncoder(config=self, rngs=rngs)
@@ -84,8 +96,12 @@ class StructuredSpatialEncoderConfig:
             + 1
             + (self.num_fingers * (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
                if self.enable_tactile else 0)
-            + (14 if self.enable_object_relations else 0)
+            + (self.object_relation_token_count if self.enable_object_relations else 0)
         )
+
+    @property
+    def object_relation_token_count(self) -> int:
+        return 14 if self.object_relation_mode == "legacy_ho_oo" else 10
 
 
 class StructuredSpatialEncoder(nnx.Module):
@@ -141,6 +157,9 @@ class StructuredSpatialEncoder(nnx.Module):
                 token_dim=d,
                 hidden_dim=config.relation_hidden_dim,
                 candidate_k=config.relation_candidate_k,
+                relation_mode=config.object_relation_mode,
+                enable_funnel_mask_encoder=config.hand_scene_enable_funnel_mask_encoder,
+                funnel_mask_size=config.hand_scene_funnel_mask_size,
                 rngs=rngs,
             )
 

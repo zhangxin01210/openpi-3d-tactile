@@ -309,6 +309,9 @@ def create_torch_dataset(
         )
     if data_config.object_geometry is not None:
         from openpi.object_geometry_dataset.adapter import ObjectGeometryAugmentedDataset
+        from openpi.object_geometry.calibration import calibration_provenance_error
+        from openpi.object_geometry.calibration import front_calibration_provenance
+        from openpi.object_geometry.calibration import resolve_front_calibration_profile
         from openpi.object_geometry_dataset.derived import ObjectGeometryDerivedDataset
 
         settings = data_config.object_geometry
@@ -316,6 +319,19 @@ def create_torch_dataset(
             settings.dataset_root,
             version=settings.version,
         )
+        # Object clouds are in base_link and must use the same profiled front
+        # projection as the spatial sidecar they condition.  This check is at
+        # the train boundary, not merely an exporter convention, so a copied
+        # legacy cloud directory cannot silently pair with v1_front_candidate.
+        if data_config.spatial is not None and data_config.spatial.front_calibration_profile is not None:
+            repo_root = pathlib.Path(__file__).resolve().parents[3]
+            profile = resolve_front_calibration_profile(repo_root, data_config.spatial.front_calibration_profile)
+            expected_calibration = front_calibration_provenance(repo_root, profile)
+            mismatch = calibration_provenance_error(
+                object_geometry_dataset.manifest.get("calibration"), expected_calibration
+            )
+            if mismatch:
+                raise ValueError(f"Object geometry sidecar {mismatch}")
         dataset = ObjectGeometryAugmentedDataset(
             dataset,
             object_geometry_dataset,

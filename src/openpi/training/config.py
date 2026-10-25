@@ -2188,6 +2188,60 @@ _CONFIGS.append(
     )
 )
 
+# Hand-Scene V0 is intentionally independent from the reviewed HO/OO pilot.
+# The default roots are checkout-relative; deployments can point at a mounted
+# dataset / base checkpoint without editing tracked source.
+_HAND_SCENE_DATASET_ROOT = os.environ.get("OPENPI_HAND_SCENE_DATASET_ROOT", "data/1018_peg_all")
+_HAND_SCENE_BASE_WEIGHTS = os.environ.get("OPENPI_HAND_SCENE_BASE_WEIGHTS", "checkpoints/pi0_base/params")
+_hand_scene_encoder = dataclasses.replace(
+    _structured_suffix_front_base.model.encoder,
+    enable_object_relations=True,
+    object_relation_mode="hand_scene_v0",
+    # The lightweight branch is implemented and independently switchable, but
+    # the first trainable V0 starts safely without a mask dependency.
+    hand_scene_enable_funnel_mask_encoder=False,
+)
+_hand_scene_model = dataclasses.replace(
+    _structured_suffix_front_base.model,
+    encoder=_hand_scene_encoder,
+)
+_hand_scene_metadata = dict(_structured_suffix_front_base.policy_metadata)
+_hand_scene_metadata.update(
+    {
+        "object_geometry_version": "v1_hand_scene",
+        "object_relation_mode": "hand_scene_v0",
+        "spatial_token_count": _hand_scene_encoder.default_token_count,
+        "funnel_mask_encoder_enabled": _hand_scene_encoder.hand_scene_enable_funnel_mask_encoder,
+        "object_geometry_coordinate_frame": "base_link",
+        "object_geometry_units": "meters",
+    }
+)
+_CONFIGS.append(
+    dataclasses.replace(
+        _structured_suffix_front_base,
+        name="pi0_xhand_spatial_structured_suffix_hand_scene_v0",
+        model=_hand_scene_model,
+        data=dataclasses.replace(
+            _structured_suffix_front_base.data,
+            repo_id=_HAND_SCENE_DATASET_ROOT,
+            assets=AssetsConfig(assets_dir="assets/xhand", asset_id="1018_peg_all"),
+            spatial=dataclasses.replace(
+                _structured_suffix_front_base.data.spatial,
+                dataset_root=_HAND_SCENE_DATASET_ROOT,
+            ),
+            object_geometry=ObjectGeometryDataConfig(
+                dataset_root=_HAND_SCENE_DATASET_ROOT,
+                version="v1_hand_scene",
+            ),
+        ),
+        # Reuse the reviewed spatial loader; only its root is made portable.
+        # In particular this does not change Pi0 checkpoint-loading logic.
+        weight_loader=spatial_weight_loaders.SpatialCheckpointWeightLoader(_HAND_SCENE_BASE_WEIGHTS),
+        freeze_filter=_hand_scene_model.get_freeze_filter(),
+        policy_metadata=_hand_scene_metadata,
+    )
+)
+
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}

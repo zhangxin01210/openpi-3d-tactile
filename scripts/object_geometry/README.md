@@ -59,6 +59,15 @@ PYTHONPATH=src .venv/bin/python scripts/object_geometry/export_sidecar.py \
   --generation-commit "$(git rev-parse HEAD)"
 ```
 
+## Hand-Scene V0 derived sidecar
+
+`export_hand_scene_sidecar.py` never reruns pose estimation or overwrites the
+formal front-calibrated geometry.  It copies the calibrated `[512,3]`
+`base_link` clouds into a separate `object_geometry/v1_hand_scene` directory
+and joins producer-owned causal relation/grasp state records.  The full input
+schema, no-future-frame rule, and training smoke command are in
+[Hand-Scene V0 contract](../../docs/object_geometry/hand_scene_v0.md).
+
 ## Sparse 3-D keypoint pilot
 
 `pilot_sparse_3d_relations.py` is a separate lightweight prototype. It reads

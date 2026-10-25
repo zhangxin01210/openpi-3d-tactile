@@ -334,8 +334,52 @@ class TactileSceneRelationInput(Generic[ArrayT]):
 
 
 @struct.dataclass
+class HandSceneInput(Generic[ArrayT]):
+    """Optional causal Hand-Scene V0 metadata attached to object geometry.
+
+    The two object clouds stay in :class:`ObjectGeometryInput`; this nested
+    record only carries relationship state which cannot be recovered from a
+    static cloud.  All values describe the *current or earlier* frame.
+
+    Shapes
+    ------
+    - ``*_relation_valid`` / ``*_geometry_quality`` / ``grasp_quality``:
+      ``[B]``
+    - grasp arrays: ``[B, Nt]`` and use the force magnitude of each taxel,
+      so references remain comparable while the hand moves in ``base_link``.
+    - ``funnel_mask``: ``[B, H, W]`` current-frame, downsampled binary mask;
+      ``funnel_mask_hand_offset_xy`` is ``[B, 2]`` normalized image offset
+      from the current projected hand reference to the mask centroid.
+
+    ``manipulated_relation_valid`` must be set false by the causal producer
+    once the funnel has been lifted relative to its initial hand-attached
+    geometry.  A low target quality does not itself imply it is static.
+    """
+
+    manipulated_relation_valid: ArrayT
+    target_relation_valid: ArrayT
+    manipulated_geometry_quality: ArrayT
+    target_geometry_quality: ArrayT
+    grasp_reference_force_norm: ArrayT
+    grasp_short_delta_force_norm: ArrayT
+    grasp_contact_valid: ArrayT
+    grasp_quality: ArrayT
+    funnel_mask: ArrayT
+    funnel_mask_valid: ArrayT
+    funnel_mask_quality: ArrayT
+    funnel_mask_hand_offset_xy: ArrayT
+
+
+@struct.dataclass
 class ObjectGeometryInput(Generic[ArrayT]):
-    """Fixed-size Level-1 manipulated/target object geometry sidecar."""
+    """Fixed-size Level-1 manipulated/target object geometry sidecar.
+
+    ``hand_scene`` is deliberately optional so the reviewed ``v1`` and
+    ``v1_front_candidate`` sidecars retain their original contract.  The
+    Hand-Scene V0 encoder requires the ``v1_hand_scene`` producer to provide
+    it, but represents a missing record as invalid rather than inventing a
+    hand-attached relationship.
+    """
 
     manipulated_xyz_m: ArrayT
     manipulated_mask: ArrayT
@@ -347,6 +391,7 @@ class ObjectGeometryInput(Generic[ArrayT]):
     target_source: ArrayT
     target_age: ArrayT
     target_confidence: ArrayT
+    hand_scene: HandSceneInput[ArrayT] | None = None
 
 
 # =============================================================================

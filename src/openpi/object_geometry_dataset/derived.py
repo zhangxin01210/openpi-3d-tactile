@@ -1,4 +1,9 @@
-"""Memory-mapped reader for the independent object_geometry/v1 sidecar."""
+"""Memory-mapped reader for independent object-geometry sidecars.
+
+``v1_hand_scene`` extends the reviewed fixed-cloud contract with a small,
+causal state record.  It remains an independent version, so existing v1 and
+v1_front_candidate data need neither rewriting nor reinterpretation.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,90 @@ import numpy as np
 
 OBJECT_NAMES = ("manipulated", "target")
 POINT_COUNT = 512
+TACTILE_POINT_COUNT = 600
+FUNNEL_MASK_SIZE = 32
+
+
+@dataclass(frozen=True, slots=True)
+class HandSceneSample:
+    """One causal Hand-Scene V0 state record joined with a geometry frame."""
+
+    manipulated_relation_valid: np.ndarray
+    target_relation_valid: np.ndarray
+    manipulated_geometry_quality: np.ndarray
+    target_geometry_quality: np.ndarray
+    grasp_reference_force_norm: np.ndarray
+    grasp_short_delta_force_norm: np.ndarray
+    grasp_contact_valid: np.ndarray
+    grasp_quality: np.ndarray
+    funnel_mask: np.ndarray
+    funnel_mask_valid: np.ndarray
+    funnel_mask_quality: np.ndarray
+    funnel_mask_hand_offset_xy: np.ndarray
+
+    def __post_init__(self) -> None:
+        scalar_bool = ("manipulated_relation_valid", "target_relation_valid", "funnel_mask_valid")
+        scalar_float = (
+            "manipulated_geometry_quality",
+            "target_geometry_quality",
+            "grasp_quality",
+            "funnel_mask_quality",
+        )
+        for name in scalar_bool:
+            value = np.asarray(getattr(self, name), dtype=bool)
+            if value.shape != ():
+                raise ValueError(f"{name} must be scalar, got {value.shape}")
+            object.__setattr__(self, name, value)
+        for name in scalar_float:
+            value = np.asarray(getattr(self, name), dtype=np.float32)
+            if value.shape != () or not np.isfinite(value):
+                raise ValueError(f"{name} must be a finite scalar")
+            if not 0.0 <= float(value) <= 1.0:
+                raise ValueError(f"{name} must be in [0, 1]")
+            object.__setattr__(self, name, value)
+        for name, dtype in (
+            ("grasp_reference_force_norm", np.float32),
+            ("grasp_short_delta_force_norm", np.float32),
+            ("grasp_contact_valid", bool),
+        ):
+            value = np.asarray(getattr(self, name), dtype=dtype)
+            if value.shape != (TACTILE_POINT_COUNT,):
+                raise ValueError(f"{name} must have shape ({TACTILE_POINT_COUNT},), got {value.shape}")
+            if np.issubdtype(value.dtype, np.floating) and not np.isfinite(value).all():
+                raise ValueError(f"{name} contains NaN or Inf")
+            object.__setattr__(self, name, value)
+        mask = np.asarray(self.funnel_mask, dtype=bool)
+        if mask.shape != (FUNNEL_MASK_SIZE, FUNNEL_MASK_SIZE):
+            raise ValueError(
+                f"funnel_mask must have shape ({FUNNEL_MASK_SIZE}, {FUNNEL_MASK_SIZE}), got {mask.shape}"
+            )
+        object.__setattr__(self, "funnel_mask", mask)
+        hand_offset = np.asarray(self.funnel_mask_hand_offset_xy, dtype=np.float32)
+        if hand_offset.shape != (2,) or not np.isfinite(hand_offset).all():
+            raise ValueError("funnel_mask_hand_offset_xy must be finite with shape (2,)")
+        object.__setattr__(self, "funnel_mask_hand_offset_xy", hand_offset)
+
+    def as_dict(self) -> dict[str, np.ndarray]:
+        return {
+            name: getattr(self, name)
+            for name in HAND_SCENE_FIELDS
+        }
+
+
+HAND_SCENE_FIELDS = (
+    "manipulated_relation_valid",
+    "target_relation_valid",
+    "manipulated_geometry_quality",
+    "target_geometry_quality",
+    "grasp_reference_force_norm",
+    "grasp_short_delta_force_norm",
+    "grasp_contact_valid",
+    "grasp_quality",
+    "funnel_mask",
+    "funnel_mask_valid",
+    "funnel_mask_quality",
+    "funnel_mask_hand_offset_xy",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +119,7 @@ class ObjectGeometrySample:
     target_source: np.ndarray
     target_age: np.ndarray
     target_confidence: np.ndarray
+    hand_scene: HandSceneSample | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "episode_index", int(self.episode_index))
@@ -63,7 +153,7 @@ class ObjectGeometrySample:
             object.__setattr__(self, f"{name}_confidence", confidence)
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        values = {
             "episode_index": self.episode_index,
             "frame_index": self.frame_index,
             **{
@@ -78,12 +168,15 @@ class ObjectGeometrySample:
                 )
             },
         }
+        if self.hand_scene is not None:
+            values["hand_scene"] = self.hand_scene.as_dict()
+        return values
 
 
 class ObjectGeometryDerivedDataset:
     """Read fixed-size sidecar arrays with a small mmap shard cache."""
 
-    _FIELDS = tuple(
+    _GEOMETRY_FIELDS = tuple(
         field
         for name in OBJECT_NAMES
         for field in (
@@ -109,6 +202,16 @@ class ObjectGeometryDerivedDataset:
         contract = self.manifest.get("object_geometry_contract", {})
         if int(contract.get("point_count", -1)) != POINT_COUNT:
             raise ValueError("Object geometry sidecar point_count must be 512")
+        hand_scene_contract = self.manifest.get("hand_scene_contract")
+        self.has_hand_scene = hand_scene_contract is not None
+        if self.has_hand_scene:
+            if not isinstance(hand_scene_contract, dict) or hand_scene_contract.get("version") != "v1_hand_scene":
+                raise ValueError("Hand-Scene sidecar must declare hand_scene_contract version v1_hand_scene")
+            if int(hand_scene_contract.get("tactile_point_count", -1)) != TACTILE_POINT_COUNT:
+                raise ValueError("Hand-Scene sidecar tactile_point_count must be 600")
+            if int(hand_scene_contract.get("funnel_mask_size", -1)) != FUNNEL_MASK_SIZE:
+                raise ValueError("Hand-Scene sidecar funnel_mask_size must be 32")
+        self._fields = self._GEOMETRY_FIELDS + (HAND_SCENE_FIELDS if self.has_hand_scene else ())
         self._records = []
         self._lookup: dict[tuple[int, int], tuple[str, int]] = {}
         for record in self.manifest.get("records", []):
@@ -147,8 +250,11 @@ class ObjectGeometryDerivedDataset:
             raise ValueError(f"Row {row} outside shard {shard_name}")
         if int(arrays["episode_index"][row]) != key[0] or int(arrays["frame_index"][row]) != key[1]:
             raise ValueError(f"Manifest/index mismatch for {key} in {shard_name}[{row}]")
-        values = {field: arrays[field][row] for field in self._FIELDS}
-        return ObjectGeometrySample(episode_index=key[0], frame_index=key[1], **values)
+        values = {field: arrays[field][row] for field in self._GEOMETRY_FIELDS}
+        hand_scene = None
+        if self.has_hand_scene:
+            hand_scene = HandSceneSample(**{field: arrays[field][row] for field in HAND_SCENE_FIELDS})
+        return ObjectGeometrySample(episode_index=key[0], frame_index=key[1], hand_scene=hand_scene, **values)
 
     def _load_shard(self, shard_name: str) -> dict[str, np.ndarray]:
         cached = self._cache.get(shard_name)
@@ -160,7 +266,7 @@ class ObjectGeometryDerivedDataset:
             raise FileNotFoundError(shard_root)
         arrays = {
             field: np.load(shard_root / f"{field}.npy", mmap_mode="r", allow_pickle=False)
-            for field in (*self._FIELDS, "episode_index", "frame_index")
+            for field in (*self._fields, "episode_index", "frame_index")
         }
         self._cache[shard_name] = arrays
         self._cache.move_to_end(shard_name)

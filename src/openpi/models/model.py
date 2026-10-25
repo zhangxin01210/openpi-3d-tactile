@@ -195,6 +195,23 @@ class Observation(Generic[ArrayT]):
             object_data = spatial_data.get("object_geometry")
             object_geometry = None
             if object_data is not None:
+                hand_scene_data = object_data.get("hand_scene")
+                hand_scene = None
+                if hand_scene_data is not None:
+                    hand_scene = _spatial_types.HandSceneInput(
+                        manipulated_relation_valid=hand_scene_data["manipulated_relation_valid"],
+                        target_relation_valid=hand_scene_data["target_relation_valid"],
+                        manipulated_geometry_quality=hand_scene_data["manipulated_geometry_quality"],
+                        target_geometry_quality=hand_scene_data["target_geometry_quality"],
+                        grasp_reference_force_norm=hand_scene_data["grasp_reference_force_norm"],
+                        grasp_short_delta_force_norm=hand_scene_data["grasp_short_delta_force_norm"],
+                        grasp_contact_valid=hand_scene_data["grasp_contact_valid"],
+                        grasp_quality=hand_scene_data["grasp_quality"],
+                        funnel_mask=hand_scene_data["funnel_mask"],
+                        funnel_mask_valid=hand_scene_data["funnel_mask_valid"],
+                        funnel_mask_quality=hand_scene_data["funnel_mask_quality"],
+                        funnel_mask_hand_offset_xy=hand_scene_data["funnel_mask_hand_offset_xy"],
+                    )
                 object_geometry = _spatial_types.ObjectGeometryInput(
                     manipulated_xyz_m=object_data["manipulated_xyz_m"],
                     manipulated_mask=object_data["manipulated_mask"],
@@ -206,6 +223,7 @@ class Observation(Generic[ArrayT]):
                     target_source=object_data["target_source"],
                     target_age=object_data["target_age"],
                     target_confidence=object_data["target_confidence"],
+                    hand_scene=hand_scene,
                 )
 
             spatial = _spatial_types.SpatialEncoderInput(
