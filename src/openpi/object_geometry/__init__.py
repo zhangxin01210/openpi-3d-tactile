@@ -9,6 +9,8 @@ from openpi.object_geometry.history import (
     motion_informative,
 )
 from openpi.object_geometry.pipeline import build_object_geometry_frame
+from openpi.object_geometry.production import deterministic_surface_points
+from openpi.object_geometry.production import transform_points_local_to_base
 from openpi.object_geometry.types import ObjectGeometry, ObjectGeometryFrame, PointCloud
 
 __all__ = [
@@ -20,9 +22,11 @@ __all__ = [
     "build_causal_history",
     "build_object_geometry_frame",
     "depth_to_base_points",
+    "deterministic_surface_points",
     "history_to_base",
     "mask_depth_to_cloud",
     "motion_informative",
     "project_pinhole",
     "transform_points",
+    "transform_points_local_to_base",
 ]

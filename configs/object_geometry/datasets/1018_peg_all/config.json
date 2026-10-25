@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "dataset_id": "1018_peg_all",
+  "representative_frames": [0, 120, 200, 300, 400, 440, 460],
+  "episodes": {
+    "all": [
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+      16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+      31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+      46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+      61, 62, 63, 64, 65, 66, 67, 68, 69
+    ],
+    "regression": [23, 38, 65]
+  },
+  "paths": {
+    "dataset_root": "${OPENPI_1018_DATASET_ROOT:-data/1018_peg_all}",
+    "scratch_root": "${OPENPI_OBJECT_GEOMETRY_SCRATCH:-scratch/object_geometry/1018_peg_all}",
+    "front_calibration": "${OPENPI_FRONT_CALIBRATION:-configs/ur7e_xhand/front_calibration_candidate.json}",
+    "dimensions_json": "assets/object_geometry/synthware_19_22/dimensions.json",
+    "hoi_root": "${HOI_ROOT:-../hoi}",
+    "mask_root_template": "${HOI_ROOT:-../hoi}/outputs/level1_sequence_e{episode}/masks",
+    "frames_root_template": "${HOI_ROOT:-../hoi}/data/level1_sequence_e{episode}/frames",
+    "tactile_root": "${OPENPI_HAND_SCENE_TACTILE_ROOT:-}",
+    "hand_offset_root": "${OPENPI_HAND_SCENE_HAND_OFFSET_ROOT:-}"
+  },
+  "assets": {
+    "funnel": {
+      "mesh": "assets/object_geometry/synthware_19_22/funnel_F181975.glb",
+      "version": "synthware_19_22_metric_v1",
+      "sha256": "84f1dee2f8e24a215d2e8b4364e2858f3ab8a484ea5619ec27388c79672a0627",
+      "scale_m_per_unit": 1.0,
+      "sampling_seed": 181975
+    },
+    "target_flask": {
+      "mesh": "assets/object_geometry/synthware_19_22/flask_F301950.glb",
+      "version": "synthware_19_22_metric_v1",
+      "sha256": "165f7264d49d710b8140218bb1bfadcafc52906b48935665ce67e5d64e17e902",
+      "scale_m_per_unit": 1.0,
+      "sampling_seed": 301950
+    }
+  },
+  "position_groups": [
+    {"name": "position_0", "episode_start": 0, "episode_end": 15, "template_episode": 0},
+    {"name": "position_1", "episode_start": 16, "episode_end": 30, "template_episode": 23},
+    {"name": "position_2", "episode_start": 31, "episode_end": 45, "template_episode": 38},
+    {"name": "position_3", "episode_start": 46, "episode_end": 53, "template_episode": 49},
+    {"name": "position_4", "episode_start": 54, "episode_end": 61, "template_episode": 58},
+    {"name": "position_5", "episode_start": 62, "episode_end": 69, "template_episode": 65}
+  ],
+  "initialization_templates": {
+    "source": "existing reviewed SAM2 six-position templates; unknown groups require manual annotation",
+    "template_path": "${HOI_ROOT:-../hoi}/outputs/level1_sequence_e{episode}/seed_prompts.json",
+    "review_required": true,
+    "auto_classification_allowed": false
+  },
+  "motion_assumptions": {
+    "funnel": "dynamic",
+    "target_flask": "static",
+    "static_flask_semantics": "frame-0 reviewed anchor held as geometry prior; not a measured dynamic pose"
+  },
+  "rgbtrack": {
+    "mode": "depth",
+    "init": {"funnel": "per_episode_review", "target_flask": 0},
+    "validated_parameters": {
+      "recovery_center_max_px": 90,
+      "recovery_depth_l1_max_m": 0.18,
+      "upright_max_tilt_deg": 25,
+      "upright_max_rank": 150,
+      "follow_max_tilt_deg": 35,
+      "flask_max_tilt_deg": 20,
+      "flask_max_axis_jump_deg": 12,
+      "flask_max_pivot_shift_m": 0.025,
+      "flask_axis_alpha": 0.25
+    },
+    "pose_run_policy": "explicit accepted pose review per episode; never choose newest output directory"
+  },
+  "state": {
+    "contact_force_threshold": 0.05,
+    "missing_tactile_semantics": "zero arrays, false contact, grasp_quality=0",
+    "missing_mask_semantics": "zero mask, false valid, quality=0"
+  },
+  "review": {
+    "representative_frames": [0, 120, 200, 300, 400, 440, 460],
+    "required_pose_review": [23, 38, 65],
+    "required_status": "accepted"
+  },
+  "reproducibility": {
+    "rgbtrack_submodule_commit": "23e43f8",
+    "sam2_source": "computer-4 HOI checkout; record checkout provenance in scratch/init_manifest.json",
+    "weights_root": "checkpoints/rgbtrack",
+    "front_profile": "configs/ur7e_xhand/front_calibration_candidate.json",
+    "front_profile_sha256": "093172f8034a37a426bbde0d5d479795938c694c0bd07cc71c624c7e8852a0c6"
+  },
+  "environments": {
+    "openpi_python": "${OPENPI_PYTHON:-.venv/bin/python}",
+    "sam2_python": "${SAM2_PYTHON:-../hoi/envs/sam2/bin/python}",
+    "sam2_source": "${SAM2_SOURCE:-../hoi/repos/sam2}",
+    "rgbtrack_sam3d_python": "${RGBTRACK_SAM3D_PYTHON:-../hoi/envs/sam3d/bin/python}",
+    "rgbtrack_weights": "checkpoints/rgbtrack",
+    "rgbtrack_submodule": "third_party/RGBTrack"
+  }
+}

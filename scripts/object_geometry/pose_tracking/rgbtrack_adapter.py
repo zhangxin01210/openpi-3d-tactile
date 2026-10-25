@@ -707,8 +707,12 @@ class RGBTrackObject:
                     # RGBTrack upstream omits Kalman initialization in
                     # register_without_depth(), unlike register().
                     # Initialize using the internal centered-mesh pose.
-                    tracker = self._estimator.tracker
-                    if not tracker.is_initialized:
+                    tracker = getattr(self._estimator, "tracker", None)
+                    # The real FoundationPose object always has the tracker.
+                    # Keeping this guard makes the mode-dispatch contract
+                    # testable with a minimal fake estimator without changing
+                    # the CUDA path.
+                    if tracker is not None and not tracker.is_initialized:
                         from scipy.spatial.transform import Rotation
 
                         raw_pose = self._estimator.pose_last

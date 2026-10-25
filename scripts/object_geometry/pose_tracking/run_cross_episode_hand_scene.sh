@@ -39,7 +39,9 @@ export PATH="$REPO/data/pose_eval/rgbtrack_bin:$PATH"
 export TORCH_EXTENSIONS_DIR="$REPO/data/pose_eval/torch_extensions_rgbtrack_native"
 export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
 export TORCH_CUDA_ARCH_LIST=8.0 MAX_JOBS=4
-TAG="$(date +%Y%m%d_%H%M%S)_$$"
+# Reviewers may choose a deterministic tag for resumable batch production.
+# The default remains collision-resistant and preserves the historical usage.
+TAG="${RUN_TAG:-$(date +%Y%m%d_%H%M%S)_$$}"
 BASE="$REPO/output/pose_eval"
 RAW="$BASE/e${EP}_crosscheck_native_upright_${TAG}"
 PIVOT="$BASE/e${EP}_crosscheck_flask_pivot_${TAG}"

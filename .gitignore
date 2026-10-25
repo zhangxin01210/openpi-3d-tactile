@@ -187,3 +187,7 @@ configs/*.zip
 /checkpoints/rgbtrack/
 /data/pose_eval/
 /output/pose_eval/
+
+# Object Geometry production scratch (masks, pose reviews, mesh samples and
+# resumable sidecar staging).  Formal source/config code remains trackable.
+/scratch/object_geometry/
