@@ -699,8 +699,33 @@ class RGBTrackObject:
             if not self._initialized:
                 if self.mode == "no_depth":
                     pose = self._estimator.register_without_depth(
-                        K=K, rgb=rgb, ob_mask=mask_bool, iteration=self.init_iterations
+                        K=K, rgb=rgb, ob_mask=mask_bool,
+                        iteration=self.init_iterations,
+                        low=0.8, high=1.4,
                     )
+
+                    # RGBTrack upstream omits Kalman initialization in
+                    # register_without_depth(), unlike register().
+                    # Initialize using the internal centered-mesh pose.
+                    tracker = self._estimator.tracker
+                    if not tracker.is_initialized:
+                        from scipy.spatial.transform import Rotation
+
+                        raw_pose = self._estimator.pose_last
+                        if hasattr(raw_pose, "detach"):
+                            raw_pose = raw_pose.detach().cpu().numpy()
+
+                        centered_pose = np.asarray(
+                            raw_pose, dtype=np.float64
+                        ).reshape(4, 4)
+
+                        position = centered_pose[:3, 3].reshape(3, 1)
+                        orientation = Rotation.from_matrix(
+                            centered_pose[:3, :3]
+                        ).as_euler("xyz").reshape(3, 1)
+
+                        tracker.initialize(position, orientation)
+
                 elif self.mode == "unknown_scale":
                     # Import only this optional path; it is intentionally not
                     # used by the no-depth mode.
@@ -728,6 +753,11 @@ class RGBTrackObject:
                 self._initialized = True
                 self.actual_init_frame = int(frame_index)
             elif self.mode == "no_depth":
+                # RGBTrack register_without_depth stores last_depth as
+                # a CUDA tensor, but guess_translation expects NumPy.
+                last_depth = getattr(self._estimator, "last_depth", None)
+                if hasattr(last_depth, "detach"):
+                    self._estimator.last_depth = last_depth.detach().cpu().numpy()
                 pose = self._estimator.track_one_new_without_depth(
                     rgb=rgb, K=K, iteration=self.track_iterations, mask=mask_bool
                 )
@@ -905,6 +935,56 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+
+
+def _load_front_camera_for_depth_registration(repo_root, profile):
+    """Exactly the active camera used by the RGBTrack calibration path."""
+    from openpi.object_geometry.calibration import make_front_geometry_config
+    from openpi.spatial.calibration import load_camera_calibrations
+    from openpi.spatial.geometry import apply_diagnostic_overrides
+    cfg, _ = make_front_geometry_config(repo_root, profile)
+    bundle = load_camera_calibrations(
+        repo_root=repo_root, calibration_config=cfg.calibration,
+        camera_roles=('front',),
+    )
+    return apply_diagnostic_overrides(bundle.cameras, cfg.diagnostics)['front']
+
+
+def _rgb_registered_depth(raw_depth, cam, color_hw):
+    """Raw depth -> metric xyz -> color camera -> metric z-buffer on RGB pixels.
+
+    The returned HxW depth is in the COLOR optical frame and matches K_color.
+    0 means no observed depth. Missing pixels are not fabricated, and no pixel
+    of transparent glass is assumed to be the real glass surface.
+    """
+    from openpi.spatial.geometry import (
+        build_camera_cache, project_pinhole, transform_points,
+    )
+    depth = np.asarray(raw_depth)
+    if depth.ndim != 2:
+        raise ValueError(f'raw depth should be HxW, got {depth.shape}')
+    h, w = map(int, color_hw)
+    dh, dw = depth.shape
+    cache = build_camera_cache(cam, image_height=dh, image_width=dw)
+    depth_m = depth.reshape(-1).astype(np.float32) * np.float32(cam.depth_scale_m_per_unit)
+    observed = np.isfinite(depth_m) & (depth_m > 0)
+    if not observed.any():
+        return np.zeros((h,w), dtype=np.float32)
+    points_base = (cache.rays_base_per_meter[observed] * depth_m[observed,None]
+                   + cache.base_origin_m[None,:])
+    points_color = transform_points(points_base, np.linalg.inv(cam.T_base_color))
+    uv = project_pinhole(points_color, cam.color_intrinsics)
+    good = np.isfinite(points_color).all(axis=1) & np.isfinite(uv).all(axis=1) & (points_color[:,2] > 0)
+    safe_uv = np.nan_to_num(uv, nan=-1e9, posinf=-1e9, neginf=-1e9)
+    pixels = np.rint(safe_uv).astype(np.int64)
+    good &= ((pixels[:,0]>=0) & (pixels[:,0]<w) & (pixels[:,1]>=0) & (pixels[:,1]<h))
+    z_buffer = np.full(h*w, np.inf, dtype=np.float32)
+    ids = pixels[good,1] * w + pixels[good,0]
+    np.minimum.at(z_buffer, ids, points_color[good,2].astype(np.float32))
+    z_buffer[~np.isfinite(z_buffer)] = 0.0
+    return z_buffer.reshape(h,w)
+
+
 def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on computer 4
     repo_root = args.repo_root.expanduser().resolve()
     output = args.output.expanduser().resolve()
@@ -915,6 +995,14 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
     mesh_sources = {"funnel": args.funnel_glb, "target_flask": args.flask_glb}
     scales = _load_scale_manifest(args.scale_manifest.expanduser().resolve(), objects)
     calibration = load_front_calibration(repo_root, args.front_calibration_profile)
+    registration_camera = _load_front_camera_for_depth_registration(
+        repo_root, args.front_calibration_profile)
+    k = registration_camera.color_intrinsics
+    k_actual = np.array([[k.fx,0,k.cx],[0,k.fy,k.cy],[0,0,1]],dtype=np.float64)
+    if not np.allclose(k_actual, calibration.K_color, atol=1e-8):
+        raise ValueError('Registration K and RGBTrack color K mismatch')
+    if not np.allclose(registration_camera.T_base_color, calibration.T_base_color, atol=1e-8):
+        raise ValueError('Registration and tracking base-color extrinsics mismatch')
 
     mesh_manifests = {
         name: convert_glb_to_rgbtrack_mesh(mesh_sources[name], output / "meshes", name, scales[name])
@@ -973,7 +1061,11 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
                     f"front RGB/depth resolution mismatch at frame {frame.frame_index}: "
                     f"rgb={frame.rgb.shape[:2]}, depth={frame.depth_raw.shape}"
                 )
-            depth_m = frame.depth_raw.astype(np.float32) * calibration.depth_scale_m_per_unit
+            depth_m = _rgb_registered_depth(frame.depth_raw, registration_camera, frame.rgb.shape[:2])
+            if frame.frame_index in (0,70,100,163,212,280):
+                count = int(np.count_nonzero(depth_m))
+                print(f'[REGISTERED DEPTH] f={frame.frame_index}: '
+                      f'{count}/{depth_m.size} color pixels valid', flush=True)
             records: list[PoseRecord] = []
             for name in objects:
                 mask = load_mask(args.mask_root, name, frame.frame_index, expected_shape=frame.rgb.shape[:2])
