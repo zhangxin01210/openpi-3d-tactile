@@ -634,10 +634,11 @@ def write_episode_sidecar(
             "records": [],
         }
     if manifest.get("requested_episodes") != requested:
-        # A partial run may be extended, but never silently narrowed.
+        # ``requested_episodes`` is the user's coverage contract, not the
+        # subset that happened to pass QA in this invocation.  Preserve the
+        # historical request range and safely add newly requested episodes;
+        # never narrow it during a resume.
         old_requested = sorted({int(value) for value in manifest.get("requested_episodes", [])})
-        if not set(old_requested).issubset(requested):
-            raise ValueError("Requested episode set would remove existing sidecar coverage")
         manifest["requested_episodes"] = sorted(set(old_requested) | set(requested))
         requested = manifest["requested_episodes"]
     existing_episode_records = [row for row in manifest.get("records", []) if int(row["episode_index"]) == int(episode)]
@@ -686,3 +687,42 @@ def write_episode_sidecar(
     temp_manifest.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf8")
     os.replace(temp_manifest, manifest_path)
     return {"episode": int(episode), "status": "written", "records": len(records), "root": str(root)}
+
+
+def merge_requested_episodes(
+    *,
+    dataset_root: str | Path,
+    version: str,
+    requested_episodes: Iterable[int],
+) -> dict[str, Any]:
+    """Merge a user's requested coverage range without touching shards.
+
+    A batch can finish with no newly QA-passed episode (all requested shards
+    may already be present or all new episodes may be pending).  In that case
+    the manifest still needs to remember the complete user request.  This
+    helper updates only manifest coverage metadata and never creates,
+    replaces, or deletes an episode shard.
+    """
+
+    root = Path(dataset_root).expanduser().resolve() / "object_geometry" / version
+    manifest_path = root / "manifest.json"
+    if not manifest_path.is_file():
+        return {"status": "missing_manifest", "root": str(root)}
+    manifest = json.loads(manifest_path.read_text(encoding="utf8"))
+    if manifest.get("producer") != "mesh_6d_hand_scene_v1" or manifest.get("dataset_version") != version:
+        raise ValueError(f"Existing sidecar {root} has an incompatible producer or dataset version")
+    old_requested = {int(value) for value in manifest.get("requested_episodes", [])}
+    merged = sorted(old_requested | {int(value) for value in requested_episodes})
+    complete = sorted({int(row["episode_index"]) for row in manifest.get("records", [])})
+    changed = manifest.get("requested_episodes") != merged or manifest.get("coverage", {}).get("requested_episodes") != merged
+    manifest["requested_episodes"] = merged
+    manifest["coverage"] = {
+        "requested_episodes": merged,
+        "complete_episodes": complete,
+        "missing_episodes": sorted(set(merged) - set(complete)),
+    }
+    if changed:
+        temp_manifest = manifest_path.with_suffix(f".json.tmp-{os.getpid()}")
+        temp_manifest.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf8")
+        os.replace(temp_manifest, manifest_path)
+    return {"status": "updated" if changed else "unchanged", "requested_episodes": merged, "root": str(root)}

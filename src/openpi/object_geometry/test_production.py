@@ -20,6 +20,38 @@ def _T(x: float, y: float, z: float) -> list[list[float]]:
     return [[1, 0, 0, x], [0, 1, 0, y], [0, 0, 1, z], [0, 0, 0, 1]]
 
 
+def _make_one_frame_records(tmp_path: Path, episode: int) -> list[dict[str, np.ndarray]]:
+    pose_root = tmp_path / f"pose_{episode}"
+    pose_root.mkdir(exist_ok=True)
+    (pose_root / "manifest.json").write_text(
+        json.dumps({"episode": episode, "calibration": {"profile": {"sha256": "test"}}}),
+        encoding="utf8",
+    )
+    funnel_row = {"frame_index": 0, "T_base_link_object": _T(1, 0, 0), "valid": True, "confidence": 0.0, "status": "observed"}
+    flask_row = {
+        "frame_index": 0,
+        "T_base_link_object": _T(0, 0, 1),
+        "valid": True,
+        "confidence": 0.2,
+        "status": "flask_upright_anchor_observed",
+        "pose_source": "reviewed_initial_geometry",
+    }
+    (pose_root / "funnel_poses.jsonl").write_text(json.dumps(funnel_row) + "\n", encoding="utf8")
+    (pose_root / "target_flask_poses.jsonl").write_text(json.dumps(flask_row) + "\n", encoding="utf8")
+    triangle = deterministic_surface_points(
+        np.asarray([[0, 0, 0], [0.01, 0, 0], [0, 0.01, 0]], dtype=np.float64),
+        np.asarray([[0, 1, 2]], dtype=np.int64),
+        count=512,
+    )
+    return build_episode_records(
+        episode=episode,
+        pose_run=read_pose_run(pose_root, episode=episode),
+        funnel_points=triangle,
+        flask_points=triangle,
+        flask_motion="static",
+    )
+
+
 def test_surface_sampler_and_base_transform_are_deterministic() -> None:
     vertices = np.asarray([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=np.float64)
     faces = np.asarray([[0, 1, 2]], dtype=np.int64)
@@ -48,6 +80,7 @@ def test_mesh_pose_sidecar_rejects_invalid_dynamic_pose_and_reads_mmap(tmp_path:
         (pose_root / f"{name}_poses.jsonl").write_text(
             "".join(json.dumps(row) + "\n" for row in rows), encoding="utf8"
         )
+
     run = read_pose_run(pose_root, episode=23)
     triangle = deterministic_surface_points(
         np.asarray([[0, 0, 0], [0.01, 0, 0], [0, 0.01, 0]], dtype=np.float64),
@@ -92,6 +125,57 @@ def test_mesh_pose_sidecar_rejects_invalid_dynamic_pose_and_reads_mmap(tmp_path:
             requested_episodes=[23],
             version="v1_hand_scene",
         )
+
+
+def test_requested_episode_contract_survives_partial_resume_and_skip(tmp_path: Path) -> None:
+    dataset_root = tmp_path / "dataset"
+    context = {"calibration": {"profile": {"sha256": "test"}}, "causal": {"future_frame_used": False}}
+
+    # First invocation: only the first QA-passed episode is exported, while
+    # the user's request covers the full range [0, 1, 2].
+    first = write_episode_sidecar(
+        dataset_root=dataset_root,
+        episode=0,
+        records=_make_one_frame_records(tmp_path, 0),
+        manifest_context=context,
+        requested_episodes=[0, 1, 2],
+        version="v1_hand_scene",
+    )
+    assert first["status"] == "written"
+    manifest_path = dataset_root / "object_geometry" / "v1_hand_scene" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf8"))
+    assert manifest["requested_episodes"] == [0, 1, 2]
+    assert manifest["coverage"]["complete_episodes"] == [0]
+
+    # Second invocation exports a newly passed episode.  Passing only the
+    # current subset must merge with, not narrow, the historical request.
+    second = write_episode_sidecar(
+        dataset_root=dataset_root,
+        episode=1,
+        records=_make_one_frame_records(tmp_path, 1),
+        manifest_context=context,
+        requested_episodes=[1, 2],
+        version="v1_hand_scene",
+    )
+    assert second["status"] == "written"
+    manifest = json.loads(manifest_path.read_text(encoding="utf8"))
+    assert manifest["requested_episodes"] == [0, 1, 2]
+    assert manifest["coverage"]["complete_episodes"] == [0, 1]
+
+    # Third invocation sees the existing shard and skips it without changing
+    # either the shard or the full requested range.
+    third = write_episode_sidecar(
+        dataset_root=dataset_root,
+        episode=0,
+        records=_make_one_frame_records(tmp_path, 0),
+        manifest_context=context,
+        requested_episodes=[2],
+        version="v1_hand_scene",
+    )
+    assert third["status"] == "skipped_existing"
+    manifest_after_skip = json.loads(manifest_path.read_text(encoding="utf8"))
+    assert manifest_after_skip["requested_episodes"] == [0, 1, 2]
+    assert manifest_after_skip["coverage"]["complete_episodes"] == [0, 1]
 
 
 def test_spatial_tactile_state_is_causal_and_grasp_quality_stays_unknown() -> None:

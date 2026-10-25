@@ -6,7 +6,10 @@ import json
 from pathlib import Path
 
 from openpi.object_geometry.cli import _load_config
+from openpi.object_geometry.cli import _load_approval
 from openpi.object_geometry.cli import _position_group
+from openpi.object_geometry.cli import _write_auto_qa_review
+from openpi.object_geometry.production import sha256_file
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -28,3 +31,34 @@ def test_config_is_valid_json_and_declares_batch_statuses() -> None:
     raw = json.loads(CONFIG.read_text(encoding="utf8"))
     assert raw["review"]["statuses"] == ["human_accepted", "auto_qa_passed", "pending_review", "rejected"]
     assert raw["review"]["reference_human_accepted"] == [23, 38, 65]
+
+
+def test_auto_qa_preserves_existing_human_approval(tmp_path: Path) -> None:
+    pose_run = tmp_path / "pose_run"
+    pose_run.mkdir()
+    (pose_run / "manifest.json").write_text(json.dumps({"episode": 23}), encoding="utf8")
+    review_root = tmp_path / "scratch" / "pose_reviews" / "e023"
+    review_root.mkdir(parents=True)
+    human_review = {
+        "schema_version": 1,
+        "episode": 23,
+        "status": "human_accepted",
+        "approved_by": "reviewer",
+        "review_note": "validated RGB+3D",
+        "pose_run": str(pose_run),
+        "pose_manifest_sha256": sha256_file(pose_run / "manifest.json"),
+    }
+    approved_path = review_root / "approved_pose.json"
+    approved_path.write_text(json.dumps(human_review, indent=2) + "\n", encoding="utf8")
+
+    quality = {"episode": 23, "status": "auto_qa_passed", "auto_qa_passed": True, "checks": {"all": True}, "metrics": {"frame_count": 10}}
+    preserved = _write_auto_qa_review(review_root, quality)
+    assert preserved is not None
+    assert json.loads(approved_path.read_text(encoding="utf8"))["status"] == "human_accepted"
+    assert (review_root / "auto_qa.json").is_file()
+
+    loaded = _load_approval(tmp_path / "scratch", 23)
+    assert loaded["status"] == "human_accepted"
+    assert loaded["approved_by"] == "reviewer"
+    assert loaded["auto_qa_passed"] is True
+    assert loaded["metrics"]["frame_count"] == 10

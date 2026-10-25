@@ -29,6 +29,7 @@ from openpi.object_geometry.production import SpatialTactileProvider
 from openpi.object_geometry.production import as_transform
 from openpi.object_geometry.production import build_episode_records
 from openpi.object_geometry.production import load_mesh_surface_points
+from openpi.object_geometry.production import merge_requested_episodes
 from openpi.object_geometry.production import read_pose_run
 from openpi.object_geometry.production import sha256_file
 from openpi.object_geometry.production import validate_static_flask_prior
@@ -424,6 +425,38 @@ def _write_batch_failure_html(path: Path, report: dict[str, Any]) -> None:
     )
 
 
+def _existing_human_approval(review_root: Path) -> dict[str, Any] | None:
+    """Return a preserved human review, if one already exists."""
+
+    for name in ("approved_pose.json", "pose_review.json"):
+        path = review_root / name
+        if not path.is_file():
+            continue
+        review = json.loads(path.read_text(encoding="utf8"))
+        if review.get("status") in {"human_accepted", "accepted"}:
+            return review
+    return None
+
+
+def _write_auto_qa_review(review_root: Path, quality: dict[str, Any]) -> dict[str, Any] | None:
+    """Write automatic QA separately without replacing human approval."""
+
+    review_root.mkdir(parents=True, exist_ok=True)
+    human_review = _existing_human_approval(review_root)
+    auto_review = dict(quality)
+    auto_review.update({"status": "auto_qa_passed", "human_accepted": False, "approved_by": "automatic_quality_gate"})
+    if human_review is not None:
+        auto_review["preserved_human_review"] = {
+            "status": human_review.get("status"),
+            "approved_by": human_review.get("approved_by"),
+            "review_note": human_review.get("review_note"),
+        }
+        (review_root / "auto_qa.json").write_text(json.dumps(auto_review, indent=2, ensure_ascii=False) + "\n", encoding="utf8")
+        return human_review
+    (review_root / "approved_pose.json").write_text(json.dumps(auto_review, indent=2, ensure_ascii=False) + "\n", encoding="utf8")
+    return None
+
+
 def _batch(
     config: dict[str, Any],
     paths: dict[str, Path],
@@ -573,9 +606,10 @@ def _batch(
         review_root.mkdir(parents=True, exist_ok=True)
         if report["auto_qa_passed"]:
             passed.append(episode)
-            auto_review = dict(quality)
-            auto_review.update({"status": "auto_qa_passed", "human_accepted": False, "approved_by": "automatic_quality_gate"})
-            (review_root / "approved_pose.json").write_text(json.dumps(auto_review, indent=2, ensure_ascii=False) + "\n", encoding="utf8")
+            human_review = _write_auto_qa_review(review_root, quality)
+            if human_review is not None:
+                report["status"] = "human_accepted"
+                report["human_accepted"] = True
         else:
             _write_batch_failure_html(review_root / "auto_qa_failure.html", quality)
         reports.append(report)
@@ -584,6 +618,7 @@ def _batch(
             config,
             paths,
             passed,
+            requested_episodes=episodes,
             scratch=scratch,
             resume=resume,
             output_version=output_version,
@@ -591,6 +626,18 @@ def _batch(
         )
     else:
         export_rc = 0
+    try:
+        requested_manifest = merge_requested_episodes(
+            dataset_root=paths["dataset_root"],
+            version=output_version,
+            requested_episodes=episodes,
+        )
+    except Exception as exc:
+        requested_manifest = {
+            "status": "error",
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+        export_rc = export_rc or 2
     summary = {
         "schema_version": 1,
         "status": "complete" if all(item.get("auto_qa_passed") or item.get("status") == "skipped_existing" for item in reports) else "partial",
@@ -601,6 +648,7 @@ def _batch(
         "episodes_human_accepted": [item["episode"] for item in reports if item.get("human_accepted")],
         "episodes_rejected": [item["episode"] for item in reports if item.get("status") == "rejected"],
         "export_return_code": export_rc,
+        "requested_manifest": requested_manifest,
         "reports": reports,
     }
     (batch_root / "batch_report.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf8")
@@ -707,6 +755,22 @@ def _load_approval(scratch: Path, episode: int) -> dict[str, Any]:
         raise ValueError(f"Pose review is not accepted or auto-QA passed: {path}")
     if review.get("status") == "accepted":
         review["status"] = "human_accepted"
+    pose_review_path = path.with_name("pose_review.json")
+    if pose_review_path.is_file():
+        pose_review = json.loads(pose_review_path.read_text(encoding="utf8"))
+        if pose_review.get("status") in {"human_accepted", "accepted"}:
+            # A legacy run may have an automatic approved_pose.json beside a
+            # separately recorded human pose_review.json.  Human approval has
+            # precedence without modifying either source file.
+            if pose_review.get("status") == "accepted":
+                pose_review["status"] = "human_accepted"
+            review = pose_review
+    auto_qa_path = path.with_name("auto_qa.json")
+    if auto_qa_path.is_file():
+        auto_qa = json.loads(auto_qa_path.read_text(encoding="utf8"))
+        review["auto_qa_passed"] = bool(auto_qa.get("auto_qa_passed", False))
+        review["checks"] = auto_qa.get("checks")
+        review["metrics"] = auto_qa.get("metrics")
     pose_run = Path(review["pose_run"]).expanduser().resolve()
     if sha256_file(pose_run / "manifest.json") != review.get("pose_manifest_sha256"):
         raise ValueError(f"Pose run changed after review: {pose_run}")
@@ -718,6 +782,7 @@ def _export(
     paths: dict[str, Path],
     episodes: list[int],
     *,
+    requested_episodes: list[int] | None = None,
     scratch: Path,
     resume: bool,
     output_version: str = "v1_hand_scene",
@@ -838,7 +903,7 @@ def _export(
                 episode=episode,
                 records=records,
                 manifest_context=context,
-                requested_episodes=episodes,
+                requested_episodes=episodes if requested_episodes is None else requested_episodes,
                 version=output_version,
                 resume=resume,
             )
@@ -1074,7 +1139,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "pose-preview":
         return _record_pose_review(config, paths, episode=args.episode, pose_run=args.pose_run, status=args.review_status, approved_by=args.approved_by, note=args.review_note, scratch=scratch)
     if args.command == "export":
-        return _export(config, paths, selected, scratch=scratch, resume=args.resume, output_version=output_version)
+        return _export(
+            config,
+            paths,
+            selected,
+            requested_episodes=selected,
+            scratch=scratch,
+            resume=args.resume,
+            output_version=output_version,
+        )
     if args.command == "batch":
         return _batch(
             config,
