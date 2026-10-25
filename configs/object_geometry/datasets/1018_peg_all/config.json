@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "dataset_id": "1018_peg_all",
+  "output_version": "v1_hand_scene_q2",
   "representative_frames": [0, 120, 200, 300, 400, 440, 460],
   "episodes": {
     "all": [
@@ -17,11 +18,23 @@
     "scratch_root": "${OPENPI_OBJECT_GEOMETRY_SCRATCH:-scratch/object_geometry/1018_peg_all}",
     "front_calibration": "${OPENPI_FRONT_CALIBRATION:-configs/ur7e_xhand/front_calibration_candidate.json}",
     "dimensions_json": "assets/object_geometry/synthware_19_22/dimensions.json",
+    "spatial_root": "${OPENPI_1018_DATASET_ROOT:-data/1018_peg_all}",
+    "spatial_version": "v1_front_candidate",
     "hoi_root": "${HOI_ROOT:-../hoi}",
     "mask_root_template": "${HOI_ROOT:-../hoi}/outputs/level1_sequence_e{episode}/masks",
     "frames_root_template": "${HOI_ROOT:-../hoi}/data/level1_sequence_e{episode}/frames",
     "tactile_root": "${OPENPI_HAND_SCENE_TACTILE_ROOT:-}",
     "hand_offset_root": "${OPENPI_HAND_SCENE_HAND_OFFSET_ROOT:-}"
+  },
+  "episode_overrides": {
+    "mask_root": {
+      "23": "${E23_MASK_ROOT:-../hoi/outputs/level1_sequence_e23_maskfix_v1/masks}"
+    },
+    "pose_run": {
+      "23": "${E23_POSE_RUN:-}",
+      "38": "${E38_POSE_RUN:-}",
+      "65": "${E65_POSE_RUN:-}"
+    }
   },
   "assets": {
     "funnel": {
@@ -72,17 +85,27 @@
       "flask_max_pivot_shift_m": 0.025,
       "flask_axis_alpha": 0.25
     },
-    "pose_run_policy": "explicit accepted pose review per episode; never choose newest output directory"
+    "pose_run_policy": "explicit deterministic pose run path; batch auto-QA may pass without human acceptance; never choose newest output directory"
   },
   "state": {
     "contact_force_threshold": 0.05,
     "missing_tactile_semantics": "zero arrays, false contact, grasp_quality=0",
     "missing_mask_semantics": "zero mask, false valid, quality=0"
   },
+  "qa_thresholds": {
+    "funnel_min_valid_fraction": 0.50,
+    "max_translation_jump_m": 0.15,
+    "max_rotation_jump_deg": 45.0,
+    "max_flask_static_translation_drift_m": 0.0001,
+    "max_flask_static_rotation_drift_deg": 0.1,
+    "require_le_robot_frame_match": true,
+    "allow_missing_tactile": false
+  },
   "review": {
     "representative_frames": [0, 120, 200, 300, 400, 440, 460],
-    "required_pose_review": [23, 38, 65],
-    "required_status": "accepted"
+    "reference_human_accepted": [23, 38, 65],
+    "batch_auto_qa_status": "auto_qa_passed",
+    "statuses": ["human_accepted", "auto_qa_passed", "pending_review", "rejected"]
   },
   "reproducibility": {
     "rgbtrack_submodule_commit": "23e43f8",

@@ -10,6 +10,7 @@ from openpi.object_geometry.history import (
 )
 from openpi.object_geometry.pipeline import build_object_geometry_frame
 from openpi.object_geometry.production import deterministic_surface_points
+from openpi.object_geometry.production import SpatialTactileProvider
 from openpi.object_geometry.production import transform_points_local_to_base
 from openpi.object_geometry.types import ObjectGeometry, ObjectGeometryFrame, PointCloud
 
@@ -23,6 +24,7 @@ __all__ = [
     "build_object_geometry_frame",
     "depth_to_base_points",
     "deterministic_surface_points",
+    "SpatialTactileProvider",
     "history_to_base",
     "mask_depth_to_cloud",
     "motion_informative",
