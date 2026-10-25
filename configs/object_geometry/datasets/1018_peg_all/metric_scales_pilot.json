@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "objects": {
+    "funnel": 1.0,
+    "target_flask": 1.0
+  }
+}
