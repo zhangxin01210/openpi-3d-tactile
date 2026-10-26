@@ -198,6 +198,19 @@ class Observation(Generic[ArrayT]):
                 hand_scene_data = object_data.get("hand_scene")
                 hand_scene = None
                 if hand_scene_data is not None:
+                    causal_tactile_data = hand_scene_data.get("causal_tactile")
+                    causal_tactile = None
+                    if causal_tactile_data is not None:
+                        causal_tactile = _spatial_types.CausalTactileInput(
+                            ema_before_force_norm=causal_tactile_data["ema_before_force_norm"],
+                            ema_after_force_norm=causal_tactile_data["ema_after_force_norm"],
+                            current_minus_ema_force_norm=causal_tactile_data["current_minus_ema_force_norm"],
+                            current_minus_previous_force_norm=causal_tactile_data["current_minus_previous_force_norm"],
+                            reference_valid=causal_tactile_data["reference_valid"],
+                            previous_valid=causal_tactile_data["previous_valid"],
+                            sample_valid=causal_tactile_data["sample_valid"],
+                            alpha=causal_tactile_data["alpha"],
+                        )
                     hand_scene = _spatial_types.HandSceneInput(
                         manipulated_relation_valid=hand_scene_data["manipulated_relation_valid"],
                         target_relation_valid=hand_scene_data["target_relation_valid"],
@@ -211,6 +224,7 @@ class Observation(Generic[ArrayT]):
                         funnel_mask_valid=hand_scene_data["funnel_mask_valid"],
                         funnel_mask_quality=hand_scene_data["funnel_mask_quality"],
                         funnel_mask_hand_offset_xy=hand_scene_data["funnel_mask_hand_offset_xy"],
+                        causal_tactile=causal_tactile,
                     )
                 object_geometry = _spatial_types.ObjectGeometryInput(
                     manipulated_xyz_m=object_data["manipulated_xyz_m"],

@@ -19,6 +19,43 @@ OBJECT_NAMES = ("manipulated", "target")
 POINT_COUNT = 512
 TACTILE_POINT_COUNT = 600
 FUNNEL_MASK_SIZE = 32
+DTCR_TACTILE_FIELDS = (
+    "ema_before_force_norm",
+    "ema_after_force_norm",
+    "current_minus_ema_force_norm",
+    "current_minus_previous_force_norm",
+    "reference_valid",
+    "previous_valid",
+    "sample_valid",
+    "alpha",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CausalTactileSample:
+    """Per-frame causal tactile EMA state joined by episode/frame."""
+
+    ema_before_force_norm: np.ndarray
+    ema_after_force_norm: np.ndarray
+    current_minus_ema_force_norm: np.ndarray
+    current_minus_previous_force_norm: np.ndarray
+    reference_valid: np.ndarray
+    previous_valid: np.ndarray
+    sample_valid: np.ndarray
+    alpha: np.ndarray
+
+    def __post_init__(self) -> None:
+        for name in DTCR_TACTILE_FIELDS:
+            value = np.asarray(getattr(self, name), dtype=np.bool_ if name.endswith("valid") else np.float32)
+            expected = () if name == "alpha" else (TACTILE_POINT_COUNT,)
+            if value.shape != expected:
+                raise ValueError(f"{name} must have shape {expected}, got {value.shape}")
+            if np.issubdtype(value.dtype, np.floating) and not np.isfinite(value).all():
+                raise ValueError(f"{name} contains NaN or Inf")
+            object.__setattr__(self, name, value)
+
+    def as_dict(self) -> dict[str, np.ndarray]:
+        return {name: getattr(self, name) for name in DTCR_TACTILE_FIELDS}
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +74,7 @@ class HandSceneSample:
     funnel_mask_valid: np.ndarray
     funnel_mask_quality: np.ndarray
     funnel_mask_hand_offset_xy: np.ndarray
+    causal_tactile: CausalTactileSample | None = None
 
     def __post_init__(self) -> None:
         scalar_bool = ("manipulated_relation_valid", "target_relation_valid", "funnel_mask_valid")
@@ -79,12 +117,17 @@ class HandSceneSample:
         if hand_offset.shape != (2,) or not np.isfinite(hand_offset).all():
             raise ValueError("funnel_mask_hand_offset_xy must be finite with shape (2,)")
         object.__setattr__(self, "funnel_mask_hand_offset_xy", hand_offset)
+        if self.causal_tactile is not None and not isinstance(self.causal_tactile, CausalTactileSample):
+            object.__setattr__(self, "causal_tactile", CausalTactileSample(**self.causal_tactile))
 
     def as_dict(self) -> dict[str, np.ndarray]:
-        return {
+        result = {
             name: getattr(self, name)
             for name in HAND_SCENE_FIELDS
         }
+        if self.causal_tactile is not None:
+            result["causal_tactile"] = self.causal_tactile.as_dict()
+        return result
 
 
 HAND_SCENE_FIELDS = (
@@ -204,6 +247,7 @@ class ObjectGeometryDerivedDataset:
             raise ValueError("Object geometry sidecar point_count must be 512")
         hand_scene_contract = self.manifest.get("hand_scene_contract")
         self.has_hand_scene = hand_scene_contract is not None
+        self.has_dtcr_tactile = False
         if self.has_hand_scene:
             if not isinstance(hand_scene_contract, dict) or hand_scene_contract.get("version") != "v1_hand_scene":
                 raise ValueError("Hand-Scene sidecar must declare hand_scene_contract version v1_hand_scene")
@@ -211,7 +255,10 @@ class ObjectGeometryDerivedDataset:
                 raise ValueError("Hand-Scene sidecar tactile_point_count must be 600")
             if int(hand_scene_contract.get("funnel_mask_size", -1)) != FUNNEL_MASK_SIZE:
                 raise ValueError("Hand-Scene sidecar funnel_mask_size must be 32")
-        self._fields = self._GEOMETRY_FIELDS + (HAND_SCENE_FIELDS if self.has_hand_scene else ())
+            self.has_dtcr_tactile = bool(hand_scene_contract.get("dtcr_tactile", False))
+        self._fields = self._GEOMETRY_FIELDS + (HAND_SCENE_FIELDS if self.has_hand_scene else ()) + (
+            tuple(f"dtcr_{field}" for field in DTCR_TACTILE_FIELDS) if self.has_dtcr_tactile else ()
+        )
         self._records = []
         self._lookup: dict[tuple[int, int], tuple[str, int]] = {}
         for record in self.manifest.get("records", []):
@@ -253,7 +300,15 @@ class ObjectGeometryDerivedDataset:
         values = {field: arrays[field][row] for field in self._GEOMETRY_FIELDS}
         hand_scene = None
         if self.has_hand_scene:
-            hand_scene = HandSceneSample(**{field: arrays[field][row] for field in HAND_SCENE_FIELDS})
+            causal_tactile = None
+            if self.has_dtcr_tactile:
+                causal_tactile = CausalTactileSample(
+                    **{field: arrays[f"dtcr_{field}"][row] for field in DTCR_TACTILE_FIELDS}
+                )
+            hand_scene = HandSceneSample(
+                **{field: arrays[field][row] for field in HAND_SCENE_FIELDS},
+                causal_tactile=causal_tactile,
+            )
         return ObjectGeometrySample(episode_index=key[0], frame_index=key[1], hand_scene=hand_scene, **values)
 
     def _load_shard(self, shard_name: str) -> dict[str, np.ndarray]:

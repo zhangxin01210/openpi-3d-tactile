@@ -334,6 +334,20 @@ class TactileSceneRelationInput(Generic[ArrayT]):
 
 
 @struct.dataclass
+class CausalTactileInput(Generic[ArrayT]):
+    """Precomputed/online causal tactile EMA quantities in force-norm space."""
+
+    ema_before_force_norm: ArrayT
+    ema_after_force_norm: ArrayT
+    current_minus_ema_force_norm: ArrayT
+    current_minus_previous_force_norm: ArrayT
+    reference_valid: ArrayT
+    previous_valid: ArrayT
+    sample_valid: ArrayT
+    alpha: ArrayT
+
+
+@struct.dataclass
 class HandSceneInput(Generic[ArrayT]):
     """Optional causal Hand-Scene V0 metadata attached to object geometry.
 
@@ -368,6 +382,7 @@ class HandSceneInput(Generic[ArrayT]):
     funnel_mask_valid: ArrayT
     funnel_mask_quality: ArrayT
     funnel_mask_hand_offset_xy: ArrayT
+    causal_tactile: CausalTactileInput[ArrayT] | None = None
 
 
 @struct.dataclass

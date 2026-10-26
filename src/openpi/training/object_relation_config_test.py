@@ -60,3 +60,22 @@ def test_hand_scene_v0_has_independent_sidecar_and_preserves_xhand_action_contra
     assert sidecar is not None
     assert sidecar.grasp_reference_force_norm.shape == (2, 600)
     assert sidecar.funnel_mask.shape == (2, 32, 32)
+
+
+def test_m2_and_dtcr_configs_keep_68_tokens_and_use_separate_sidecars() -> None:
+    m2 = get_config("pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1")
+    dtcr = get_config("pi0_xhand_spatial_dtcr_v1")
+    independent = get_config("pi0_xhand_spatial_dtcr_independent_v1")
+    assert m2.model.encoder.default_token_count == 68
+    assert dtcr.model.encoder.default_token_count == 68
+    assert independent.model.encoder.default_token_count == 68
+    assert m2.model.encoder.object_relation_mode == "hand_scene_oo_v1"
+    assert dtcr.model.encoder.object_relation_mode == "dtcr_v1"
+    assert independent.model.encoder.object_relation_mode == "dtcr_independent_v1"
+    assert m2.data.object_geometry.version == "v1_hand_scene_q2"
+    assert dtcr.data.object_geometry.version == "v1_hand_scene_dtcr_v1"
+    assert independent.data.object_geometry.version == "v1_hand_scene_dtcr_v1"
+    spec, _ = dtcr.model.inputs_spec(batch_size=2)
+    causal = spec.spatial.object_geometry.hand_scene.causal_tactile
+    assert causal is not None
+    assert causal.current_minus_ema_force_norm.shape == (2, 600)

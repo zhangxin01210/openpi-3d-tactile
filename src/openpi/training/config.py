@@ -1775,7 +1775,6 @@ _CONFIGS.append(
     )
 )
 
-
 def _front_contactworld_method_config(name: str, *, method: str) -> TrainConfig:
     """Adapt reviewed ContactWorld USB 07/10 encoders to real XHand data.
 
@@ -2240,6 +2239,70 @@ _CONFIGS.append(
         freeze_filter=_hand_scene_model.get_freeze_filter(),
         policy_metadata=_hand_scene_metadata,
     )
+)
+
+# M2 and DTCR keep the reviewed 68-token layout while using independent
+# sidecar versions.  DTCR is produced from existing geometry plus causal EMA
+# state and never overwrites the q2 sidecar.
+_HAND_SCENE_Q2_VERSION = os.environ.get("OPENPI_HAND_SCENE_Q2_VERSION", "v1_hand_scene_q2")
+_DTCR_SIDECAR_VERSION = os.environ.get("OPENPI_DTCR_SIDECAR_VERSION", "v1_hand_scene_dtcr_v1")
+
+
+def _hand_scene_relation_config(name: str, *, relation_mode: str, sidecar_version: str) -> TrainConfig:
+    encoder = dataclasses.replace(
+        _structured_suffix_front_base.model.encoder,
+        enable_object_relations=True,
+        object_relation_mode=relation_mode,
+        hand_scene_enable_funnel_mask_encoder=False,
+    )
+    model = dataclasses.replace(_structured_suffix_front_base.model, encoder=encoder)
+    metadata = dict(_structured_suffix_front_base.policy_metadata)
+    metadata.update(
+        {
+            "object_geometry_version": sidecar_version,
+            "object_relation_mode": relation_mode,
+            "spatial_token_count": encoder.default_token_count,
+            "object_geometry_coordinate_frame": "base_link",
+            "object_geometry_units": "meters",
+        }
+    )
+    if relation_mode in {"dtcr_v1", "dtcr_independent_v1"}:
+        metadata.update({"dtcr_tactile_ema_tau_s": 1.0, "dtcr_uses_future_frames": False})
+    return dataclasses.replace(
+        _structured_suffix_front_base,
+        name=name,
+        model=model,
+        data=dataclasses.replace(
+            _structured_suffix_front_base.data,
+            repo_id=_HAND_SCENE_DATASET_ROOT,
+            assets=AssetsConfig(assets_dir="assets/xhand", asset_id="1018_peg_all"),
+            spatial=dataclasses.replace(_structured_suffix_front_base.data.spatial, dataset_root=_HAND_SCENE_DATASET_ROOT),
+            object_geometry=ObjectGeometryDataConfig(dataset_root=_HAND_SCENE_DATASET_ROOT, version=sidecar_version),
+        ),
+        weight_loader=spatial_weight_loaders.SpatialCheckpointWeightLoader(_HAND_SCENE_BASE_WEIGHTS),
+        freeze_filter=model.get_freeze_filter(),
+        policy_metadata=metadata,
+    )
+
+
+_CONFIGS.extend(
+    [
+        _hand_scene_relation_config(
+            "pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1",
+            relation_mode="hand_scene_oo_v1",
+            sidecar_version=_HAND_SCENE_Q2_VERSION,
+        ),
+        _hand_scene_relation_config(
+            "pi0_xhand_spatial_dtcr_v1",
+            relation_mode="dtcr_v1",
+            sidecar_version=_DTCR_SIDECAR_VERSION,
+        ),
+        _hand_scene_relation_config(
+            "pi0_xhand_spatial_dtcr_independent_v1",
+            relation_mode="dtcr_independent_v1",
+            sidecar_version=_DTCR_SIDECAR_VERSION,
+        ),
+    ]
 )
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):

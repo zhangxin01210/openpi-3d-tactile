@@ -13,6 +13,7 @@ import openpi.transforms as transforms
 from openpi.spatial.config import make_baseline_config
 from openpi.spatial.preprocess import SpatialPreprocessor
 from openpi.spatial.schema import SpatialObservation
+from openpi.spatial.tactile_ema import CausalTactileEMA
 
 
 def _default_repo_root() -> Path:
@@ -115,6 +116,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     use_visual: bool = True
     use_tactile: bool = True
     front_calibration_profile: str | None = None
+    tactile_ema_tau_s: float = 1.0
 
     def __post_init__(self) -> None:
         if not (self.use_visual or self.use_tactile):
@@ -127,6 +129,15 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             config = apply_front_calibration_profile(config, repo_root / self.front_calibration_profile)
         preprocessor = SpatialPreprocessor.from_repo_root(repo_root=repo_root, config=config)
         object.__setattr__(self, "_preprocessor", preprocessor)
+        object.__setattr__(self, "_tactile_ema", None)
+        object.__setattr__(self, "_ema_episode", None)
+
+    def reset_tactile_ema(self) -> None:
+        """Reset causal tactile state between episodes when no episode key is sent."""
+
+        if self._tactile_ema is not None:
+            self._tactile_ema.reset()
+        object.__setattr__(self, "_ema_episode", None)
 
     def __call__(self, data: transforms.DataDict) -> transforms.DataDict:
         if "spatial" in data:
@@ -174,6 +185,12 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
 
         frame_index = _as_scalar(data.get("frame_index", data.get("current_action_step", 0)), dtype=int)
         timestamp_s = _as_scalar(data.get("timestamp_s", frame_index), dtype=float)
+        episode_index = data.get("episode_index")
+        if episode_index is not None:
+            episode_index = _as_scalar(episode_index, dtype=int)
+            if self._ema_episode is not None and episode_index != self._ema_episode:
+                self._tactile_ema.reset()
+            object.__setattr__(self, "_ema_episode", episode_index)
 
         output = dict(data)
         if self.use_visual and self.use_tactile:
@@ -185,12 +202,33 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 rgb_by_role=rgb_by_role,
             )
             spatial = _spatial_observation_to_model_dict(spatial_observation)
+            ema_force_norm = spatial_observation.tactile_force_norm
         elif self.use_visual:
             visual = self._preprocessor.preprocess_visual(
                 depth_by_role=depth_by_role, rgb_by_role=rgb_by_role
             )
             spatial = {"visual": _visual_to_model_dict(visual)}
         else:
-            spatial = {"tactile": _tactile_to_model_dict(self._preprocessor.preprocess_tactile(state))}
+            tactile = self._preprocessor.preprocess_tactile(state)
+            spatial = {"tactile": _tactile_to_model_dict(tactile)}
+            ema_force_norm = tactile.force_norm
+        if self.use_tactile:
+            if self._tactile_ema is None or self._tactile_ema.taxel_count != len(ema_force_norm):
+                object.__setattr__(
+                    self,
+                    "_tactile_ema",
+                    CausalTactileEMA(tau_s=self.tactile_ema_tau_s, taxel_count=len(ema_force_norm)),
+                )
+            ema = self._tactile_ema.update(timestamp_s=timestamp_s, force_norm=ema_force_norm)
+            spatial["causal_tactile"] = {
+                "ema_before_force_norm": ema.ema_before_force_norm,
+                "ema_after_force_norm": ema.ema_after_force_norm,
+                "current_minus_ema_force_norm": ema.current_minus_ema_force_norm,
+                "current_minus_previous_force_norm": ema.current_minus_previous_force_norm,
+                "reference_valid": ema.reference_valid,
+                "previous_valid": ema.previous_valid,
+                "sample_valid": ema.sample_valid,
+                "alpha": np.asarray(ema.alpha, dtype=np.float32),
+            }
         output["spatial"] = spatial
         return output

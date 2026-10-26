@@ -67,5 +67,6 @@ def test_tactile_only_preprocess_needs_no_depth(monkeypatch):
     monkeypatch.setattr(spatial_online.SpatialPreprocessor, "from_repo_root", lambda **kwargs: FakePreprocessor())
     transform = spatial_online.XHandSpatialOnlinePreprocess(camera_roles=("front",), use_visual=False)
     output = transform({"observation.state": np.zeros(1972, np.float32)})
-    assert tuple(output["spatial"]) == ("tactile",)
+    assert tuple(output["spatial"]) == ("tactile", "causal_tactile")
     assert output["spatial"]["tactile"]["xyz_m"].shape == (2, 3)
+    assert output["spatial"]["causal_tactile"]["sample_valid"].shape == (2,)

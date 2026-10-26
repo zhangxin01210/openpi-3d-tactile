@@ -13,6 +13,7 @@ import numpy as np
 from openpi.models.spatial_encoders.object_relation_encoder import _finite_geometry
 from openpi.models.spatial_encoders.object_relation_encoder import _local_anchors
 from openpi.models.spatial_encoders.types import HandSceneInput
+from openpi.models.spatial_encoders.types import CausalTactileInput
 from openpi.models.spatial_encoders.structured_spatial_encoder import StructuredSpatialEncoderConfig
 from openpi.models.spatial_encoders.types import ObjectGeometryInput
 from openpi.models.spatial_encoders.types import SpatialEncoderInput
@@ -160,6 +161,110 @@ def test_invalid_object_points_are_masked() -> None:
     assert not bool(jnp.any(output.token_mask[:, -14:]))
     assert bool(jnp.all(jnp.isfinite(output.tokens)))
     assert bool(jnp.all(jnp.isfinite(output.token_xyz_m)))
+
+
+def _dtcr_hand_scene(tactile_count: int) -> HandSceneInput:
+    base = _hand_scene(tactile_count=tactile_count)
+    return HandSceneInput(
+        manipulated_relation_valid=base.manipulated_relation_valid,
+        target_relation_valid=base.target_relation_valid,
+        manipulated_geometry_quality=base.manipulated_geometry_quality,
+        target_geometry_quality=base.target_geometry_quality,
+        grasp_reference_force_norm=base.grasp_reference_force_norm,
+        grasp_short_delta_force_norm=base.grasp_short_delta_force_norm,
+        grasp_contact_valid=base.grasp_contact_valid,
+        grasp_quality=jnp.zeros_like(base.grasp_quality),
+        funnel_mask=base.funnel_mask,
+        funnel_mask_valid=base.funnel_mask_valid,
+        funnel_mask_quality=base.funnel_mask_quality,
+        funnel_mask_hand_offset_xy=base.funnel_mask_hand_offset_xy,
+        causal_tactile=CausalTactileInput(
+            ema_before_force_norm=jnp.full((1, tactile_count), 0.2, dtype=jnp.float32),
+            ema_after_force_norm=jnp.full((1, tactile_count), 0.25, dtype=jnp.float32),
+            current_minus_ema_force_norm=jnp.full((1, tactile_count), 0.4, dtype=jnp.float32),
+            current_minus_previous_force_norm=jnp.full((1, tactile_count), 0.3, dtype=jnp.float32),
+            reference_valid=jnp.ones((1, tactile_count), dtype=jnp.bool_),
+            previous_valid=jnp.ones((1, tactile_count), dtype=jnp.bool_),
+            sample_valid=jnp.ones((1, tactile_count), dtype=jnp.bool_),
+            alpha=jnp.asarray([0.1], dtype=jnp.float32),
+        ),
+    )
+
+
+def test_m2_and_dtcr_keep_ten_relation_tokens_and_masks() -> None:
+    inputs = _inputs(with_object_geometry=True, object_count=32, tactile_count=60)
+    scene = _dtcr_hand_scene(60)
+    geometry = replace(inputs.object_geometry, hand_scene=scene)
+    for mode in ("hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"):
+        config = StructuredSpatialEncoderConfig(
+            enable_object_relations=True,
+            object_relation_mode=mode,
+            visual_num_centers=4,
+            visual_knn=4,
+            tactile_knn=4,
+            tactile_local_tokens_per_finger=2,
+        )
+        output = config.create(rngs=nnx.Rngs(17))(replace(inputs, object_geometry=geometry))
+        assert output.tokens.shape[1] == 30  # 20 base tokens + 5 + 5
+        assert output.token_mask.shape[1] == 30
+        assert bool(jnp.all(jnp.isfinite(output.tokens)))
+        assert output.aux["object_relation_token_count"].tolist() == [10]
+
+
+def test_dtcr_hand_funnel_condition_has_gradient_and_changes_funnel_target() -> None:
+    inputs = _inputs(with_object_geometry=True, object_count=32, tactile_count=60)
+    geometry = replace(inputs.object_geometry, hand_scene=_dtcr_hand_scene(60))
+    config = StructuredSpatialEncoderConfig(
+        enable_object_relations=True,
+        object_relation_mode="dtcr_v1",
+        visual_num_centers=4,
+        visual_knn=4,
+        tactile_knn=4,
+        tactile_local_tokens_per_finger=2,
+    )
+    model = config.create(rngs=nnx.Rngs(23))
+    dtcr_inputs = replace(inputs, object_geometry=geometry)
+    output = model(dtcr_inputs)
+    altered_scene = replace(
+        geometry.hand_scene,
+        causal_tactile=replace(
+            geometry.hand_scene.causal_tactile,
+            current_minus_ema_force_norm=jnp.full((1, 60), 2.0, dtype=jnp.float32),
+        ),
+    )
+    altered = model(replace(inputs, object_geometry=replace(geometry, hand_scene=altered_scene)))
+    assert not bool(jnp.allclose(output.tokens[:, -5:], altered.tokens[:, -5:]))
+
+    def loss_fn(module):
+        return jnp.mean(jnp.square(module(dtcr_inputs).tokens[:, -5:]))
+
+    _, grads = nnx.value_and_grad(loss_fn, argnums=nnx.DiffState(0, nnx.Param))(model)
+    relation_grads = [
+        leaf.value
+        for path, leaf in grads.flat_state().items()
+        if "dtcr_hand" in "/".join(map(str, path)) or "dtcr_ft" in "/".join(map(str, path))
+    ]
+    assert relation_grads
+    assert float(jnp.linalg.norm(jnp.concatenate([jnp.ravel(value) for value in relation_grads]))) > 0.0
+
+
+def test_lifted_funnel_invalidates_hand_relation_but_keeps_object_relation() -> None:
+    inputs = _inputs(with_object_geometry=True, object_count=32, tactile_count=60)
+    scene = _dtcr_hand_scene(60)
+    lifted_scene = replace(scene, manipulated_relation_valid=jnp.asarray([False]))
+    config = StructuredSpatialEncoderConfig(
+        enable_object_relations=True,
+        object_relation_mode="dtcr_v1",
+        visual_num_centers=4,
+        visual_knn=4,
+        tactile_knn=4,
+        tactile_local_tokens_per_finger=2,
+    )
+    output = config.create(rngs=nnx.Rngs(29))(
+        replace(inputs, object_geometry=replace(inputs.object_geometry, hand_scene=lifted_scene))
+    )
+    assert not bool(jnp.any(output.token_mask[:, -10:-5]))
+    assert bool(jnp.all(output.token_mask[:, -5:]))
 
 
 def test_local_anchors_are_spatial_and_permutation_invariant() -> None:

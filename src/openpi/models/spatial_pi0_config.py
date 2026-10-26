@@ -118,6 +118,7 @@ from openpi.models.spatial_encoders.structured_spatial_encoder import (
     StructuredSpatialEncoderConfig,
 )
 from openpi.models.spatial_encoders.types import (
+    CausalTactileInput,
     HandSceneInput,
     ObjectGeometryInput,
     SpatialEncoderInput,
@@ -454,7 +455,12 @@ class StructuredSpatialPi0Config(
         # the model spec prevents batching/sharding code from treating the
         # relation branch input as an unexpected field.
         hand_scene = None
-        if self.encoder.object_relation_mode == "hand_scene_v0":
+        if self.encoder.object_relation_mode in {
+            "hand_scene_v0",
+            "hand_scene_oo_v1",
+            "dtcr_v1",
+            "dtcr_independent_v1",
+        }:
             # v1_hand_scene keeps history-derived quantities in taxel force
             # magnitude space and presents a current-frame 32x32 funnel mask.
             # It is nested so older object_geometry sidecars remain valid for
@@ -476,6 +482,20 @@ class StructuredSpatialPi0Config(
                 funnel_mask_quality=jax.ShapeDtypeStruct((batch_size,), jnp.float32),
                 funnel_mask_hand_offset_xy=jax.ShapeDtypeStruct((batch_size, 2), jnp.float32),
             )
+            if self.encoder.object_relation_mode in {"dtcr_v1", "dtcr_independent_v1"}:
+                hand_scene = dataclasses.replace(
+                    hand_scene,
+                    causal_tactile=CausalTactileInput(
+                        ema_before_force_norm=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.float32),
+                        ema_after_force_norm=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.float32),
+                        current_minus_ema_force_norm=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.float32),
+                        current_minus_previous_force_norm=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.float32),
+                        reference_valid=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.bool_),
+                        previous_valid=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.bool_),
+                        sample_valid=jax.ShapeDtypeStruct((batch_size, self.tactile_points), jnp.bool_),
+                        alpha=jax.ShapeDtypeStruct((batch_size,), jnp.float32),
+                    ),
+                )
         object_geometry = ObjectGeometryInput(
             manipulated_xyz_m=jax.ShapeDtypeStruct((batch_size, 512, 3), jnp.float32),
             manipulated_mask=jax.ShapeDtypeStruct((batch_size, 512), jnp.bool_),

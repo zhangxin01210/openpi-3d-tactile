@@ -83,7 +83,13 @@ class StructuredSpatialEncoderConfig:
             raise ValueError("tactile_summary_tokens_per_finger must be >= 0")
         if (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger) <= 0:
             raise ValueError("At least one tactile token per finger is required")
-        if self.object_relation_mode not in {"legacy_ho_oo", "hand_scene_v0"}:
+        if self.object_relation_mode not in {
+            "legacy_ho_oo",
+            "hand_scene_v0",
+            "hand_scene_oo_v1",
+            "dtcr_v1",
+            "dtcr_independent_v1",
+        }:
             raise ValueError(f"Unsupported object_relation_mode: {self.object_relation_mode!r}")
 
     def create(self, *, rngs: nnx.Rngs) -> "StructuredSpatialEncoder":

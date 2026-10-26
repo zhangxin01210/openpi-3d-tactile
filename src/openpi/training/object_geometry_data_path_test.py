@@ -90,7 +90,18 @@ def test_observation_and_pi0_handoff_keep_object_geometry() -> None:
 
 def test_observation_constructs_optional_hand_scene_contract() -> None:
     geometry = _geometry()
-    geometry["hand_scene"] = _hand_scene()
+    hand_scene = _hand_scene()
+    hand_scene["causal_tactile"] = {
+        "ema_before_force_norm": np.zeros((1, 600), dtype=np.float32),
+        "ema_after_force_norm": np.zeros((1, 600), dtype=np.float32),
+        "current_minus_ema_force_norm": np.zeros((1, 600), dtype=np.float32),
+        "current_minus_previous_force_norm": np.zeros((1, 600), dtype=np.float32),
+        "reference_valid": np.ones((1, 600), dtype=bool),
+        "previous_valid": np.ones((1, 600), dtype=bool),
+        "sample_valid": np.ones((1, 600), dtype=bool),
+        "alpha": np.asarray([0.1], dtype=np.float32),
+    }
+    geometry["hand_scene"] = hand_scene
     data = {
         "image": {"base_0_rgb": np.zeros((1, 2, 2, 3), dtype=np.uint8)},
         "image_mask": {"base_0_rgb": np.ones((1,), dtype=bool)},
@@ -104,3 +115,5 @@ def test_observation_constructs_optional_hand_scene_contract() -> None:
     assert hand_scene is not None
     assert hand_scene.grasp_reference_force_norm.shape == (1, 600)
     assert hand_scene.funnel_mask_hand_offset_xy.shape == (1, 2)
+    assert hand_scene.causal_tactile is not None
+    assert hand_scene.causal_tactile.alpha.shape == (1,)

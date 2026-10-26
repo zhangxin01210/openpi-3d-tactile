@@ -41,7 +41,13 @@ class ObjectRelationEncoder(nnx.Module):
         self.funnel_mask_size = int(funnel_mask_size)
         if self.token_dim <= 0 or hidden_dim <= 0 or self.candidate_k <= 0 or self.funnel_mask_size <= 0:
             raise ValueError("relation dimensions must be positive")
-        if self.relation_mode not in {"legacy_ho_oo", "hand_scene_v0"}:
+        if self.relation_mode not in {
+            "legacy_ho_oo",
+            "hand_scene_v0",
+            "hand_scene_oo_v1",
+            "dtcr_v1",
+            "dtcr_independent_v1",
+        }:
             raise ValueError(f"Unsupported relation_mode: {self.relation_mode!r}")
 
         # Hand-Scene adds one scalar geometry-quality feature.  The legacy
@@ -72,6 +78,25 @@ class ObjectRelationEncoder(nnx.Module):
             self.grasp_taxel_layers = _make_mlp(8, (hidden_dim, self.token_dim), rngs)
             self.grasp_adapter = nnx.Linear(self.token_dim, self.token_dim, rngs=rngs)
             self.grasp_gate = nnx.Linear(self.token_dim, 1, rngs=rngs)
+            if self.relation_mode in {"hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"}:
+                self.funnel_target_layers = _make_mlp(10, (hidden_dim, self.token_dim), rngs)
+                self.funnel_target_query = nnx.Param(
+                    jax.random.normal(rngs.params(), (self.NUM_FINGERS, self.token_dim)) * 0.02
+                )
+                self.funnel_target_role_embedding = nnx.Param(
+                    jax.random.normal(rngs.params(), (self.token_dim,)) * 0.02
+                )
+            if self.relation_mode in {"dtcr_v1", "dtcr_independent_v1"}:
+                # Eight scalar channels plus taxel xyz: current force, EMA
+                # before/after, both causal differences, two validity flags,
+                # and the current-sample validity flag.
+                self.dtcr_hand_taxel_layers = _make_mlp(11, (hidden_dim, self.token_dim), rngs)
+                self.dtcr_change_taxel_layers = _make_mlp(10, (hidden_dim, self.token_dim), rngs)
+                self.dtcr_hand_adapter = nnx.Linear(self.token_dim, self.token_dim, rngs=rngs)
+                self.dtcr_change_adapter = nnx.Linear(self.token_dim, self.token_dim, rngs=rngs)
+                self.dtcr_hand_key = nnx.Linear(self.token_dim, self.token_dim, rngs=rngs)
+                self.dtcr_hand_value = nnx.Linear(self.token_dim, self.token_dim, rngs=rngs)
+                self.dtcr_ft_query = nnx.Linear(self.token_dim, self.token_dim, rngs=rngs)
             if self.enable_funnel_mask_encoder:
                 # Eight current-frame shape/hand-offset moments keep this
                 # optional branch intentionally lightweight.
@@ -109,7 +134,7 @@ class ObjectRelationEncoder(nnx.Module):
                 "ho_attention_weights": ho_weights,
                 "oo_attention_weights": oo_weights,
             }
-        else:
+        elif self.relation_mode == "hand_scene_v0":
             hand_scene = geometry.hand_scene
             batch_size = geometry.manipulated_xyz_m.shape[0]
             funnel_valid, target_valid, funnel_quality, target_quality = _hand_scene_relation_state(
@@ -149,6 +174,56 @@ class ObjectRelationEncoder(nnx.Module):
                 "grasp_finger_gate": grasp_gate,
                 "funnel_mask_feature_valid": funnel_mask_feature_valid,
             }
+        else:
+            hand_scene = geometry.hand_scene
+            batch_size = geometry.manipulated_xyz_m.shape[0]
+            funnel_valid, target_valid, funnel_quality, target_quality = _hand_scene_relation_state(
+                hand_scene, batch_size
+            )
+            funnel_tokens, funnel_mask, funnel_xyz, funnel_weights = self._hand_object(
+                manipulated,
+                tactile,
+                relation_valid=funnel_valid,
+                geometry_quality=funnel_quality,
+            )
+            funnel_tokens = funnel_tokens + self.hand_scene_role_embedding.value[None, 0, None, :]
+
+            target_tokens, target_mask, target_xyz, target_weights = self._funnel_target(
+                manipulated,
+                target,
+                # Manipulated_relation_valid describes the hand-attached
+                # relation only.  Once the funnel is lifted that relation
+                # becomes invalid, while a valid funnel mesh and the static
+                # target prior still define Funnel--Target geometry.
+                relation_valid=target_valid,
+                funnel_quality=funnel_quality,
+                target_quality=target_quality,
+            )
+            target_tokens = target_tokens + self.funnel_target_role_embedding.value[None, None, :]
+            change_descriptor = jnp.zeros_like(funnel_tokens)
+            change_valid = jnp.zeros((batch_size, self.NUM_FINGERS), dtype=jnp.bool_)
+            if self.relation_mode in {"dtcr_v1", "dtcr_independent_v1"}:
+                hand_descriptor, change_descriptor, change_valid = self._dtcr_tactile_descriptors(tactile, hand_scene)
+                funnel_tokens = funnel_tokens + self.dtcr_hand_adapter(hand_descriptor) * change_valid[..., None]
+                target_tokens = self._condition_funnel_target(
+                    target_tokens,
+                    target_mask,
+                    funnel_tokens,
+                    funnel_mask,
+                    change_descriptor,
+                    change_valid,
+                    use_hand=self.relation_mode == "dtcr_v1",
+                )
+
+            tokens = jnp.concatenate([funnel_tokens, target_tokens], axis=1)
+            token_mask = jnp.concatenate([funnel_mask, target_mask], axis=1)
+            token_xyz = jnp.concatenate([funnel_xyz, target_xyz], axis=1)
+            aux = {
+                "object_relation_token_count": jnp.sum(token_mask, axis=1, dtype=jnp.int32),
+                "hand_funnel_attention_weights": funnel_weights,
+                "funnel_target_attention_weights": target_weights,
+                "dtcr_change_valid": change_valid,
+            }
         tokens = jnp.where(token_mask[..., None], tokens, jnp.zeros_like(tokens))
         token_xyz = jnp.where(token_mask[..., None], token_xyz, jnp.zeros_like(token_xyz))
         return tokens, token_mask, token_xyz, aux
@@ -182,7 +257,7 @@ class ObjectRelationEncoder(nnx.Module):
             candidate_age[..., None] / 10.0,
             candidate_confidence[..., None],
         ]
-        if self.relation_mode == "hand_scene_v0":
+        if self.relation_mode in {"hand_scene_v0", "hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"}:
             assert relation_valid is not None
             assert geometry_quality is not None
             finite_quality = jnp.where(jnp.isfinite(geometry_quality), geometry_quality, 0.0)
@@ -199,6 +274,155 @@ class ObjectRelationEncoder(nnx.Module):
         if self.relation_mode == "hand_scene_v0":
             tokens = tokens * finite_quality[:, None, None]
         return tokens, token_mask, token_xyz, weights
+
+    def _funnel_target(self, funnel, target, *, relation_valid, funnel_quality, target_quality):
+        """Encode five deterministic Funnel--Target relation tokens."""
+
+        funnel_anchors = _local_anchors(funnel, self.NUM_LOCAL_OBJECT_ANCHORS)
+        target_anchors = _local_anchors(target, self.NUM_LOCAL_OBJECT_ANCHORS)
+        funnel_xyz, funnel_mask, funnel_source, funnel_age, funnel_conf = funnel_anchors
+        target_xyz, target_mask, target_source, target_age, target_conf = target_anchors
+        delta = target_xyz[:, :, None, :] - funnel_xyz[:, None, :, :]
+        distance = jnp.linalg.norm(delta, axis=-1, keepdims=True)
+        features = jnp.concatenate(
+            [
+                delta,
+                distance,
+                funnel_source[:, :, None, None] + jnp.zeros_like(distance),
+                target_source[:, None, :, None] + jnp.zeros_like(distance),
+                funnel_age[:, :, None, None] / 10.0 + jnp.zeros_like(distance),
+                target_age[:, None, :, None] / 10.0 + jnp.zeros_like(distance),
+                funnel_conf[:, :, None, None] + jnp.zeros_like(distance),
+                target_conf[:, None, :, None] + jnp.zeros_like(distance),
+            ],
+            axis=-1,
+        )
+        pair_mask = funnel_mask[:, :, None] & target_mask[:, None, :]
+        quality = jnp.clip(
+            jnp.where(jnp.isfinite(funnel_quality), funnel_quality, 0.0)
+            * jnp.where(jnp.isfinite(target_quality), target_quality, 0.0),
+            0.0,
+            1.0,
+        )
+        pair_mask = pair_mask & relation_valid[:, None, None] & (quality[:, None, None] > 0.0)
+        embedded = _apply_mlp(self.funnel_target_layers, features)
+        flat_emb = embedded.reshape(embedded.shape[0], -1, self.token_dim)
+        flat_mask = pair_mask.reshape(pair_mask.shape[0], -1)
+        logits = jnp.einsum("bnd,qd->bqn", flat_emb, self.funnel_target_query.value)
+        weights = _masked_softmax(logits, flat_mask[:, None, :])
+        tokens = jnp.einsum("bqn,bnd->bqd", weights, flat_emb)
+        token_mask = jnp.broadcast_to(jnp.any(flat_mask, axis=-1)[:, None], (flat_mask.shape[0], self.NUM_FINGERS))
+        pair_xyz = target_xyz[:, None, :, :] + jnp.zeros_like(funnel_xyz[:, :, None, :])
+        token_xyz = jnp.einsum("bqn,bnd->bqd", weights, pair_xyz.reshape(pair_xyz.shape[0], -1, 3))
+        return tokens * quality[:, None, None], token_mask, token_xyz, weights
+
+    def _dtcr_tactile_descriptors(self, tactile, hand_scene):
+        """Pool slow and fast causal tactile channels per finger."""
+
+        current = jnp.where(jnp.isfinite(tactile.force_norm), tactile.force_norm, 0.0).astype(jnp.float32)
+        if hand_scene is not None and hand_scene.causal_tactile is not None:
+            causal = hand_scene.causal_tactile
+            ema_before = jnp.where(jnp.isfinite(causal.ema_before_force_norm), causal.ema_before_force_norm, 0.0)
+            ema_after = jnp.where(jnp.isfinite(causal.ema_after_force_norm), causal.ema_after_force_norm, 0.0)
+            current_minus_ema = jnp.where(
+                jnp.isfinite(causal.current_minus_ema_force_norm), causal.current_minus_ema_force_norm, 0.0
+            )
+            current_minus_previous = jnp.where(
+                jnp.isfinite(causal.current_minus_previous_force_norm), causal.current_minus_previous_force_norm, 0.0
+            )
+            reference_valid = causal.reference_valid.astype(jnp.float32)
+            previous_valid = causal.previous_valid.astype(jnp.float32)
+            sample_valid = causal.sample_valid.astype(jnp.float32)
+        else:
+            # Compatibility fallback for a reviewed pre-DTCR sidecar.  DTCR
+            # production data should carry the explicit CausalTactileInput.
+            ema_before = jnp.where(
+                hand_scene is not None and jnp.isfinite(hand_scene.grasp_reference_force_norm),
+                hand_scene.grasp_reference_force_norm if hand_scene is not None else 0.0,
+                0.0,
+            )
+            ema_after = ema_before
+            current_minus_ema = current - ema_before
+            current_minus_previous = (
+                hand_scene.grasp_short_delta_force_norm
+                if hand_scene is not None
+                else jnp.zeros_like(current)
+            )
+            reference_valid = jnp.broadcast_to(
+                (hand_scene is not None) and jnp.ones_like(current, dtype=jnp.bool_), current.shape
+            ).astype(jnp.float32)
+            previous_valid = reference_valid
+            sample_valid = tactile.point_mask.astype(jnp.float32)
+
+        safe_xyz = jnp.where(jnp.isfinite(tactile.xyz_m), tactile.xyz_m, 0.0).astype(jnp.float32)
+        finger_id = tactile.finger_id.astype(jnp.int32)
+        point_valid = tactile.point_mask.astype(jnp.bool_) & (sample_valid > 0.0)
+        hand_descriptors, change_descriptors, valid = [], [], []
+        for finger in range(self.NUM_FINGERS):
+            finger_mask = point_valid & (finger_id == finger)
+            count = jnp.sum(finger_mask, axis=1, keepdims=True).astype(jnp.float32)
+            denom = jnp.maximum(count, 1.0)
+            xyz_center = jnp.sum(safe_xyz * finger_mask[..., None], axis=1) / denom
+            xyz_local = safe_xyz - xyz_center[:, None, :]
+            hand_feature = jnp.concatenate(
+                [
+                    current[..., None],
+                    ema_before[..., None],
+                    ema_after[..., None],
+                    current_minus_ema[..., None],
+                    current_minus_previous[..., None],
+                    reference_valid[..., None],
+                    previous_valid[..., None],
+                    sample_valid[..., None],
+                    xyz_local,
+                ],
+                axis=-1,
+            )
+            change_feature = jnp.concatenate(
+                [
+                    current[..., None],
+                    ema_before[..., None],
+                    current_minus_ema[..., None],
+                    current_minus_previous[..., None],
+                    reference_valid[..., None],
+                    previous_valid[..., None],
+                    sample_valid[..., None],
+                    xyz_local,
+                ],
+                axis=-1,
+            )
+            hand_encoded = _apply_mlp(self.dtcr_hand_taxel_layers, hand_feature)
+            change_encoded = _apply_mlp(self.dtcr_change_taxel_layers, change_feature)
+            hand_descriptors.append(_masked_mean(hand_encoded, finger_mask))
+            change_descriptors.append(_masked_mean(change_encoded, finger_mask))
+            valid.append(count[:, 0] > 0)
+        return jnp.stack(hand_descriptors, axis=1), jnp.stack(change_descriptors, axis=1), jnp.stack(valid, axis=1)
+
+    def _condition_funnel_target(
+        self,
+        target_tokens,
+        target_mask,
+        funnel_tokens,
+        funnel_mask,
+        change_tokens,
+        change_valid,
+        *,
+        use_hand: bool,
+    ):
+        """Apply relation attention from Hand--Funnel and tactile changes."""
+
+        change_context = _masked_mean(change_tokens, change_valid)
+        change_has_valid = jnp.any(change_valid, axis=1)
+        target_tokens = target_tokens + self.dtcr_change_adapter(change_context)[:, None, :] * change_has_valid[:, None, None]
+        if not use_hand:
+            return target_tokens
+        query = self.dtcr_ft_query(target_tokens)
+        key = self.dtcr_hand_key(funnel_tokens)
+        value = self.dtcr_hand_value(funnel_tokens)
+        logits = jnp.einsum("bqd,bfd->bqf", query, key) / jnp.sqrt(float(self.token_dim))
+        relation_mask = target_mask[:, :, None] & funnel_mask[:, None, :]
+        attention = _masked_softmax(logits, relation_mask)
+        return target_tokens + jnp.einsum("bqf,bfd->bqd", attention, value)
 
     def _grasp_descriptor(self, tactile, hand_scene):
         """Causally pool current/reference tactile force per finger."""

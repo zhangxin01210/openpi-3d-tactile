@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 
 from openpi.object_geometry_dataset.derived import FUNNEL_MASK_SIZE
+from openpi.object_geometry_dataset.derived import DTCR_TACTILE_FIELDS
 from openpi.object_geometry_dataset.derived import HAND_SCENE_FIELDS
 from openpi.object_geometry_dataset.derived import POINT_COUNT
 from openpi.object_geometry_dataset.derived import TACTILE_POINT_COUNT
@@ -43,6 +44,7 @@ STATE_REQUIRED = (
     "grasp_contact_valid",
     "grasp_quality",
 )
+DTCR_STATE_REQUIRED = tuple(f"dtcr_{field}" for field in DTCR_TACTILE_FIELDS)
 
 
 def _state_path(root: Path, episode_index: int, frame_index: int) -> Path:
@@ -84,11 +86,18 @@ def _resize_nearest(mask: np.ndarray) -> np.ndarray:
     return mask[np.ix_(y, x)]
 
 
-def _load_state(path: Path, *, frame_index: int) -> dict[str, np.ndarray]:
+def _load_state(
+    path: Path,
+    *,
+    frame_index: int,
+    base_state: dict[str, np.ndarray] | None = None,
+) -> dict[str, np.ndarray]:
     if not path.is_file():
         raise FileNotFoundError(path)
     with np.load(path, allow_pickle=False) as raw:
         record = {name: raw[name].copy() for name in raw.files}
+    if base_state is not None:
+        record = {**base_state, **record}
     missing = [name for name in STATE_REQUIRED if name not in record]
     if missing:
         raise ValueError(f"{path}: missing required fields {missing}")
@@ -125,7 +134,24 @@ def _load_state(path: Path, *, frame_index: int) -> dict[str, np.ndarray]:
             funnel_mask_quality=_quality(record, "funnel_mask_quality"),
             funnel_mask_hand_offset_xy=hand_offset,
         )
-    assert tuple(output) == HAND_SCENE_FIELDS
+    dtcr_present = [name in record for name in DTCR_STATE_REQUIRED]
+    if any(dtcr_present) and not all(dtcr_present):
+        raise ValueError(f"{path}: DTCR tactile state must contain all fields {list(DTCR_STATE_REQUIRED)}")
+    if all(dtcr_present):
+        output.update(
+            {
+                name: _vector(record, name, np.float32 if not name.endswith("valid") else bool)
+                for name in DTCR_STATE_REQUIRED
+                if name != "dtcr_alpha"
+            }
+        )
+        alpha = _scalar(record, "dtcr_alpha", np.float32)
+        if not np.isfinite(alpha) or not 0.0 <= float(alpha) <= 1.0:
+            raise ValueError(f"{path}: dtcr_alpha must be finite and in [0, 1]")
+        output["dtcr_alpha"] = alpha
+    expected = set(HAND_SCENE_FIELDS) | (set(DTCR_STATE_REQUIRED) if all(dtcr_present) else set())
+    if set(output) != expected:
+        raise AssertionError(f"Unexpected state fields: {sorted(set(output) ^ expected)}")
     return output
 
 
@@ -163,8 +189,6 @@ def build_sidecar(
 ) -> dict[str, Any]:
     """Build and return the manifest; exposed for CPU-only contract tests."""
     source = ObjectGeometryDerivedDataset(source_dataset_root, version=source_version)
-    if source.has_hand_scene:
-        raise ValueError("Source is already a Hand-Scene sidecar; use its original external state records instead")
     if not isinstance(source.manifest.get("calibration"), dict):
         raise ValueError("Source object geometry sidecar must carry formal calibration provenance")
     root = output_dataset_root / "object_geometry" / version
@@ -176,7 +200,12 @@ def build_sidecar(
         if episode not in selected_episodes:
             continue
         sample = source.get(episode_index=episode, frame_index=frame)
-        state = _load_state(_state_path(state_root, episode, frame), frame_index=frame)
+        base_state = None if sample.hand_scene is None else sample.hand_scene.as_dict()
+        state = _load_state(
+            _state_path(state_root, episode, frame),
+            frame_index=frame,
+            base_state=base_state,
+        )
         staged.setdefault(episode, []).append(
             {
                 "episode_index": np.asarray(episode, dtype=np.int64),
@@ -199,6 +228,13 @@ def build_sidecar(
         raise ValueError("No records selected for Hand-Scene sidecar")
     root.mkdir(parents=True, exist_ok=False)
     records = []
+    has_dtcr_tactile = all(
+        all(name in record for name in DTCR_STATE_REQUIRED)
+        for episode_records in staged.values()
+        for record in episode_records
+    )
+    if version == "v1_hand_scene_dtcr_v1" and not has_dtcr_tactile:
+        raise ValueError("DTCR sidecar requires precomputed causal tactile EMA fields")
     fields = (
         "episode_index",
         "frame_index",
@@ -208,6 +244,7 @@ def build_sidecar(
             for field in (f"{name}_xyz_m", f"{name}_mask", f"{name}_source", f"{name}_age", f"{name}_confidence")
         ),
         *HAND_SCENE_FIELDS,
+        *(DTCR_STATE_REQUIRED if has_dtcr_tactile else ()),
     )
     for episode, episode_records in staged.items():
         shard_name = f"shard_e{episode:03d}"
@@ -250,6 +287,11 @@ def build_sidecar(
             ),
             "mask_semantics": "current-frame downsampled SAM/object mask; invalid or missing uses zero mask and false valid flag",
             "future_frame_policy": "causal_max_source_frame <= labelled frame is required for every record",
+            "dtcr_tactile": has_dtcr_tactile,
+            "dtcr_tactile_semantics": (
+                "causal per-taxel EMA in force-norm space; not a calibrated grasp-force estimate"
+                if has_dtcr_tactile else None
+            ),
         },
         "records": records,
     }
@@ -267,8 +309,8 @@ def main() -> None:
     parser.add_argument("--episodes", help="Comma/range selection, e.g. 23 or 0-69; default all source episodes")
     parser.add_argument("--generation-commit", default="unknown")
     args = parser.parse_args()
-    if args.version != "v1_hand_scene":
-        parser.error("Hand-Scene V0 only writes --version v1_hand_scene")
+    if args.version not in {"v1_hand_scene", "v1_hand_scene_dtcr_v1"}:
+        parser.error("Hand-Scene exporter supports v1_hand_scene and v1_hand_scene_dtcr_v1")
     manifest = build_sidecar(
         source_dataset_root=args.source_dataset_root.expanduser().resolve(),
         source_version=args.source_version,
