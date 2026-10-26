@@ -53,6 +53,11 @@ class StructuredSpatialEncoderConfig:
     # experiment.  ``hand_scene_v0`` keeps the base 58 tokens and appends
     # five Hand-Funnel plus five Hand-Target tokens instead.
     object_relation_mode: str = "legacy_ho_oo"
+    # ``scene_rgbd`` is the reviewed visual branch.  ``object_centric``
+    # replaces only its 33 visual tokens with Hand/Funnel/Flask geometry;
+    # RGB images still flow through Pi0's ordinary PaliGemma prefix.
+    visual_geometry_mode: str = "scene_rgbd"
+    object_centric_centers: tuple[int, int, int] = (8, 12, 12)
     relation_candidate_k: int = 16
     relation_hidden_dim: int = 128
     # The optional funnel silhouette branch is deliberately off for the first
@@ -83,6 +88,15 @@ class StructuredSpatialEncoderConfig:
             raise ValueError("tactile_summary_tokens_per_finger must be >= 0")
         if (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger) <= 0:
             raise ValueError("At least one tactile token per finger is required")
+        if self.visual_geometry_mode not in {"scene_rgbd", "object_centric"}:
+            raise ValueError(f"Unsupported visual_geometry_mode: {self.visual_geometry_mode!r}")
+        if len(self.object_centric_centers) != 3 or any(center <= 0 for center in self.object_centric_centers):
+            raise ValueError("object_centric_centers must contain three positive counts")
+        if self.visual_geometry_mode == "object_centric":
+            if sum(self.object_centric_centers) != self.visual_num_centers:
+                raise ValueError("object_centric_centers must sum to visual_num_centers")
+            if not self.enable_tactile or not self.enable_object_relations:
+                raise ValueError("object_centric mode requires tactile input and object relations")
         if self.object_relation_mode not in {
             "legacy_ho_oo",
             "hand_scene_v0",
@@ -112,6 +126,7 @@ class StructuredSpatialEncoderConfig:
 
 class StructuredSpatialEncoder(nnx.Module):
     _VISUAL_PATCH_DIM = 7
+    _OBJECT_CENTRIC_PATCH_DIM = 7
     _TACTILE_TAXEL_DIM = 7
 
     def __init__(self, *, config: StructuredSpatialEncoderConfig, rngs: nnx.Rngs) -> None:
@@ -127,6 +142,17 @@ class StructuredSpatialEncoder(nnx.Module):
         self.visual_modality_embedding = nnx.Param(
             jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
         )
+        if config.visual_geometry_mode == "object_centric":
+            # Object points use relative xyz [3], object one-hot [3], and a
+            # clipped geometry confidence/validity scalar [1].  These are
+            # intentionally separate parameters from the RGB-D MLP because
+            # the final four feature dimensions have different semantics.
+            self.object_centric_patch_layers = _make_mlp(self._OBJECT_CENTRIC_PATCH_DIM, (h, d), rngs)
+            self.object_centric_global_layers = _make_mlp(self._OBJECT_CENTRIC_PATCH_DIM, (h, d), rngs)
+            self.object_centric_pos_layers = _make_mlp(3, (h, d), rngs)
+            self.object_centric_modality_embedding = nnx.Param(
+                jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
+            )
         if config.enable_tactile:
             tactile_input_dim = self._TACTILE_TAXEL_DIM + d
             self.tactile_taxel_layers = _make_mlp(tactile_input_dim, (h, d), rngs)
@@ -177,7 +203,13 @@ class StructuredSpatialEncoder(nnx.Module):
 
         batch_size = _batch_size(inputs)
 
-        if inputs.visual is not None:
+        if self.config.visual_geometry_mode == "object_centric":
+            tokens, mask, xyz, object_aux = self._encode_object_centric(inputs)
+            token_parts.append(tokens)
+            mask_parts.append(mask)
+            xyz_parts.append(xyz)
+            aux.update(object_aux)
+        elif inputs.visual is not None:
             tokens, mask, xyz, visual_aux = self._encode_visual(inputs.visual)
             token_parts.append(tokens)
             mask_parts.append(mask)
@@ -225,6 +257,133 @@ class StructuredSpatialEncoder(nnx.Module):
             token_xyz_m=token_xyz_m,
             aux=aux,
         )
+
+    def _encode_object_centric(
+        self, inputs: SpatialEncoderInput
+    ) -> tuple[jax.Array, jax.Array, jax.Array, dict[str, jax.Array]]:
+        """Encode Hand/Funnel/Flask points into the visual 33-token slot.
+
+        The three groups are kept separate during FPS/KNN so points from
+        different objects cannot form a semantically mixed local patch.  The
+        returned order is 8 Hand tokens, 12 Funnel tokens, 12 Flask tokens,
+        followed by one global token.  This branch consumes only current-frame
+        base_link metric points; it does not infer geometry from RGB or use
+        future poses.
+        """
+
+        if inputs.tactile is None or inputs.object_geometry is None:
+            raise ValueError("object_centric mode requires tactile and object_geometry inputs")
+        geometry = inputs.object_geometry
+        hand_xyz, hand_mask, hand_conf = _safe_geometry_points(
+            inputs.tactile.xyz_m,
+            inputs.tactile.point_mask,
+            jnp.ones_like(inputs.tactile.point_mask, dtype=jnp.float32),
+        )
+        funnel_xyz, funnel_mask, funnel_conf = _safe_geometry_points(
+            geometry.manipulated_xyz_m,
+            geometry.manipulated_mask,
+            geometry.manipulated_confidence,
+        )
+        flask_xyz, flask_mask, flask_conf = _safe_geometry_points(
+            geometry.target_xyz_m,
+            geometry.target_mask,
+            geometry.target_confidence,
+        )
+        groups = (
+            (hand_xyz, hand_mask, hand_conf, 0, self.config.object_centric_centers[0]),
+            (funnel_xyz, funnel_mask, funnel_conf, 1, self.config.object_centric_centers[1]),
+            (flask_xyz, flask_mask, flask_conf, 2, self.config.object_centric_centers[2]),
+        )
+        local_tokens, local_masks, local_xyzs, valid_counts = [], [], [], []
+        all_xyz, all_mask, all_conf, all_ids = [], [], [], []
+        for xyz, point_mask, confidence, object_id, center_count in groups:
+            tokens, token_mask, token_xyz = self._encode_object_group(
+                xyz, point_mask, confidence, object_id=object_id, center_count=center_count
+            )
+            local_tokens.append(tokens)
+            local_masks.append(token_mask)
+            local_xyzs.append(token_xyz)
+            valid_counts.append(jnp.sum(point_mask, axis=1, dtype=jnp.int32))
+            all_xyz.append(xyz)
+            all_mask.append(point_mask)
+            all_conf.append(confidence)
+            all_ids.append(
+                jnp.broadcast_to(
+                    jax.nn.one_hot(object_id, 3, dtype=jnp.float32),
+                    (xyz.shape[0], xyz.shape[1], 3),
+                )
+            )
+
+        xyz = jnp.concatenate(all_xyz, axis=1)
+        point_mask = jnp.concatenate(all_mask, axis=1)
+        confidence = jnp.concatenate(all_conf, axis=1)
+        object_id = jnp.concatenate(all_ids, axis=1)
+        global_center = _masked_mean(xyz, point_mask, axis=1)
+        global_features = jnp.concatenate(
+            [xyz - global_center[:, None, :], object_id, confidence[..., None]], axis=-1
+        )
+        global_hidden = _apply_mlp(self.object_centric_global_layers, global_features)
+        global_token = _masked_mean(global_hidden, point_mask, axis=1)
+        global_token = (
+            global_token
+            + _apply_mlp(self.object_centric_pos_layers, global_center)
+            + self.object_centric_modality_embedding.value
+        )
+        global_mask = jnp.any(point_mask, axis=1)
+
+        tokens = jnp.concatenate([*local_tokens, global_token[:, None, :]], axis=1)
+        token_mask = jnp.concatenate([*local_masks, global_mask[:, None]], axis=1)
+        token_xyz = jnp.concatenate([*local_xyzs, global_center[:, None, :]], axis=1)
+        return (
+            tokens,
+            token_mask,
+            token_xyz,
+            {
+                "visual_geometry_mode_object_centric": jnp.ones((xyz.shape[0],), dtype=jnp.bool_),
+                "visual_token_count": jnp.sum(token_mask, axis=1, dtype=jnp.int32),
+                "object_centric_valid_point_count_by_object": jnp.stack(valid_counts, axis=1),
+            },
+        )
+
+    def _encode_object_group(
+        self,
+        xyz: jax.Array,
+        point_mask: jax.Array,
+        confidence: jax.Array,
+        *,
+        object_id: int,
+        center_count: int,
+    ) -> tuple[jax.Array, jax.Array, jax.Array]:
+        center_indices = _masked_fps_indices(xyz, point_mask, center_count)
+        center_xyz = _batched_take(xyz, center_indices)
+        center_mask = _batched_take(point_mask, center_indices)
+        k = min(self.config.visual_knn, xyz.shape[1])
+        neighbor_indices, neighbor_mask = _masked_knn_indices(
+            query_xyz=center_xyz,
+            point_xyz=xyz,
+            point_mask=point_mask,
+            k=k,
+            query_mask=center_mask,
+        )
+        neighbor_xyz = _batched_take(xyz, neighbor_indices)
+        neighbor_confidence = _batched_take(confidence, neighbor_indices)
+        one_hot = jnp.broadcast_to(
+            jax.nn.one_hot(object_id, 3, dtype=xyz.dtype),
+            (xyz.shape[0], xyz.shape[1], 3),
+        )
+        neighbor_ids = _batched_take(one_hot, neighbor_indices)
+        features = jnp.concatenate(
+            [neighbor_xyz - center_xyz[:, :, None, :], neighbor_ids, neighbor_confidence[..., None]], axis=-1
+        )
+        hidden = _apply_mlp(self.object_centric_patch_layers, features)
+        tokens = _masked_mean(hidden, neighbor_mask, axis=2)
+        tokens = (
+            tokens
+            + _apply_mlp(self.object_centric_pos_layers, center_xyz)
+            + self.object_centric_modality_embedding.value
+        )
+        tokens = jnp.where(center_mask[..., None], tokens, jnp.zeros_like(tokens))
+        return tokens, center_mask, center_xyz
 
     def _encode_visual(self, visual) -> tuple[jax.Array, jax.Array, jax.Array, dict[str, jax.Array]]:
         xyz_feature = self.config.transforms.visual_xyz(visual.xyz_m)
@@ -304,17 +463,26 @@ class StructuredSpatialEncoder(nnx.Module):
         )
 
     def _encode_tactile(self, tactile) -> tuple[jax.Array, jax.Array, jax.Array, dict[str, jax.Array]]:
-        xyz_feature = self.config.transforms.tactile_xyz(tactile.xyz_m)
-        xyz_raw = tactile.xyz_m.astype(jnp.float32)
+        # Taxel ids are the canonical sensor ordering.  Sorting before the
+        # masked reductions makes a shuffled batch representation numerically
+        # identical while preserving the existing finger-id grouping.
+        taxel_order = jnp.argsort(tactile.taxel_id.astype(jnp.int32), axis=1, stable=True)
+        xyz_m = _batched_take(tactile.xyz_m, taxel_order)
+        force_raw = _batched_take(tactile.force, taxel_order)
+        force_norm_raw = _batched_take(tactile.force_norm, taxel_order)
+        finger_id = _batched_take(tactile.finger_id, taxel_order)
+        point_mask = _batched_take(tactile.point_mask, taxel_order)
+        xyz_feature = self.config.transforms.tactile_xyz(xyz_m)
+        xyz_raw = xyz_m.astype(jnp.float32)
         force_output = self.config.transforms.force(
-            tactile.force,
-            tactile.force_norm,
+            force_raw,
+            force_norm_raw,
         )
         force = jnp.asarray(force_output.force, dtype=jnp.float32)
         force_norm = jnp.asarray(force_output.force_norm, dtype=jnp.float32)
 
-        point_mask = tactile.point_mask.astype(jnp.bool_)
-        finger_id = tactile.finger_id.astype(jnp.int32)
+        point_mask = point_mask.astype(jnp.bool_)
+        finger_id = finger_id.astype(jnp.int32)
         clipped_finger_id = jnp.clip(finger_id, 0, self.config.num_fingers - 1)
         per_point_finger_embedding = self.finger_embedding.value[clipped_finger_id]
 
@@ -455,6 +623,21 @@ class StructuredSpatialEncoder(nnx.Module):
 def _make_mlp(input_dim: int, hidden_dims: tuple[int, ...], rngs: nnx.Rngs) -> list[nnx.Linear]:
     dims = (input_dim, *hidden_dims)
     return [nnx.Linear(dims[i], dims[i + 1], rngs=rngs) for i in range(len(dims) - 1)]
+
+
+def _safe_geometry_points(
+    xyz: jax.Array, point_mask: jax.Array, confidence: jax.Array
+) -> tuple[jax.Array, jax.Array, jax.Array]:
+    """Normalize invalid object points before any distance/reduction operation."""
+
+    xyz = jnp.asarray(xyz, dtype=jnp.float32)
+    confidence = jnp.asarray(confidence, dtype=jnp.float32)
+    point_mask = point_mask.astype(jnp.bool_)
+    finite = jnp.isfinite(xyz).all(axis=-1) & jnp.isfinite(confidence)
+    point_mask = point_mask & finite
+    xyz = jnp.where(point_mask[..., None], xyz, 0.0)
+    confidence = jnp.where(point_mask, jnp.clip(confidence, 0.0, 1.0), 0.0)
+    return xyz, point_mask, confidence
 
 
 def _apply_mlp(layers: list[nnx.Linear], x: jax.Array) -> jax.Array:

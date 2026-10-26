@@ -113,3 +113,23 @@ python "$REPO/scripts/object_geometry/pilot_sparse_3d_relations.py" \
   --front-calibration-profile "$REPO/configs/ur7e_xhand/front_calibration_candidate.json" \
   --output "$HOI/outputs/level1_sequence_e23/sparse_3d_relations_front_candidate"
 ```
+
+## Object-centric base-frame audit
+
+Before an M2-OC run, inspect a small set of frames without generating labels or
+rewriting either sidecar. The report uses the existing tactile XYZ and q2
+Funnel/Flask clouds, and prints per-object min/max/centroid, valid counts,
+nearest distances, and sampled centroid changes:
+
+```bash
+PYTHONPATH=src python scripts/object_geometry/audit_object_centric_geometry.py \
+  --dataset-root data/1018_peg_all \
+  --spatial-version v1_front_candidate \
+  --object-version v1_hand_scene_q2 \
+  --episodes 23,38,65 \
+  --frames-per-episode 4 \
+  --output scratch/object_geometry/object_centric_audit_e23_e38_e65.json
+```
+
+Distances are diagnostics only; they are not contact labels and do not add a
+new transform or coordinate alignment step.

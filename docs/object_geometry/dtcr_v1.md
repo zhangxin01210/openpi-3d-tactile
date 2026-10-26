@@ -35,6 +35,19 @@ The training configs are:
 - `pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1` (M2, 68 tokens);
 - `pi0_xhand_spatial_dtcr_v1` (DTCR, 68 tokens);
 - `pi0_xhand_spatial_dtcr_independent_v1` (independent tactile ablation).
+- `pi0_xhand_spatial_hand_scene_oo_object_centric_v1` (M2-OC, 68 tokens;
+  8 Hand + 12 Funnel + 12 Flask local centers plus one global object token).
+
+M2, DTCR, independent, and M2-OC use the same new fine-tuning policy:
+`gemma_2b_lora` PaliGemma, full `gemma_300m` Action Expert, and trainable
+spatial/relation/suffix parameters.  The repository's historical M0
+checkpoint metadata is not committed; the explicit XHand LoRA/full records in
+this checkout are the provenance for this policy.  The original
+`pi0_xhand_spatial_structured_suffix_front` configuration is left unchanged.
+
+M2-OC consumes `spatial.tactile.xyz_m` plus the q2 Funnel/Flask clouds in
+`base_link`/meters.  It does not read the 4096-point scene branch, but the
+three raw RGB images remain in the normal Pi0 PaliGemma input.
 
 On computer 4, after the new sidecar has passed its data/contract checks, run
 a one-step GPU smoke test from the repository root.  The initial checkpoint
@@ -52,6 +65,13 @@ CUDA_VISIBLE_DEVICES=0 XLA_PYTHON_CLIENT_MEM_FRACTION=0.8 \
 Normal training uses the same command with a fresh experiment name and the
 desired schedule.  The checkpoint loader starts from the base Pi0 tree; M0 or
 M1 checkpoints are not required.
+
+To inspect the actual instantiated parameter freeze split before training:
+
+```bash
+PYTHONPATH=src python scripts/spatial/audit_finetune_strategy.py \
+  --config pi0_xhand_spatial_hand_scene_oo_object_centric_v1
+```
 
 The EMA is a causal force-magnitude reference, not a calibrated grasp-force
 estimate.  Missing samples do not update the EMA and invalidate the next

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from flax import nnx
 import jax
 import jax.numpy as jnp
@@ -9,10 +11,52 @@ from openpi.models.spatial_encoders.structured_spatial_encoder import (
     StructuredSpatialEncoderConfig,
 )
 from openpi.models.spatial_encoders.types import (
+    HandSceneInput,
+    ObjectGeometryInput,
     SpatialEncoderInput,
     TactileSpatialInput,
     VisualSpatialInput,
 )
+
+
+def _object_centric_input() -> SpatialEncoderInput:
+    base = _synthetic_input(batch_size=2, visual_points=4096, tactile_points=600)
+    batch_size = 2
+    object_points = 512
+    xyz = jnp.linspace(-0.3, 0.3, object_points * 3, dtype=jnp.float32).reshape(1, object_points, 3)
+    xyz = jnp.broadcast_to(xyz, (batch_size, object_points, 3))
+    mask = jnp.ones((batch_size, object_points), dtype=jnp.bool_)
+    source = jnp.zeros((batch_size, object_points), dtype=jnp.int8)
+    age = jnp.zeros((batch_size, object_points), dtype=jnp.int16)
+    confidence = jnp.ones((batch_size, object_points), dtype=jnp.float32)
+    hand_scene = HandSceneInput(
+        manipulated_relation_valid=jnp.ones((batch_size,), dtype=jnp.bool_),
+        target_relation_valid=jnp.ones((batch_size,), dtype=jnp.bool_),
+        manipulated_geometry_quality=jnp.ones((batch_size,), dtype=jnp.float32),
+        target_geometry_quality=jnp.ones((batch_size,), dtype=jnp.float32),
+        grasp_reference_force_norm=jnp.zeros((batch_size, 600), dtype=jnp.float32),
+        grasp_short_delta_force_norm=jnp.zeros((batch_size, 600), dtype=jnp.float32),
+        grasp_contact_valid=jnp.zeros((batch_size, 600), dtype=jnp.bool_),
+        grasp_quality=jnp.zeros((batch_size,), dtype=jnp.float32),
+        funnel_mask=jnp.zeros((batch_size, 32, 32), dtype=jnp.bool_),
+        funnel_mask_valid=jnp.zeros((batch_size,), dtype=jnp.bool_),
+        funnel_mask_quality=jnp.zeros((batch_size,), dtype=jnp.float32),
+        funnel_mask_hand_offset_xy=jnp.zeros((batch_size, 2), dtype=jnp.float32),
+    )
+    geometry = ObjectGeometryInput(
+        manipulated_xyz_m=xyz,
+        manipulated_mask=mask,
+        manipulated_source=source,
+        manipulated_age=age,
+        manipulated_confidence=confidence,
+        target_xyz_m=xyz + 0.4,
+        target_mask=mask,
+        target_source=source,
+        target_age=age,
+        target_confidence=confidence,
+        hand_scene=hand_scene,
+    )
+    return SpatialEncoderInput(visual=None, tactile=base.tactile, object_geometry=geometry)
 
 
 def _synthetic_input(
@@ -136,6 +180,69 @@ def test_structured_spatial_encoder_all_invalid_modality_has_no_nan():
 
     assert bool(jnp.all(jnp.isfinite(output.tokens)))
     assert not bool(jnp.any(output.token_mask))
+
+
+def _object_centric_encoder() -> StructuredSpatialEncoderConfig:
+    return StructuredSpatialEncoderConfig(
+        visual_geometry_mode="object_centric",
+        visual_num_centers=32,
+        visual_knn=32,
+        tactile_knn=8,
+        enable_object_relations=True,
+        object_relation_mode="hand_scene_oo_v1",
+    )
+
+
+def test_object_centric_encoder_keeps_33_plus_25_plus_10_layout() -> None:
+    encoder = _object_centric_encoder().create(rngs=nnx.Rngs(11))
+    output = encoder(_object_centric_input())
+    assert output.tokens.shape == (2, 68, 128)
+    assert output.token_mask.shape == (2, 68)
+    assert bool(jnp.all(output.token_mask[:, :33]))
+    assert bool(jnp.all(jnp.isfinite(output.tokens)))
+    assert output.aux["object_centric_valid_point_count_by_object"].shape == (2, 3)
+
+
+def test_object_centric_encoder_masks_each_object_without_nan() -> None:
+    inputs = _object_centric_input()
+    geometry = inputs.object_geometry
+    invalid_funnel = geometry.manipulated_mask.at[:, :].set(False)
+    invalid_flask = geometry.target_mask.at[:, :].set(False)
+    invalid_flask = invalid_flask.at[:, :32].set(True)
+    invalid_geometry = replace(
+        geometry,
+        manipulated_mask=invalid_funnel,
+        target_mask=invalid_flask,
+        manipulated_xyz_m=geometry.manipulated_xyz_m.at[:, 0, :].set(jnp.nan),
+    )
+    tactile = replace(inputs.tactile, point_mask=inputs.tactile.point_mask.at[:, :60].set(False))
+    output = _object_centric_encoder().create(rngs=nnx.Rngs(12))(
+        replace(inputs, tactile=tactile, object_geometry=invalid_geometry)
+    )
+    # Hand centers are partly valid, the Funnel group is entirely invalid,
+    # and the Flask group retains only its first 32 points.
+    assert bool(jnp.any(output.token_mask[:, :8]))
+    assert not bool(jnp.any(output.token_mask[:, 8:20]))
+    assert bool(jnp.any(output.token_mask[:, 20:32]))
+    assert bool(jnp.all(jnp.isfinite(output.tokens)))
+    assert bool(jnp.all(jnp.isfinite(output.token_xyz_m)))
+
+
+def test_object_centric_encoder_has_trainable_geometry_parameters() -> None:
+    model = _object_centric_encoder().create(rngs=nnx.Rngs(13))
+    inputs = _object_centric_input()
+
+    def loss_fn(module):
+        return jnp.mean(jnp.square(module(inputs).tokens[:, :33]))
+
+    _, grads = nnx.value_and_grad(loss_fn, argnums=nnx.DiffState(0, nnx.Param))(model)
+    geometry_grads = [
+        leaf.value
+        for path, leaf in grads.flat_state().items()
+        if "object_centric" in "/".join(map(str, path))
+    ]
+    assert geometry_grads
+    assert float(jnp.linalg.norm(jnp.concatenate([jnp.ravel(value) for value in geometry_grads]))) > 0.0
 
 
 def test_structured_spatial_encoder_uses_finger_id_not_tactile_order():

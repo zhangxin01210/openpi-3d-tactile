@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from flax import nnx
+import jax.numpy as jnp
+
 from openpi.training.config import get_config
 
 
@@ -79,3 +82,39 @@ def test_m2_and_dtcr_configs_keep_68_tokens_and_use_separate_sidecars() -> None:
     causal = spec.spatial.object_geometry.hand_scene.causal_tactile
     assert causal is not None
     assert causal.current_minus_ema_force_norm.shape == (2, 600)
+
+
+def test_m2_dtcr_and_object_centric_configs_share_m0_finetune_strategy() -> None:
+    reviewed_front = get_config("pi0_xhand_spatial_structured_suffix_front")
+    assert reviewed_front.model.paligemma_variant == "gemma_2b"
+    assert reviewed_front.model.action_expert_variant == "gemma_300m"
+
+    names = (
+        "pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1",
+        "pi0_xhand_spatial_dtcr_v1",
+        "pi0_xhand_spatial_dtcr_independent_v1",
+        "pi0_xhand_spatial_hand_scene_oo_object_centric_v1",
+    )
+    sample = nnx.Param(jnp.ones((), dtype=jnp.float32))
+    for name in names:
+        config = get_config(name)
+        assert config.model.paligemma_variant == "gemma_2b_lora"
+        assert config.model.action_expert_variant == "gemma_300m"
+        assert config.batch_size == 8
+        assert config.num_train_steps == 20_000
+        assert config.ema_decay is None
+        assert config.model.action_horizon == 50
+        assert config.policy_metadata["m0_finetune_strategy"] == "vlm_lora_action_expert_full_spatial_full"
+        freeze_filter = config.freeze_filter
+        # Pi0Config.get_freeze_filter(): PaliGemma base is frozen, its LoRA
+        # leaves are trainable, and the action expert/SigLIP/spatial leaves are
+        # not matched by the freeze predicate.
+        assert freeze_filter(("PaliGemma", "llm", "layer", "kernel"), sample)
+        assert not freeze_filter(("PaliGemma", "llm", "layer", "lora_a"), sample)
+        assert not freeze_filter(("PaliGemma", "llm_1", "layer", "kernel"), sample)
+        assert not freeze_filter(("PaliGemma", "img", "kernel"), sample)
+
+    object_centric = get_config("pi0_xhand_spatial_hand_scene_oo_object_centric_v1")
+    assert object_centric.model.encoder.visual_geometry_mode == "object_centric"
+    assert object_centric.model.use_visual is False
+    assert object_centric.data.object_geometry.version == "v1_hand_scene_q2"

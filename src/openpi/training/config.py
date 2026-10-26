@@ -2247,23 +2247,52 @@ _CONFIGS.append(
 _HAND_SCENE_Q2_VERSION = os.environ.get("OPENPI_HAND_SCENE_Q2_VERSION", "v1_hand_scene_q2")
 _DTCR_SIDECAR_VERSION = os.environ.get("OPENPI_DTCR_SIDECAR_VERSION", "v1_hand_scene_dtcr_v1")
 
+# The repository does not contain a config literally named ``M0`` or its
+# training checkpoint.  The explicit XHand LoRA/full records in this checkout
+# (the RGB baseline and the reviewed front ContactWorld runs) use this same
+# strategy.  New object-relation experiments use it without changing the old
+# full-finetune front baseline above.
+_M0_PALIGEMMA_VARIANT = "gemma_2b_lora"
+_M0_ACTION_EXPERT_VARIANT = "gemma_300m"
+_M0_BATCH_SIZE = 8
+_M0_NUM_TRAIN_STEPS = 20_000
+_M0_SAVE_INTERVAL = 5_000
+_M0_KEEP_PERIOD = 10_000
 
-def _hand_scene_relation_config(name: str, *, relation_mode: str, sidecar_version: str) -> TrainConfig:
+
+def _hand_scene_relation_config(
+    name: str,
+    *,
+    relation_mode: str,
+    sidecar_version: str,
+    visual_geometry_mode: str = "scene_rgbd",
+    use_visual: bool = True,
+) -> TrainConfig:
     encoder = dataclasses.replace(
         _structured_suffix_front_base.model.encoder,
         enable_object_relations=True,
         object_relation_mode=relation_mode,
+        visual_geometry_mode=visual_geometry_mode,
         hand_scene_enable_funnel_mask_encoder=False,
     )
-    model = dataclasses.replace(_structured_suffix_front_base.model, encoder=encoder)
+    model = dataclasses.replace(
+        _structured_suffix_front_base.model,
+        encoder=encoder,
+        use_visual=use_visual,
+        use_tactile=True,
+        paligemma_variant=_M0_PALIGEMMA_VARIANT,
+        action_expert_variant=_M0_ACTION_EXPERT_VARIANT,
+    )
     metadata = dict(_structured_suffix_front_base.policy_metadata)
     metadata.update(
         {
             "object_geometry_version": sidecar_version,
             "object_relation_mode": relation_mode,
+            "visual_geometry_mode": visual_geometry_mode,
             "spatial_token_count": encoder.default_token_count,
             "object_geometry_coordinate_frame": "base_link",
             "object_geometry_units": "meters",
+            "m0_finetune_strategy": "vlm_lora_action_expert_full_spatial_full",
         }
     )
     if relation_mode in {"dtcr_v1", "dtcr_independent_v1"}:
@@ -2281,6 +2310,13 @@ def _hand_scene_relation_config(name: str, *, relation_mode: str, sidecar_versio
         ),
         weight_loader=spatial_weight_loaders.SpatialCheckpointWeightLoader(_HAND_SCENE_BASE_WEIGHTS),
         freeze_filter=model.get_freeze_filter(),
+        ema_decay=None,
+        batch_size=_M0_BATCH_SIZE,
+        num_workers=0,
+        num_train_steps=_M0_NUM_TRAIN_STEPS,
+        save_interval=_M0_SAVE_INTERVAL,
+        keep_period=_M0_KEEP_PERIOD,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=_M0_NUM_TRAIN_STEPS),
         policy_metadata=metadata,
     )
 
@@ -2301,6 +2337,13 @@ _CONFIGS.extend(
             "pi0_xhand_spatial_dtcr_independent_v1",
             relation_mode="dtcr_independent_v1",
             sidecar_version=_DTCR_SIDECAR_VERSION,
+        ),
+        _hand_scene_relation_config(
+            "pi0_xhand_spatial_hand_scene_oo_object_centric_v1",
+            relation_mode="hand_scene_oo_v1",
+            sidecar_version=_HAND_SCENE_Q2_VERSION,
+            visual_geometry_mode="object_centric",
+            use_visual=False,
         ),
     ]
 )
