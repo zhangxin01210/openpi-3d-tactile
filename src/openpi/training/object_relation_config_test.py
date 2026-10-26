@@ -84,7 +84,7 @@ def test_m2_and_dtcr_configs_keep_68_tokens_and_use_separate_sidecars() -> None:
     assert causal.current_minus_ema_force_norm.shape == (2, 600)
 
 
-def test_m2_dtcr_and_object_centric_configs_share_m0_finetune_strategy() -> None:
+def test_m2_dtcr_and_object_centric_configs_share_unverified_new_strategy() -> None:
     reviewed_front = get_config("pi0_xhand_spatial_structured_suffix_front")
     assert reviewed_front.model.paligemma_variant == "gemma_2b"
     assert reviewed_front.model.action_expert_variant == "gemma_300m"
@@ -104,7 +104,9 @@ def test_m2_dtcr_and_object_centric_configs_share_m0_finetune_strategy() -> None
         assert config.num_train_steps == 20_000
         assert config.ema_decay is None
         assert config.model.action_horizon == 50
-        assert config.policy_metadata["m0_finetune_strategy"] == "vlm_lora_action_expert_full_spatial_full"
+        assert config.policy_metadata["finetune_strategy"] == "vlm_lora_action_expert_full_spatial_full"
+        assert config.policy_metadata["finetune_strategy_provenance"] == "new_object_relation_experiment"
+        assert config.policy_metadata["m0_training_record_status"] == "unverified_not_present_in_repository"
         freeze_filter = config.freeze_filter
         # Pi0Config.get_freeze_filter(): PaliGemma base is frozen, its LoRA
         # leaves are trainable, and the action expert/SigLIP/spatial leaves are

@@ -463,26 +463,26 @@ class StructuredSpatialEncoder(nnx.Module):
         )
 
     def _encode_tactile(self, tactile) -> tuple[jax.Array, jax.Array, jax.Array, dict[str, jax.Array]]:
-        # Taxel ids are the canonical sensor ordering.  Sorting before the
-        # masked reductions makes a shuffled batch representation numerically
-        # identical while preserving the existing finger-id grouping.
-        taxel_order = jnp.argsort(tactile.taxel_id.astype(jnp.int32), axis=1, stable=True)
-        xyz_m = _batched_take(tactile.xyz_m, taxel_order)
-        force_raw = _batched_take(tactile.force, taxel_order)
-        force_norm_raw = _batched_take(tactile.force_norm, taxel_order)
-        finger_id = _batched_take(tactile.finger_id, taxel_order)
-        point_mask = _batched_take(tactile.point_mask, taxel_order)
-        xyz_feature = self.config.transforms.tactile_xyz(xyz_m)
-        xyz_raw = xyz_m.astype(jnp.float32)
+        # SpatialDerivedDataset stores one canonical ``finger_id``/``taxel_id``
+        # topology in ``static/`` and reuses it for every frame.  All tactile
+        # features and the DTCR per-taxel history are joined in that same
+        # order.  Do not sort by taxel_id here: IDs 1..120 intentionally
+        # repeat once per finger, and an extra reorder would change the
+        # established M0/M1 tensor order while the history branch remains in
+        # the static order.  The encoder's masked KNN/attention reductions
+        # are permutation-equivariant when an upstream adapter supplies a
+        # different but consistently permuted topology.
+        xyz_feature = self.config.transforms.tactile_xyz(tactile.xyz_m)
+        xyz_raw = tactile.xyz_m.astype(jnp.float32)
         force_output = self.config.transforms.force(
-            force_raw,
-            force_norm_raw,
+            tactile.force,
+            tactile.force_norm,
         )
         force = jnp.asarray(force_output.force, dtype=jnp.float32)
         force_norm = jnp.asarray(force_output.force_norm, dtype=jnp.float32)
 
-        point_mask = point_mask.astype(jnp.bool_)
-        finger_id = finger_id.astype(jnp.int32)
+        point_mask = tactile.point_mask.astype(jnp.bool_)
+        finger_id = tactile.finger_id.astype(jnp.int32)
         clipped_finger_id = jnp.clip(finger_id, 0, self.config.num_fingers - 1)
         per_point_finger_embedding = self.finger_embedding.value[clipped_finger_id]
 

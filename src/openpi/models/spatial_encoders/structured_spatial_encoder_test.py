@@ -80,7 +80,10 @@ def _synthetic_input(
     tactile_force_norm = jnp.linalg.norm(tactile_force, axis=-1)
     finger_id = jnp.tile(jnp.arange(5, dtype=jnp.int32), tactile_points // 5)
     finger_id = jnp.broadcast_to(finger_id[None, :], (batch_size, tactile_points))
-    taxel_id = jnp.broadcast_to(jnp.arange(tactile_points, dtype=jnp.int32)[None, :], (batch_size, tactile_points))
+    # Match the real XHand static topology: taxel ids 1..120 repeat for each
+    # finger, so globally sorting by taxel_id would interleave fingers.
+    taxel_id = jnp.tile(jnp.arange(1, tactile_points // 5 + 1, dtype=jnp.int32), 5)
+    taxel_id = jnp.broadcast_to(taxel_id[None, :], (batch_size, tactile_points))
     tactile_mask = jnp.ones((batch_size, tactile_points), dtype=jnp.bool_)
 
     if shuffled_tactile:

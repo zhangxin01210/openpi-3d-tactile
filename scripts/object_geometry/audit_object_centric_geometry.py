@@ -69,7 +69,7 @@ def audit(
     jump_warnings = 0
     previous_centroids: dict[int, tuple[int, np.ndarray, np.ndarray, np.ndarray]] = {}
     for episode in sorted(selected):
-        frame_ids = sorted(frame for ep, frame in geometry._records if int(ep) == int(episode))  # noqa: SLF001
+        frame_ids = list(geometry.frame_ids(episode))
         for frame in _sample_frames(frame_ids, frames_per_episode):
             spatial_sample = spatial.get(episode_index=episode, frame_index=frame)
             geometry_sample = geometry.get(episode_index=episode, frame_index=frame)

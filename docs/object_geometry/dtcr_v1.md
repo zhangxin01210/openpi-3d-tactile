@@ -40,10 +40,23 @@ The training configs are:
 
 M2, DTCR, independent, and M2-OC use the same new fine-tuning policy:
 `gemma_2b_lora` PaliGemma, full `gemma_300m` Action Expert, and trainable
-spatial/relation/suffix parameters.  The repository's historical M0
-checkpoint metadata is not committed; the explicit XHand LoRA/full records in
-this checkout are the provenance for this policy.  The original
-`pi0_xhand_spatial_structured_suffix_front` configuration is left unchanged.
+spatial/relation/suffix parameters.  The repository does not contain a
+verifiable historical M0 training record, so the policy metadata explicitly
+marks this as a new object-relation experiment rather than an M0 claim.  The
+original `pi0_xhand_spatial_structured_suffix_front` configuration is left
+unchanged.  If M0 used another freeze split or schedule, comparisons must be
+reported as different fine-tuning protocols, not as a strict M0-vs-relation
+ablation.
+
+On computer 4, search the mounted experiment/checkpoint roots before making a
+claim about M0 provenance (this is read-only):
+
+```bash
+ROOT=/workspace/mnt/sqzhang26/openpi-3d-tactile
+rg -n -i --hidden --glob '!third_party/**' '(M0|m0|batch_size|num_train_steps|gemma_2b|lora|action.?expert)' \
+  "$ROOT/docs" "$ROOT/configs" "$ROOT/checkpoints" "$ROOT/output" 2>/dev/null || true
+find "$ROOT/checkpoints" -type f \( -name 'config*.json' -o -name '*metadata*.json' -o -name '*.yaml' \) -print 2>/dev/null
+```
 
 M2-OC consumes `spatial.tactile.xyz_m` plus the q2 Funnel/Flask clouds in
 `base_link`/meters.  It does not read the 4096-point scene branch, but the

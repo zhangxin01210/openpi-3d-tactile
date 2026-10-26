@@ -261,6 +261,7 @@ class ObjectGeometryDerivedDataset:
         )
         self._records = []
         self._lookup: dict[tuple[int, int], tuple[str, int]] = {}
+        episode_frame_ids: dict[int, list[int]] = {}
         for record in self.manifest.get("records", []):
             key = (int(record["episode_index"]), int(record["frame_index"]))
             if key in self._lookup:
@@ -269,11 +270,34 @@ class ObjectGeometryDerivedDataset:
             row = int(record["row"])
             self._lookup[key] = (shard, row)
             self._records.append(key)
+            episode_frame_ids.setdefault(key[0], []).append(key[1])
+        # The manifest index is already built above.  Expose the distinct
+        # episode ids without rescanning shards or materialising any arrays;
+        # diagnostics and batch tooling should not reach into ``_records``.
+        self._episode_ids = tuple(sorted({episode for episode, _ in self._records}))
+        self._episode_frame_ids = {
+            episode: tuple(sorted(frame_ids))
+            for episode, frame_ids in episode_frame_ids.items()
+        }
         self._max_cached_shards = max(1, int(max_cached_shards))
         self._cache: OrderedDict[str, dict[str, np.ndarray]] = OrderedDict()
 
     def __len__(self) -> int:
         return len(self._records)
+
+    @property
+    def episode_ids(self) -> tuple[int, ...]:
+        """Distinct manifest episode ids in immutable public form."""
+
+        return self._episode_ids
+
+    def frame_ids(self, episode_index: int) -> tuple[int, ...]:
+        """Return manifest frame ids for one episode without reading shards."""
+
+        try:
+            return self._episode_frame_ids[int(episode_index)]
+        except KeyError as exc:
+            raise KeyError(f"Unknown object geometry episode {episode_index}") from exc
 
     def __getitem__(self, index: int | tuple[int, int]) -> ObjectGeometrySample:
         if isinstance(index, tuple):

@@ -2,8 +2,19 @@
 
 import numpy as np
 
+from openpi.spatial.config import TactileConfig
+from openpi.spatial.tactile import make_taxel_ids
 from openpi.spatial_dataset.adapter import SpatialAugmentedDataset
 from openpi.spatial_dataset.derived import DerivedSpatialSample
+
+
+def test_xhand_taxel_ids_are_static_per_finger_and_not_globally_sorted() -> None:
+    finger_id, taxel_id = make_taxel_ids(config=TactileConfig())
+    np.testing.assert_array_equal(finger_id[:120], 0)
+    np.testing.assert_array_equal(finger_id[120:240], 1)
+    np.testing.assert_array_equal(taxel_id[:120], np.arange(1, 121, dtype=np.int16))
+    np.testing.assert_array_equal(taxel_id[120:240], np.arange(1, 121, dtype=np.int16))
+    assert not np.array_equal(taxel_id, np.sort(taxel_id))
 
 
 def test_spatial_augmented_dataset_filters_unused_modality():

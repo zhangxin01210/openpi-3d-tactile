@@ -46,6 +46,8 @@ def _write_sidecar(root):
 def test_reader_join_and_shapes(tmp_path):
     _write_sidecar(tmp_path)
     dataset = ObjectGeometryDerivedDataset(tmp_path)
+    assert dataset.episode_ids == (0,)
+    assert dataset.frame_ids(0) == (3, 4)
     sample = dataset.get(episode_index=0, frame_index=3)
     assert sample.manipulated_xyz_m.shape == (POINT_COUNT, 3)
     assert sample.manipulated_mask[0]

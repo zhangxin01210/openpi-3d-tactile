@@ -13,6 +13,7 @@ import pytest
 from openpi.models.spatial_encoders.conditioning import SpatialConditioningConfig
 from openpi.models.spatial_encoders.router import SpatialConditioningRouter
 from openpi.models.spatial_encoders.structured_spatial_encoder import StructuredSpatialEncoderConfig
+from openpi.training.spatial_weight_loaders import SpatialCheckpointWeightLoader
 from openpi.training.spatial_weight_loaders import StrictObjectRelationExpansionCheckpointWeightLoader
 from openpi.training.spatial_weight_loaders import _merge_spatial_checkpoint
 from openpi.training.spatial_weight_loaders import audit_spatial_checkpoint
@@ -102,6 +103,48 @@ def test_strict_expansion_rejects_missing_legacy_spatial_parameters(missing_path
     with pytest.raises(ValueError, match=description):
         _merge_spatial_checkpoint(
             loaded_params=loaded,
+            reference_params=reference,
+            allowed_missing_regexes=loader.allowed_missing_regexes,
+        )
+
+
+def test_base_loader_allows_new_lora_and_spatial_but_not_base_or_action_expert() -> None:
+    reference = {
+        "PaliGemma": {
+            "llm": {
+                "dense": np.ones((2, 2), dtype=np.float32),
+                "lora_a": np.full((2, 1), 3.0, dtype=np.float32),
+                "layers": {"attn_1": {"w": np.full((2, 2), 4.0, dtype=np.float32)}},
+            }
+        },
+        "action_in_proj": {"kernel": np.ones((2, 2), dtype=np.float32)},
+        "spatial_router": {"encoder": {"kernel": np.full((2, 2), 5.0, dtype=np.float32)}},
+    }
+    # A public Pi0 checkpoint has the dense base/action parameters but no new
+    # LoRA or spatial leaves.  The loader must retain the initialized values
+    # for exactly those declared missing modules.
+    loaded = {
+        "PaliGemma": {
+            "llm": {
+                "dense": reference["PaliGemma"]["llm"]["dense"],
+                "layers": {"attn_1": {"w": reference["PaliGemma"]["llm"]["layers"]["attn_1"]["w"]}},
+            }
+        },
+        "action_in_proj": reference["action_in_proj"],
+    }
+    loader = SpatialCheckpointWeightLoader("unused")
+    merged = _merge_spatial_checkpoint(
+        loaded_params=loaded,
+        reference_params=reference,
+        allowed_missing_regexes=loader.allowed_missing_regexes,
+    )
+    np.testing.assert_array_equal(merged["PaliGemma"]["llm"]["lora_a"], reference["PaliGemma"]["llm"]["lora_a"])
+    np.testing.assert_array_equal(merged["spatial_router"]["encoder"]["kernel"], reference["spatial_router"]["encoder"]["kernel"])
+
+    loaded_without_action_expert = _without_path(loaded, "PaliGemma", "llm", "layers")
+    with pytest.raises(ValueError, match="PaliGemma/llm/layers/attn_1/w"):
+        _merge_spatial_checkpoint(
+            loaded_params=loaded_without_action_expert,
             reference_params=reference,
             allowed_missing_regexes=loader.allowed_missing_regexes,
         )

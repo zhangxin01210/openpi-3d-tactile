@@ -2248,16 +2248,14 @@ _HAND_SCENE_Q2_VERSION = os.environ.get("OPENPI_HAND_SCENE_Q2_VERSION", "v1_hand
 _DTCR_SIDECAR_VERSION = os.environ.get("OPENPI_DTCR_SIDECAR_VERSION", "v1_hand_scene_dtcr_v1")
 
 # The repository does not contain a config literally named ``M0`` or its
-# training checkpoint.  The explicit XHand LoRA/full records in this checkout
-# (the RGB baseline and the reviewed front ContactWorld runs) use this same
-# strategy.  New object-relation experiments use it without changing the old
-# full-finetune front baseline above.
-_M0_PALIGEMMA_VARIANT = "gemma_2b_lora"
-_M0_ACTION_EXPERT_VARIANT = "gemma_300m"
-_M0_BATCH_SIZE = 8
-_M0_NUM_TRAIN_STEPS = 20_000
-_M0_SAVE_INTERVAL = 5_000
-_M0_KEEP_PERIOD = 10_000
+# training checkpoint.  These values are the explicit, unified strategy for
+# the new object-relation experiments, not a claim about an unrecorded M0 run.
+_OBJECT_RELATION_PALIGEMMA_VARIANT = "gemma_2b_lora"
+_OBJECT_RELATION_ACTION_EXPERT_VARIANT = "gemma_300m"
+_OBJECT_RELATION_BATCH_SIZE = 8
+_OBJECT_RELATION_NUM_TRAIN_STEPS = 20_000
+_OBJECT_RELATION_SAVE_INTERVAL = 5_000
+_OBJECT_RELATION_KEEP_PERIOD = 10_000
 
 
 def _hand_scene_relation_config(
@@ -2280,8 +2278,8 @@ def _hand_scene_relation_config(
         encoder=encoder,
         use_visual=use_visual,
         use_tactile=True,
-        paligemma_variant=_M0_PALIGEMMA_VARIANT,
-        action_expert_variant=_M0_ACTION_EXPERT_VARIANT,
+        paligemma_variant=_OBJECT_RELATION_PALIGEMMA_VARIANT,
+        action_expert_variant=_OBJECT_RELATION_ACTION_EXPERT_VARIANT,
     )
     metadata = dict(_structured_suffix_front_base.policy_metadata)
     metadata.update(
@@ -2292,7 +2290,9 @@ def _hand_scene_relation_config(
             "spatial_token_count": encoder.default_token_count,
             "object_geometry_coordinate_frame": "base_link",
             "object_geometry_units": "meters",
-            "m0_finetune_strategy": "vlm_lora_action_expert_full_spatial_full",
+            "finetune_strategy": "vlm_lora_action_expert_full_spatial_full",
+            "finetune_strategy_provenance": "new_object_relation_experiment",
+            "m0_training_record_status": "unverified_not_present_in_repository",
         }
     )
     if relation_mode in {"dtcr_v1", "dtcr_independent_v1"}:
@@ -2311,12 +2311,12 @@ def _hand_scene_relation_config(
         weight_loader=spatial_weight_loaders.SpatialCheckpointWeightLoader(_HAND_SCENE_BASE_WEIGHTS),
         freeze_filter=model.get_freeze_filter(),
         ema_decay=None,
-        batch_size=_M0_BATCH_SIZE,
+        batch_size=_OBJECT_RELATION_BATCH_SIZE,
         num_workers=0,
-        num_train_steps=_M0_NUM_TRAIN_STEPS,
-        save_interval=_M0_SAVE_INTERVAL,
-        keep_period=_M0_KEEP_PERIOD,
-        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=_M0_NUM_TRAIN_STEPS),
+        num_train_steps=_OBJECT_RELATION_NUM_TRAIN_STEPS,
+        save_interval=_OBJECT_RELATION_SAVE_INTERVAL,
+        keep_period=_OBJECT_RELATION_KEEP_PERIOD,
+        lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=_OBJECT_RELATION_NUM_TRAIN_STEPS),
         policy_metadata=metadata,
     )
 

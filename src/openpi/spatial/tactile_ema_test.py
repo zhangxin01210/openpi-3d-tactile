@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from openpi.spatial.config import TactileConfig
+from openpi.spatial.tactile import make_taxel_ids
 from openpi.spatial.tactile_ema import CausalTactileEMA
 from openpi.spatial.tactile_ema import precompute_episode_tactile_ema
 
@@ -56,3 +58,23 @@ def test_short_force_change_is_distinct_from_slow_reference() -> None:
     jump = filt.update(timestamp_s=0.1, force_norm=np.array([6.0]))
     sustained = filt.update(timestamp_s=2.1, force_norm=np.array([6.0]))
     assert float(abs(jump.current_minus_ema_force_norm[0])) > float(abs(sustained.current_minus_ema_force_norm[0]))
+
+
+def test_ema_slots_follow_static_finger_taxel_order() -> None:
+    finger_id, taxel_id = make_taxel_ids(config=TactileConfig())
+    canonical_order = np.lexsort((taxel_id, finger_id))
+    np.testing.assert_array_equal(canonical_order, np.arange(600))
+
+    before = finger_id.astype(np.float32) * 1000.0 + taxel_id.astype(np.float32)
+    after = before + 0.25
+    states = precompute_episode_tactile_ema(
+        [
+            {"frame_index": 0, "timestamp_s": 0.0, "force_norm": before},
+            {"frame_index": 1, "timestamp_s": 0.1, "force_norm": after},
+        ],
+        taxel_count=600,
+    )
+    # The per-taxel EMA is keyed by the fixed [finger, taxel] slot.  A model
+    # side sort by repeated taxel_id would interleave fingers and break this
+    # correspondence with the current tactile tensor.
+    np.testing.assert_allclose(states[1].current_minus_previous_force_norm, 0.25)
