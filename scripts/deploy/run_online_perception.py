@@ -505,6 +505,8 @@ def main() -> int:
     parser.add_argument("--sam2-checkpoint", type=Path, default=ROOT / "checkpoints/sam2/sam2.1_hiera_small.pt")
     parser.add_argument("--sam2-source", type=Path, default=Path.home() / ".cache/openpi_deploy/sam2")
     parser.add_argument("--sam2-config", default="configs/sam2.1/sam2.1_hiera_s.yaml")
+    parser.add_argument("--sam2-backend", choices=("video_memory", "legacy_image"), default="video_memory",
+                        help="Use the reviewed Level-1 SAM2 video-memory algorithm; legacy_image is for A/B comparison only.")
     parser.add_argument("--prompts", type=Path, required=True)
     parser.add_argument("--corrections", type=Path)
     parser.add_argument("--scale-manifest", type=Path, default=ROOT / "data/pose_eval/hand_scene_metric_mesh_scales.json")
@@ -556,7 +558,12 @@ def main() -> int:
         raise FileNotFoundError(f"SAM2 checkpoint is missing: {args.sam2_checkpoint}; see scripts/deploy/download_weights.py")
     prompts = _read_json(args.prompts)
     corrections = _read_json(args.corrections)
-    sam2_stream = CausalSAM2Stream(
+    if args.sam2_backend == "video_memory":
+        from scripts.deploy.sam2_video_stream import CausalVideoSAM2Stream
+        stream_type = CausalVideoSAM2Stream
+    else:
+        stream_type = CausalSAM2Stream
+    sam2_stream = stream_type(
         checkpoint=args.sam2_checkpoint.expanduser().resolve(),
         config=args.sam2_config,
         config_root=sam2_source,
@@ -840,7 +847,9 @@ def main() -> int:
                 "future_frames_used": False,
                 "sam2_checkpoint": str(args.sam2_checkpoint.expanduser().resolve()),
                 "sam2_checkpoint_sha256": __import__("hashlib").sha256(args.sam2_checkpoint.read_bytes()).hexdigest(),
-                "sam2_min_score": args.min_sam2_score,
+                "sam2_min_score": args.min_sam2_score if args.sam2_backend == "legacy_image" else None,
+                "sam2_backend": args.sam2_backend,
+                "sam2_score_available": args.sam2_backend == "legacy_image",
                 "sam2_source": str(sam2_source),
                 "rgbtrack_enabled": not args.masks_only,
                 "rgbtrack_submodule_revision": "23e43f832b82f4813d6ab72773779bf8d2ee4d83",
