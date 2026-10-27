@@ -559,7 +559,7 @@ def main() -> int:
     prompts = _read_json(args.prompts)
     corrections = _read_json(args.corrections)
     if args.sam2_backend == "video_memory":
-        from scripts.deploy.sam2_video_stream import CausalVideoSAM2Stream
+        from sam2_video_stream import CausalVideoSAM2Stream
         stream_type = CausalVideoSAM2Stream
     else:
         stream_type = CausalSAM2Stream
