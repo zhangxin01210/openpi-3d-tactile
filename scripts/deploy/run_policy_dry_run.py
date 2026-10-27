@@ -124,7 +124,7 @@ def main() -> int:
             if args.max_frames is not None and frame_number >= max(0, args.max_frames):
                 break
             with np.load(path, allow_pickle=False) as source:
-                required = ("front_rgb", "left_rgb", "right_rgb", "front_depth_raw", "robot_state", "timestamp_s", "frame_index")
+                required = ("front_rgb", "left_rgb", "right_rgb", "front_depth_native", "front_depth_color_aligned", "robot_state", "timestamp_s", "frame_index")
                 absent = [key for key in required if key not in source.files]
                 if absent:
                     raise KeyError(f"{path}: missing policy raw inputs {absent}")
@@ -135,7 +135,7 @@ def main() -> int:
                     "observation.images.cam_front": np.asarray(source["front_rgb"]),
                     "observation.images.cam_left": np.asarray(source["left_rgb"]),
                     "observation.images.cam_right": np.asarray(source["right_rgb"]),
-                    "observation.depths.cam_front": np.asarray(source["front_depth_raw"]),
+                    "observation.depths.cam_front": np.asarray(source["front_depth_native"]),
                     "observation.state": np.asarray(source["robot_state"], dtype=np.float32),
                     "object_geometry": geometry,
                     "frame_index": frame_index,
