@@ -80,6 +80,54 @@ def _visual_to_model_dict(visual: Any) -> dict[str, np.ndarray]:
     }
 
 
+def _validate_object_geometry(value: Any) -> dict[str, Any]:
+    """Canonical, strict training-side object-geometry schema validation.
+
+    Do NOT silently drop the top-level object_geometry packet. The input must
+    be sent to the spatial encoder as spatial.object_geometry.
+    """
+    from openpi.object_geometry_dataset.derived import (
+        CausalTactileSample,
+        HAND_SCENE_FIELDS,
+        HandSceneSample,
+        ObjectGeometrySample,
+    )
+
+    if not isinstance(value, dict):
+        raise TypeError("object_geometry must be a dictionary")
+    objects = {}
+    for name in ("manipulated", "target"):
+        for suffix in ("xyz_m", "mask", "source", "age", "confidence"):
+            key = f"{name}_{suffix}"
+            if key not in value:
+                raise KeyError(f"Missing object_geometry.{key}")
+            objects[key] = value[key]
+    scene = value.get("hand_scene")
+    typed_scene = None
+    if scene is not None:
+        if not isinstance(scene, dict):
+            raise TypeError("object_geometry.hand_scene must be a dictionary")
+        missing = set(HAND_SCENE_FIELDS) - set(scene)
+        if missing:
+            raise KeyError(f"Missing hand_scene fields: {sorted(missing)}")
+        causal = scene.get("causal_tactile")
+        if causal is not None:
+            if not isinstance(causal, dict):
+                raise TypeError("hand_scene.causal_tactile must be a dictionary")
+            causal = CausalTactileSample(**causal)
+        typed_scene = HandSceneSample(
+            **{name: scene[name] for name in HAND_SCENE_FIELDS},
+            causal_tactile=causal,
+        )
+    typed = ObjectGeometrySample(
+        episode_index=0, frame_index=0, hand_scene=typed_scene, **objects
+    )
+    result = typed.as_dict()
+    result.pop("episode_index")
+    result.pop("frame_index")
+    return result
+
+
 @dataclasses.dataclass(frozen=True)
 class XHandSpatialOnlineRepack(transforms.DataTransformFn):
     """Repack the raw deployment observation for XHandInputs at inference time."""
@@ -117,6 +165,8 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     use_tactile: bool = True
     front_calibration_profile: str | None = None
     tactile_ema_tau_s: float = 1.0
+    require_object_geometry: bool = False
+    require_hand_scene: bool = False
 
     def __post_init__(self) -> None:
         if not (self.use_visual or self.use_tactile):
@@ -140,7 +190,22 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
         object.__setattr__(self, "_ema_episode", None)
 
     def __call__(self, data: transforms.DataDict) -> transforms.DataDict:
+        incoming_geometry = data.get("object_geometry")
         if "spatial" in data:
+            existing = data["spatial"]
+            if not isinstance(existing, dict):
+                raise TypeError("spatial must be a mapping")
+            if incoming_geometry is None:
+                incoming_geometry = existing.get("object_geometry")
+            if self.require_object_geometry and incoming_geometry is None:
+                raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
+            if incoming_geometry is not None:
+                geom = _validate_object_geometry(incoming_geometry)
+                if self.require_hand_scene and geom.get("hand_scene") is None:
+                    raise ValueError("Hand-scene model requires object_geometry.hand_scene")
+                result = dict(data)
+                result["spatial"] = {**existing, "object_geometry": geom}
+                return result
             return data
 
         state = np.asarray(
@@ -230,5 +295,12 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 "sample_valid": ema.sample_valid,
                 "alpha": np.asarray(ema.alpha, dtype=np.float32),
             }
+        if self.require_object_geometry and incoming_geometry is None:
+            raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
+        if incoming_geometry is not None:
+            geometry = _validate_object_geometry(incoming_geometry)
+            if self.require_hand_scene and geometry.get("hand_scene") is None:
+                raise ValueError("Hand-scene model requires object_geometry.hand_scene")
+            spatial["object_geometry"] = geometry
         output["spatial"] = spatial
         return output
