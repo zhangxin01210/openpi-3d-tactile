@@ -1,0 +1,103 @@
+{
+  "repo_root": "/home/sai/zx/openpi-3d-tactile",
+  "weights_root": "/home/sai/zx/openpi-3d-tactile/checkpoints/rgbtrack",
+  "weights_link": "/home/sai/zx/openpi-3d-tactile/third_party/RGBTrack/weights",
+  "A": {
+    "phase": "A",
+    "imports": {
+      "torch": {
+        "ok": true,
+        "version": "2.10.0+cu128"
+      },
+      "pytorch3d": {
+        "ok": true,
+        "version": "0.7.9"
+      },
+      "open3d": {
+        "ok": true,
+        "version": "0.20.0"
+      },
+      "trimesh": {
+        "ok": true,
+        "version": "5.2.0"
+      },
+      "omegaconf": {
+        "ok": true,
+        "version": "2.3.0"
+      },
+      "kornia": {
+        "ok": true,
+        "version": "0.9.0"
+      },
+      "einops": {
+        "ok": true,
+        "version": "0.8.2"
+      },
+      "transformations": {
+        "ok": true,
+        "version": "2026.8.8"
+      },
+      "ruamel.yaml": {
+        "ok": true,
+        "version": "0.19.1"
+      },
+      "opencv": {
+        "ok": true,
+        "version": "5.0.0"
+      },
+      "scipy": {
+        "ok": true,
+        "version": "1.18.0"
+      },
+      "nvdiffrast": {
+        "ok": true,
+        "version": null
+      },
+      "warp": {
+        "ok": true,
+        "version": "1.18.0"
+      },
+      "filterpy": {
+        "ok": true,
+        "version": null
+      },
+      "bop_toolkit_lib": {
+        "ok": true,
+        "version": null
+      },
+      "tensorrt": {
+        "ok": false,
+        "error": "ModuleNotFoundError: No module named 'tensorrt'"
+      },
+      "bundlesdf.mycuda.common": {
+        "ok": false,
+        "error": "ModuleNotFoundError: No module named 'bundlesdf'"
+      }
+    },
+    "weights": {
+      "score": {
+        "path": "/home/sai/zx/openpi-3d-tactile/checkpoints/rgbtrack/2024-01-11-20-02-45/model_best.pth",
+        "exists": false
+      },
+      "refine": {
+        "path": "/home/sai/zx/openpi-3d-tactile/checkpoints/rgbtrack/2023-10-28-18-33-37/model_best.pth",
+        "exists": false
+      }
+    },
+    "rgbtrack_code_import": {
+      "ok": true,
+      "foundation_pose": "estimater.FoundationPose",
+      "trimesh": "5.2.0",
+      "runtime_compatibility": {
+        "tensorrt": "absent",
+        "pytorch_import_shim": true
+      }
+    },
+    "cuda": {
+      "checked": false,
+      "note": "Phase A only checks imports; use phase C for a CUDA render."
+    },
+    "ok": true
+  },
+  "ok": true
+}

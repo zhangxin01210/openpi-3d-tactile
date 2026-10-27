@@ -1,0 +1,7 @@
+{
+  "status": "NOT_TESTED",
+  "reason": "training sidecar not present: /home/sai/zx/openpi-3d-tactile/data/1018_peg_all/object_geometry/v1_hand_scene_q2",
+  "online_frames": "/tmp/openpi_deploy_smoke/perception4/frames",
+  "version": "v1_hand_scene_q2",
+  "episode": 23
+}

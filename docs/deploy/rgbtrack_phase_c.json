@@ -1,0 +1,12 @@
+{
+  "repo_root": "/home/sai/zx/openpi-3d-tactile",
+  "weights_root": "/home/sai/zx/openpi-3d-tactile/checkpoints/rgbtrack",
+  "C": {
+    "phase": "C",
+    "ok": true,
+    "torch": "2.10.0+cu128",
+    "cuda": "12.8",
+    "device": "NVIDIA GeForce RTX 5090"
+  },
+  "ok": true
+}

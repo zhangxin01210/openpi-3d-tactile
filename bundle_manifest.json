@@ -1,0 +1,200 @@
+{
+  "schema_version": 1,
+  "purpose": "selected-episode replay, reference teacher arrays, and reviewed manual initial masks",
+  "source_repo": "/workspace/mnt/sqzhang26/openpi-3d-tactile",
+  "dataset_source": "/workspace/mnt/sqzhang26/openpi-3d-tactile/data/1018_peg_all",
+  "front_calibration_profile": "configs/ur7e_xhand/front_calibration_candidate.json",
+  "masks": {
+    "0": {
+      "episode": 0,
+      "source_root": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e0/masks",
+      "status": "OK",
+      "objects": {
+        "funnel": {
+          "file": "assets/object_geometry/manual_seed_masks/e000/funnel.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e0/masks/funnel/00000.png",
+          "sha256": "2f6632388ba662ca507bbc117b6d3568ee3d16c1ffe8bc1f9a09033254b3a100",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 2663
+        },
+        "target_flask": {
+          "file": "assets/object_geometry/manual_seed_masks/e000/target_flask.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e0/masks/target_flask/00000.png",
+          "sha256": "17a0e08df3c854e6571abeb57b9c85039e7872813d7dc8d9f340ff78b0acfd5f",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 1794
+        }
+      },
+      "seed_frame": 0,
+      "camera_role": "front"
+    },
+    "23": {
+      "episode": 23,
+      "source_root": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e23_maskfix_v1/masks",
+      "status": "OK",
+      "objects": {
+        "funnel": {
+          "file": "assets/object_geometry/manual_seed_masks/e023/funnel.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e23_maskfix_v1/masks/funnel/00000.png",
+          "sha256": "116846bba78fecf372a11c24f84f3580506bb3de6ee33eaeedecec45e65cf194",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 1891
+        },
+        "target_flask": {
+          "file": "assets/object_geometry/manual_seed_masks/e023/target_flask.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e23_maskfix_v1/masks/target_flask/00000.png",
+          "sha256": "9fb372b531a72b6c974b5b4c7a1ae767161d6f28e3dee4e6e484c85b146fcdf6",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 1764
+        }
+      },
+      "seed_frame": 0,
+      "camera_role": "front"
+    },
+    "38": {
+      "episode": 38,
+      "source_root": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e38/masks",
+      "status": "OK",
+      "objects": {
+        "funnel": {
+          "file": "assets/object_geometry/manual_seed_masks/e038/funnel.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e38/masks/funnel/00000.png",
+          "sha256": "9df520c2f4ba8a30b8d7aeeb15a5ba479f1285dd144b12fbb08a9a3c25cae937",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 2678
+        },
+        "target_flask": {
+          "file": "assets/object_geometry/manual_seed_masks/e038/target_flask.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e38/masks/target_flask/00000.png",
+          "sha256": "8380f106f1b8de75762665f53145f0c295ea666371db32f20bf95585e77d6e0c",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 1913
+        }
+      },
+      "seed_frame": 0,
+      "camera_role": "front"
+    },
+    "49": {
+      "episode": 49,
+      "source_root": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e49/masks",
+      "status": "OK",
+      "objects": {
+        "funnel": {
+          "file": "assets/object_geometry/manual_seed_masks/e049/funnel.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e49/masks/funnel/00000.png",
+          "sha256": "123a24e8cfe472de4ce1c8d7a98a65d16d5e45c7cef8e1a1d6b90c4573d9af9f",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 2748
+        },
+        "target_flask": {
+          "file": "assets/object_geometry/manual_seed_masks/e049/target_flask.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e49/masks/target_flask/00000.png",
+          "sha256": "b119ae643dcd36d875dba373b445641a8a605a52b3ba0ecedfcd95d66833edd3",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 1355
+        }
+      },
+      "seed_frame": 0,
+      "camera_role": "front"
+    },
+    "58": {
+      "episode": 58,
+      "source_root": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e58/masks",
+      "status": "OK",
+      "objects": {
+        "funnel": {
+          "file": "assets/object_geometry/manual_seed_masks/e058/funnel.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e58/masks/funnel/00000.png",
+          "sha256": "8ca3f48e40cb2ddd32bf6f7a0687f544a3de71fcea06407b4f574d5d556c92f1",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 2670
+        },
+        "target_flask": {
+          "file": "assets/object_geometry/manual_seed_masks/e058/target_flask.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e58/masks/target_flask/00000.png",
+          "sha256": "46e699e3c6565e8e912ff3717c2e37192fe433ca7826746d4ae1e613aea3ab98",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 1528
+        }
+      },
+      "seed_frame": 0,
+      "camera_role": "front"
+    },
+    "65": {
+      "episode": 65,
+      "source_root": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e65/masks",
+      "status": "OK",
+      "objects": {
+        "funnel": {
+          "file": "assets/object_geometry/manual_seed_masks/e065/funnel.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e65/masks/funnel/00000.png",
+          "sha256": "484f98f7679a9cbe06e09005ea8121a7e47e70d4d542c37bef1374e2da671588",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 2701
+        },
+        "target_flask": {
+          "file": "assets/object_geometry/manual_seed_masks/e065/target_flask.png",
+          "source_path": "/workspace/mnt/sqzhang26/hoi/outputs/level1_sequence_e65/masks/target_flask/00000.png",
+          "sha256": "08bc606e53fc2bb1c50b69d8a0862418ae458989b0e0ad237ec1c4c4971e2d54",
+          "size_hw": [
+            480,
+            640
+          ],
+          "foreground_pixels": 1479
+        }
+      },
+      "seed_frame": 0,
+      "camera_role": "front"
+    }
+  },
+  "episodes": [
+    {
+      "episode": 23,
+      "frames": 468,
+      "replay_dir": "data/deploy/replay/e023",
+      "reference_dir": "data/deploy/reference/e023",
+      "depth": "front RGB-color aligned, nearest/Z-buffer, uint16 raw scale units",
+      "depth_scale_m_per_unit": 0.0010000000474974513
+    }
+  ],
+  "warnings": [
+    "Masks are manually reviewed seed images; verify alignment against original FRONT RGB before use.",
+    "Offline teacher reference is an imperfect RGBTrack estimate, not metric ground truth.",
+    "Replay aligned front depth uses the explicit reviewed front calibration profile and nearest Z-buffer; verify it matches the q2 training run.",
+    "Do not use stored mask as automatic seed for a newly moved camera/scene.",
+    "Do not shuffle or skip video frames when evaluating online causal tracking."
+  ]
+}

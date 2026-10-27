@@ -1,0 +1,238 @@
+{
+  "root": "/home/sai/zx/openpi-3d-tactile",
+  "git": {
+    "head": "928898d1c3271be27b67e85581ceebae786aada9",
+    "branch_status": "## feat/object-geometry-pipeline...origin/feat/object-geometry-pipeline\n M scripts/object_geometry/pose_tracking/check_rgbtrack_runtime.py\n M src/openpi/object_geometry/production.py\n M src/openpi/policies/policy.py\n M src/openpi/policies/policy_config.py\n M src/openpi/policies/spatial_online.py\n ? third_party/RGBTrack\n?? configs/deploy/\n?? cross_task_eval_20261015.out\n?? docs/deploy/\n?? scripts/deploy/\n?? sim/reports/2026-10-22/\n?? sim/reports/2026-10-24/\n?? sim/reports/2026-10-25/\n?? sim/reports/2026-10-26/\n?? sim/scripts/eval_contactworld_ttt.py\n?? sim/scripts/run_contactworld_baseline_eval.py\n?? sim/scripts/run_contactworld_ttt_eval.py\n?? sim/scripts/run_contactworld_zeva_base_eval.py\n?? sim/scripts/run_contactworld_zeva_eval.py\n?? sim/scripts/run_contactworld_zeva_tactile_eval.py\n?? sim/scripts/serve_contactworld_baseline_policy.py\n?? sim/scripts/serve_contactworld_ttt_policy.py\n?? sim/scripts/serve_contactworld_zeva_base_policy.py\n?? sim/scripts/serve_contactworld_zeva_policy.py\n?? sim/scripts/serve_contactworld_zeva_tactile_policy.py\n?? src/openpi/policies/hand_scene_online.py",
+    "submodule_status": "23e43f832b82f4813d6ab72773779bf8d2ee4d83 third_party/RGBTrack (heads/master)\n-d1dc83afd89ded4379851257fe5d85632d31d5ec third_party/aloha\n-f78abd68ee283de9f9be3c8f7e2a9ad60246e95c third_party/libero",
+    "rgbtrack_head": "23e43f832b82f4813d6ab72773779bf8d2ee4d83"
+  },
+  "host": {
+    "python": "3.11.15 (main, Mar 10 2026, 18:16:52) [Clang 21.1.4 ]",
+    "executable": "/home/sai/zx/openpi-3d-tactile/.venv/bin/python",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.39",
+    "cpu_count": 32,
+    "gpu": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "NVIDIA GeForce RTX 5090, 32607 MiB, 24634 MiB, 580.178.04",
+      "stderr": ""
+    },
+    "nvcc": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2025 NVIDIA Corporation\nBuilt on Fri_Feb_21_20:23:50_PST_2025\nCuda compilation tools, release 12.8, V12.8.93\nBuild cuda_12.8.r12.8/compiler.35583870_0",
+      "stderr": ""
+    },
+    "cmake": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "cmake version 3.28.3\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+      "stderr": ""
+    },
+    "compiler": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0\nCopyright (C) 2023 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+      "stderr": ""
+    },
+    "memory": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "total        used        free      shared  buff/cache   available\n内存：         249Gi        29Gi        14Gi       525Mi       208Gi       220Gi\n交换：         8.0Gi       479Mi       7.5Gi",
+      "stderr": ""
+    },
+    "disk_total_gib": 1831.7,
+    "disk_free_gib": 94.6
+  },
+  "packages": {
+    "torch": {
+      "installed": true,
+      "version": "2.7.1+cu126"
+    },
+    "torchvision": {
+      "installed": true,
+      "version": "0.22.1+cu126"
+    },
+    "jax": {
+      "installed": true,
+      "version": "0.5.3"
+    },
+    "jaxlib": {
+      "installed": true,
+      "version": "0.5.3"
+    },
+    "opencv": {
+      "installed": true,
+      "version": "4.11.0"
+    },
+    "pytorch3d": {
+      "installed": false
+    },
+    "open3d": {
+      "installed": false
+    },
+    "nvdiffrast": {
+      "installed": true,
+      "import_error": "ModuleNotFoundError: No module named 'nvdiffrast'"
+    },
+    "warp_lang": {
+      "installed": false
+    },
+    "filterpy": {
+      "installed": false
+    },
+    "pybind11": {
+      "installed": false
+    },
+    "trimesh": {
+      "installed": true,
+      "version": "5.1.0"
+    },
+    "sam2": {
+      "installed": false
+    },
+    "bop_toolkit_lib": {
+      "installed": false
+    }
+  },
+  "torch_cuda": {
+    "available": true,
+    "version": "2.7.1+cu126",
+    "cuda_runtime": "12.6",
+    "architectures": [
+      "sm_50",
+      "sm_60",
+      "sm_70",
+      "sm_75",
+      "sm_80",
+      "sm_86",
+      "sm_90"
+    ],
+    "device_name": "NVIDIA GeForce RTX 5090",
+    "compute_capability": [
+      12,
+      0
+    ],
+    "kernel_smoke": false,
+    "kernel_error": "RuntimeError: CUDA error: no kernel image is available for execution on the device\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n"
+  },
+  "jax_cuda": {
+    "devices": [
+      "cuda:0"
+    ],
+    "gpu_kernel_smoke": true,
+    "available": true
+  },
+  "perception_environment": {
+    "available": true,
+    "python": "/home/sai/zx/openpi-3d-tactile/.venv-perception/bin/python",
+    "packages": {
+      "torch": {
+        "installed": true,
+        "version": "2.10.0+cu128"
+      },
+      "pytorch3d": {
+        "installed": true,
+        "version": "0.7.9"
+      },
+      "open3d": {
+        "installed": true,
+        "version": "0.20.0"
+      },
+      "nvdiffrast": {
+        "installed": true,
+        "version": null
+      },
+      "kornia": {
+        "installed": true,
+        "version": "0.9.0"
+      },
+      "warp": {
+        "installed": true,
+        "version": "1.18.0"
+      },
+      "filterpy": {
+        "installed": true,
+        "version": null
+      },
+      "bop_toolkit_lib": {
+        "installed": true,
+        "version": null
+      },
+      "sam2": {
+        "installed": true,
+        "version": null
+      },
+      "trimesh": {
+        "installed": true,
+        "version": "5.2.0"
+      },
+      "joblib": {
+        "installed": true,
+        "version": "1.6.0"
+      },
+      "h5py": {
+        "installed": true,
+        "version": "3.16.0"
+      },
+      "pybind11": {
+        "installed": true,
+        "version": "3.1.0"
+      }
+    },
+    "torch_cuda": {
+      "available": true,
+      "version": "2.10.0+cu128",
+      "runtime": "12.8",
+      "device": "NVIDIA GeForce RTX 5090",
+      "capability": [
+        12,
+        0
+      ],
+      "architectures": [
+        "sm_70",
+        "sm_75",
+        "sm_80",
+        "sm_86",
+        "sm_90",
+        "sm_100",
+        "sm_120"
+      ],
+      "kernel_smoke": true
+    },
+    "dependency_check": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "No broken requirements found.",
+      "stderr": ""
+    }
+  },
+  "environments": {
+    ".venv": "/home/sai/openpi_chem/openpi/.venv",
+    ".venv-perception": "/home/sai/zx/openpi-3d-tactile/.venv-perception",
+    "conda": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "# conda environments:\n#\n# *  -> active\n# + -> frozen\nlerobot5090              /home/sai/.conda/envs/lerobot5090\nbase                     /home/sai/miniconda3\nE2EParking               /home/sai/miniconda3/envs/E2EParking\ngpt-policy-isaac51       /home/sai/miniconda3/envs/gpt-policy-isaac51\nisaacsim45               /home/sai/miniconda3/envs/isaacsim45\nisaacsim51               /home/sai/miniconda3/envs/isaacsim51\nlerobot                  /home/sai/miniconda3/envs/lerobot\nlerobot_conv             /home/sai/miniconda3/envs/lerobot_conv\nlingbot                  /home/sai/miniconda3/envs/lingbot\npark                     /home/sai/miniconda3/envs/park\npi0                      /home/sai/miniconda3/envs/pi0\nunivtac-isaac51          /home/sai/miniconda3/envs/univtac-isaac51\nvitacformer              /home/sai/miniconda3/envs/vitacformer\nvlabench                 /home/sai/miniconda3/envs/vlabench\n                         /home/sai/zx/openpi-sim-runtime/envs/contactworld-build-sm120\n                         /home/sai/zx/openpi-sim-runtime/envs/contactworld-legacy",
+      "stderr": ""
+    },
+    "uv": {
+      "ok": true,
+      "returncode": 0,
+      "stdout": "uv 0.11.11 (x86_64-unknown-linux-gnu)",
+      "stderr": ""
+    },
+    "system_python": null,
+    "system_pip": "/usr/bin/pip"
+  },
+  "assets": {
+    "funnel_glb": true,
+    "target_flask_glb": true,
+    "previous_scale_manifest": true,
+    "rgbtrack_score_weight": false,
+    "rgbtrack_refine_weight": false,
+    "sam2_checkpoint_cache_candidates": [
+      "/home/sai/zx/openpi-3d-tactile/checkpoints/sam2/sam2.1_hiera_small.pt"
+    ]
+  }
+}

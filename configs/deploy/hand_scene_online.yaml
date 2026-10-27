@@ -1,0 +1,64 @@
+schema_version: 1
+mode: replay # replay | camera_adapter
+dry_run: true
+robot_execution_enabled: false
+
+policy:
+  config: pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1
+  checkpoint: checkpoints/pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1/m2_b8_20k_1026/19999
+  device: cuda
+
+perception:
+  training_geometry_config: configs/object_geometry/datasets/1018_peg_all/config.json
+  sam2:
+    source: facebookresearch/sam2
+    revision: 2b90b9f5ceec907a1c18123530e92e794ad901a4
+    config: configs/sam2.1/sam2.1_hiera_s.yaml
+    checkpoint: checkpoints/sam2/sam2.1_hiera_small.pt
+    device: cuda
+    min_score: 0.05
+    min_mask_area_px: 40
+    max_mask_fraction: 0.35
+    prompt_file: data/deploy/seed_prompts.json
+    corrections_file: data/deploy/manual_corrections.json
+  rgbtrack:
+    submodule: third_party/RGBTrack
+    expected_revision: 23e43f832b82f4813d6ab72773779bf8d2ee4d83
+    weights_root: checkpoints/rgbtrack
+    mode: depth
+    init_frames:
+      funnel: 0
+      target_flask: 0
+  meshes:
+    funnel: assets/object_geometry/synthware_19_22/funnel_F181975.glb
+    target_flask: assets/object_geometry/synthware_19_22/flask_F301950.glb
+    scale_manifest: data/pose_eval/hand_scene_metric_mesh_scales.json
+    static_target_prior: null # requires an explicit 4x4 base_link pose and provenance
+    static_prior_start_frame: 1 # frame 0 remains RGBTrack-observed, matching sidecar production
+  rgbtrack_constraints:
+    implementation: scripts/object_geometry/pose_tracking/rgbtrack_native_upright.py
+    initial_upright_max_tilt_deg: 25
+    initial_max_scored_rank: 150
+    tracking_max_tilt_deg: 35
+    tracking_center_error_max_px: 90
+    recovery_depth_l1_max_m: 0.18
+
+sensors:
+  replay_directory: data/deploy/replay
+  camera_roles_for_geometry: [front]
+  pi0_image_slots: [cam_front, cam_left, cam_right]
+  front_calibration_profile: configs/ur7e_xhand/front_calibration_candidate.json
+  depth_alignment: color_aligned
+  depth_input: front_depth_raw # raw units converted using the existing camera calibration
+  state_input: robot_state # XHand/UR observation.state contract, length 1972
+  live_camera_devices:
+    front: null
+    left: null
+    right: null # required Pi0 image slot; never used for pose estimation
+
+logging:
+  output_directory: output/deploy/hand_scene_online
+  save_masks: true
+  save_overlays: true
+  save_frame_packets: true
+
