@@ -1,10 +1,11 @@
 # Hand-Scene online perception and Pi0 dry-run
 
-This deployment path consumes one current observation at a time. SAM2 uses the
-existing Level-1 choice (SAM2.1 Hiera Small), with an image predictor and the
-previous frame's low-resolution mask logits as a prompt. It does not initialize
-an offline video state or inspect future frames. Two masks and two RGBTrack
-instances remain independent: `funnel` and `target_flask`.
+This deployment path consumes one current observation at a time. The default
+SAM2 backend is a version-pinned causal VideoPredictor adapter using memory of
+past frames only (same algorithm family as reviewed training Level-1 masks).
+The former per-frame image predictor remains available as `legacy_image` for
+A/B QA only. Video-memory parity on real data is **not yet validated**.
+Two object tracks remain independent: `funnel` and `target_flask`.
 
 Current test evidence and the remaining checkpoint/hardware blockers are listed
 in [validation_report.md](validation_report.md).
@@ -77,7 +78,8 @@ Each packet contains only one frame and these arrays:
 | --- | --- |
 | `front_rgb` | `uint8 [H,W,3]`, RGB order |
 | `left_rgb`, `right_rgb` | `uint8 [H,W,3]`, Pi0 image slots |
-| `front_depth_raw` | numeric `[H,W]`, aligned to front color; units follow the current calibration |
+| `front_depth_native` | numeric `[Hd,Wd]`, original depth-optical pixels and native units; passed to canonical training `SpatialPreprocessor` |
+| `front_depth_color_aligned` | numeric `[Hc,Wc]` on front RGB pixels, original sensor units; passed only to RGBTrack (K_color) |
 | `robot_state` | finite `float32 [1972]`, existing UR7e + XHand state contract |
 | `frame_index`, `timestamp_s` | monotonic current-frame identifiers |
 | `tactile_force_norm` | optional finite `[600]`; if omitted, the existing spatial tactile preprocessor derives it from `robot_state` |
@@ -116,7 +118,7 @@ PYTHONPATH=src .venv-perception/bin/python scripts/deploy/run_online_perception.
 `--masks-only` runs SAM2 and emits the correct fixed-size but invalid object
 geometry when RGBTrack is not yet installable. Full pose tracking removes that
 flag and uses the two independent RGBTrack objects. The script requires the
-front calibration, raw color-aligned depth, explicit metric scale manifest,
+front calibration, BOTH native and color-aligned depth, explicit metric scale manifest,
 RGBTrack dependencies, and both checkpoint files. It converts the meshes
 through the existing `rgbtrack_adapter.py`; the adapter applies RGBTrack's
 mesh-centering compensation once and composes
@@ -203,3 +205,9 @@ also initializes the estimator and requires both trained RGBTrack weights and
 the C++ `mycpp.cluster_poses` extension. Phase C runs a NVDiffRast CUDA render
 on `sm_120`.
 
+
+## Important 2026-10-27 parity correction
+
+The original replay key `front_depth_raw` was ambiguous and is rejected by the new contract. The source camera/replay writer must produce *two distinct depth products*: `front_depth_native` (original depth optical pixel grid, used by the canonical spatial visual encoder) and `front_depth_color_aligned` (registered to color pixels, used by RGBTrack with color intrinsics). Do not rename or duplicate the old aligned array to invent native depth. Verify native intrinsics, registered alignment, scale, and `T_color_depth` against the training calibration. The current packet reader requires both, even in mask-only mode, to avoid silently building invalid geometry downstream.
+
+`src/openpi/policies/hand_scene_online.py` now exists in the draft PR and delegates to the existing training-side deterministic mesh sampler, object geometry record producer and causal Hand-Scene state. Run `scripts/deploy/test_hand_scene_online.py` and `scripts/deploy/test_depth_contract.py` before moving to Episode 23 replay. The restored source and packet changes are not real-world validated.
