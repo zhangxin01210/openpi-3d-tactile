@@ -747,10 +747,18 @@ def main() -> int:
                     rgbtrack_latency_ms += pose_rows[name]["rgbtrack_latency_ms"]
 
                 geometry_started = time.perf_counter()
+                # The offline SpatialPreprocessor is authoritative for the 600 taxels.
+                # A separately supplied force vector must not silently override it.
+                force_norm = spatial_preprocessor.preprocess_tactile(packet["robot_state"]).force_norm
                 if "tactile_force_norm" in packet:
-                    force_norm = packet["tactile_force_norm"]
-                else:
-                    force_norm = spatial_preprocessor.preprocess_tactile(packet["robot_state"]).force_norm
+                    external_force = np.asarray(packet["tactile_force_norm"], dtype=np.float32)
+                    if not np.isfinite(external_force).all() or not np.allclose(
+                        external_force, force_norm, rtol=1e-4, atol=1e-5
+                    ):
+                        raise ValueError(
+                            "Packet tactile_force_norm diverges from canonical SpatialPreprocessor; "
+                            "refusing to mix different 600-taxel preprocessing"
+                        )
                 funnel_offset = packet.get("funnel_mask_hand_offset_xy")
                 geometry = builder.build_spatial_object_geometry(
                     frame_index=frame_index,
