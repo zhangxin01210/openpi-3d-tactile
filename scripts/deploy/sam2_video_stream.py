@@ -222,18 +222,18 @@ class CausalVideoSAM2Stream:
             valid = (name in self.seeded and self.min_area <= area <=
                      int(mask.size * self.max_fraction) and not ratio_bad and not conflict)
             status = (
-                manual[name][0] if manual[name] is not None else
+                ("corrected" if "correction" in manual[name][0] else "manual_seed") if manual[name] is not None else
                 "video_tracked" if valid else
                 "uninitialized" if name not in self.seeded else
                 "invalid_overlap" if conflict else "invalid_area_or_jump"
             )
-            if valid:
-                self.last_area[name] = area
             recovered = (valid and not self.last_valid[name] and
                          self.last_area[name] > 0 and manual[name] is None)
+            if valid:
+                self.last_area[name] = area
             self.last_valid[name] = valid
             # Video Predictor has no calibrated per-frame IoU score.
-            result[name] = (mask, 0.0, status, valid,
-                            bool(recovered or (manual[name] and "correction" in status)))
+            result[name] = (mask, -1.0, status, valid,
+                            bool(recovered or (manual[name] and status == "corrected")))
         self.previous_frame = frame_index
         return result, overlap
