@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Causal per-frame SAM2 -> RGBTrack -> Hand-Scene packet producer.
 
-Replay input is a directory of one-frame NPZ files. Each file is consumed in
-frame order and contains only the current raw observation; no SAM2 video
-predictor or future-frame window is used. The same frame schema is suitable
+Replay input is a directory of one-frame NPZ files. Each file is consumed in frame order and contains only current raw observations.
+SAM2 video memory only observes current and preceding frames. The same frame schema is suitable
 for a live sensor adapter writing one packet at a time.
 """
 
@@ -194,7 +193,7 @@ def _read_frames(path: Path, *, follow: bool = False):
 
 def _validate_packet(file: Path, data: Mapping[str, np.ndarray]) -> dict[str, Any]:
     required = (
-        "front_rgb", "left_rgb", "right_rgb", "front_depth_raw", "robot_state", "timestamp_s", "frame_index"
+        "front_rgb", "left_rgb", "right_rgb", "front_depth_native", "front_depth_color_aligned", "robot_state", "timestamp_s", "frame_index"
     )
     missing = [key for key in required if key not in data]
     if missing:
@@ -205,11 +204,16 @@ def _validate_packet(file: Path, data: Mapping[str, np.ndarray]) -> dict[str, An
         if image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
             raise ValueError(f"{file}: {key} must be uint8 RGB [H,W,3], got {image.shape} {image.dtype}")
     front = result["front_rgb"]
-    depth = result["front_depth_raw"]
-    if depth.ndim != 2 or depth.shape != front.shape[:2] or not np.issubdtype(depth.dtype, np.number):
-        raise ValueError(
-            f"{file}: front_depth_raw must be color-aligned [H,W]={front.shape[:2]}, got {depth.shape}"
-        )
+    native = result["front_depth_native"]
+    aligned = result["front_depth_color_aligned"]
+    if native.ndim != 2 or not np.issubdtype(native.dtype, np.number):
+        raise ValueError(f"{file}: front_depth_native must be numeric native depth [H,W]")
+    if aligned.ndim != 2 or aligned.shape != front.shape[:2] or not np.issubdtype(aligned.dtype, np.number):
+        raise ValueError(f"{file}: front_depth_color_aligned must match front RGB dimensions")
+    if not np.isfinite(native).all() or not np.isfinite(aligned).all():
+        raise ValueError(f"{file}: depth contains NaN/Inf")
+    # Never silently reinterpret a color-aligned depth map as native depth.
+    # Both arrays are raw sensor units; metric conversion belongs to calibration.
     state = result["robot_state"].astype(np.float32, copy=False)
     if state.shape != (1972,) or not np.isfinite(state).all():
         raise ValueError(f"{file}: robot_state must be finite [1972], got {state.shape}")
@@ -715,7 +719,7 @@ def main() -> int:
                     if name not in tracker_by_name:
                         pose_rows[name] = _invalid_pose(frame_index)
                     else:
-                        depth_m = packet["front_depth_raw"].astype(np.float32) * calibration.depth_scale_m_per_unit
+                        depth_m = packet["front_depth_color_aligned"].astype(np.float32) * calibration.depth_scale_m_per_unit
                         result = tracker_by_name[name].estimate(
                             frame_index=frame_index,
                             rgb=rgb,
@@ -785,7 +789,8 @@ def main() -> int:
                     "front_rgb": packet["front_rgb"],
                     "left_rgb": packet["left_rgb"],
                     "right_rgb": packet["right_rgb"],
-                    "front_depth_raw": packet["front_depth_raw"],
+                    "front_depth_native": packet["front_depth_native"],
+                    "front_depth_color_aligned": packet["front_depth_color_aligned"],
                     "robot_state": packet["robot_state"],
                     "funnel_mask": object_masks["funnel"],
                     "target_flask_mask": object_masks["target_flask"],
