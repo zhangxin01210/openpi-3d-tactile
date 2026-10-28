@@ -72,7 +72,7 @@ class HandScenePerceptionBridge:
     """One guarded session, one original-perception subprocess, one trained Pi0."""
 
     def __init__(self, policy, *, repo_root:Path, perception_python:Path,
-                 workdir:Path, anchor_json:Path, episode:int=23,
+                 workdir:Path, anchor_json:Path|None=None, episode:int=23,
                  position_template_episode:int=23, prompt_file:Path|None=None,
                  timeout_s:float=180., sam2_checkpoint:Path|None=None,
                  rgbtrack_weights:Path|None=None, sam2_source:Path|None=None,
@@ -81,7 +81,7 @@ class HandScenePerceptionBridge:
         self.repo_root=Path(repo_root).resolve()
         self.perception_python=Path(perception_python).resolve()
         self.workdir=Path(workdir).resolve()
-        self.anchor_json=Path(anchor_json).resolve()
+        self.anchor_json=Path(anchor_json).resolve() if anchor_json is not None else None
         self.episode=episode
         self.position_template_episode=position_template_episode
         self.prompt_file=prompt_file
@@ -98,8 +98,8 @@ class HandScenePerceptionBridge:
         self._started=False
         if self.workdir.exists():
             raise FileExistsError(f"Refusing to use existing perception spool: {self.workdir}")
-        if not self.anchor_json.is_file():
-            raise FileNotFoundError("Current-scene reviewed static flask anchor missing")
+        if self.anchor_json is not None and not self.anchor_json.is_file():
+            raise FileNotFoundError(f"Selected-position reviewed flask anchor missing: {self.anchor_json}")
         if not self.perception_python.is_file():
             raise FileNotFoundError("Original perception virtualenv Python not found")
         (self.workdir/"raw").mkdir(parents=True)
@@ -129,10 +129,15 @@ class HandScenePerceptionBridge:
             "--front-calibration-profile",
             str(self.repo_root/"configs/ur7e_xhand/front_calibration_candidate.json"),
             "--episode",str(self.episode),
-            "--static-target-anchor-json",str(self.anchor_json),
-            "--static-target-anchor-source","human_reviewed",
             "--follow",
         ]
+        if self.anchor_json is not None:
+            cmd+=["--static-target-anchor-json",str(self.anchor_json),
+                  "--static-target-anchor-source","human_reviewed"]
+        else:
+            # Selected reviewed 2D SAM2 seed points + current frame-0
+            # RGBTrack detection. Never silently reuse Episode23's pose.
+            cmd+=["--auto-static-flask-from-frame0"]
         if self.prompt_file is not None:
             cmd+=["--prompts",str(self.prompt_file)]
         else:
