@@ -10,8 +10,11 @@ pixels and the calibrated depth intrinsics, while RGBTrack consumes DEPTH
 REGISTERED TO FRONT RGB and the color intrinsics. The older LeRobot client
 `get_depth()` does not identify which coordinate system its output represents.
 Identical 480x640 image sizes are **not** evidence of identical pixel frames.
-The 1972-dim state includes 12 XHand joint torques, NOT 6 UR arm torques or
-a verified TCP six-axis wrench. Never synthesize these channels from names.
+The 1972-dim state includes 12 XHand joint fields labelled torque (SDK
+actually exposes motor current in mA), NOT UR arm joint torque. The current
+single-file client enables UR RTDE TCP force/torque in UR7eConfig; its observed
+`arm_tcp_force` (3) and `arm_tcp_torque` (3) values are reported separately.
+The physical reference frame, bias and freshness remain unverified.
 
 ## Hardware-host read-only discovery (operator present)
 
@@ -56,8 +59,12 @@ After an audit, confirm from the real camera driver source/SDK:
   already aligned/filtered depth to RGB.
 - Registered-to-RGB depth construction using EXACT shared calibration,
   depth scale in original sensor units, camera timestamps and latency.
-- The real 6D arm/TCP force/torque acquisition path, units, reference frame,
-  timestamp freshness, and whether it is filtered/bias-corrected.
+- The enabled `arm_tcp_force` / `arm_tcp_torque` RTDE output shapes, units,
+  reference frame, timestamp freshness and whether it is filtered/bias-corrected.
+- The XHand SDK read success/error, last-good-value fallback and sample
+  freshness at the driver layer: first five samples had **all 600 taxels
+  exactly zero**, which cannot establish a working sensor.
+- `hand_joint_i.torque` is sourced from motor current (mA), not an arm torque.
 - The exact state ordering, simultaneous RGB slots, no uncalibrated wrist
   camera in 3D preprocessing, and independent hardware safety stop.
 
@@ -71,3 +78,13 @@ reuse `_rgb_registered_depth` and the existing
 The control client's existing synchronous inference and 15 Hz loop remain
 insufficient to guarantee detection of impacts between sensor samples.
 No glass actuation is authorized by this audit.
+
+## Why a NEW audit is needed
+
+The October 28 five-frame first audit showed three RGB cameras, 1972 state,
+front uint16 depth, but no UR wrench because the deployment script had not
+set `record_tcp_force_torque=True`. It has now been set by the single-file
+client, and its safety guard explicitly reads **separate 3D force and 3D
+torque** rather than inventing a 6D key. Use a new audit output directory,
+confirm both measured fields, then investigate XHand raw zero/fallback and
+front RGB-vs-depth geometry BEFORE wiring the policy or allowing motion.
