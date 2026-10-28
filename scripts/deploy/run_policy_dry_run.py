@@ -78,6 +78,68 @@ def _frame_stream(frames_dir: Path, *, follow: bool, idle_timeout_s: float):
         time.sleep(0.02)
 
 
+
+def _ground_truth_actions(dataset_root: Path, episode: int) -> dict[int, np.ndarray]:
+    """Read original absolute arm6/hand12 training labels from LeRobot parquet."""
+    import pyarrow.parquet as pq
+    info=json.loads((dataset_root/"meta"/"info.json").read_text(encoding="utf-8"))
+    names=info["features"]["action"].get("names")
+    if names is not None and (len(names)!=18 or
+                              not all(str(names[i]).startswith("arm_joint_") for i in range(6)) or
+                              not all(str(names[i]).startswith("hand_joint_") for i in range(6,18))):
+        raise ValueError("Original dataset action ordering is not arm 6 + hand 12")
+    chunk=int(info.get("chunks_size",1000))
+    path=dataset_root/info["data_path"].format(episode_index=episode,
+                                               episode_chunk=episode//chunk)
+    parquet=pq.ParquetFile(path)
+    if not {"action","frame_index"}.issubset(parquet.schema_arrow.names):
+        raise KeyError(f"Original dataset parquet lacks action/frame_index: {path}")
+    result={}
+    for batch in parquet.iter_batches(columns=["frame_index","action"],batch_size=256):
+        ids=batch.column(0).to_pylist()
+        vectors=batch.column(1).to_pylist()
+        for idx, vec in zip(ids,vectors,strict=True):
+            action=np.asarray(vec,dtype=np.float32)
+            if action.shape!=(18,) or not np.isfinite(action).all():
+                raise ValueError(f"GT frame={idx} has invalid 18-dim action {action.shape}")
+            idx=int(idx)
+            if idx in result:
+                raise ValueError(f"Duplicate dataset action frame {idx}")
+            result[idx]=action
+    if not result:
+        raise ValueError(f"No action rows in dataset episode {episode}")
+    return result
+
+
+def _gt_comparison(prediction: np.ndarray, frame: int, ground_truth: dict[int,np.ndarray]):
+    """Compare first step and valid future steps using recorded-frame alignment."""
+    truth=ground_truth.get(frame)
+    if truth is None:
+        raise KeyError(f"Episode lacks ground-truth action for frame {frame}")
+    predicted=np.asarray(prediction,dtype=np.float32)
+    error=np.abs(predicted[0]-truth)
+    valid=[(i,ground_truth[frame+i]) for i in range(len(predicted))
+           if frame+i in ground_truth]
+    if not valid:
+        raise ValueError("No aligned labels")
+    indices=np.asarray([i for i,_ in valid],dtype=np.int64)
+    gt_chunk=np.stack([x for _,x in valid])
+    chunk_error=np.abs(predicted[indices]-gt_chunk)
+    def stat(a):
+        return float(np.mean(a))
+    return {
+        "gt_first_action_18d": truth.tolist(),
+        "first_action_mae_rad":stat(error),
+        "first_arm6_mae_rad":stat(error[:6]),
+        "first_hand12_mae_rad":stat(error[6:]),
+        "chunk_compared_steps":len(valid),
+        "chunk_mae_rad":stat(chunk_error),
+        "chunk_arm6_mae_rad":stat(chunk_error[:,:6]),
+        "chunk_hand12_mae_rad":stat(chunk_error[:,6:]),
+    }
+
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
@@ -89,6 +151,9 @@ def main() -> int:
     parser.add_argument("--follow", action="store_true", help="Consume atomic frame packets as the perception process writes them.")
     parser.add_argument("--idle-timeout-s", type=float, default=0.0, help="Stop a followed stream after this many seconds without a packet; 0 waits until interrupted.")
     parser.add_argument("--prompt", default="Move the funnel over the target flask and insert it.")
+    parser.add_argument("--gt-dataset", type=Path,
+                        help="Original LeRobot dataset root for comparison against recorded 18D actions")
+    parser.add_argument("--gt-episode", type=int, default=23)
     args = parser.parse_args()
     root = args.repo_root.expanduser().resolve()
     frames_dir = args.frames_dir.expanduser().resolve()
@@ -111,6 +176,9 @@ def main() -> int:
     if train_config.model.action_dim < 18:
         raise ValueError(f"Configured Pi0 action dimension {train_config.model.action_dim} cannot carry 18 XHand joints")
     policy = create_trained_policy(train_config, checkpoint)
+    gt_actions = (_ground_truth_actions(args.gt_dataset.expanduser().resolve(),args.gt_episode)
+                  if args.gt_dataset is not None else None)
+    gt_rows=[]
     timings = []
     spatial_timings = []
     input_prepare_timings = []
@@ -175,6 +243,13 @@ def main() -> int:
                 "dry_run": True,
                 "robot_command_sent": False,
             }
+            if gt_actions is not None:
+                comparison=_gt_comparison(actions,frame_index,gt_actions)
+                row["ground_truth"]=comparison
+                gt_rows.append({"frame_index":frame_index,**comparison})
+                print(f"[GT] frame={frame_index} first_arm6_mae={comparison['first_arm6_mae_rad']:.4f}rad "
+                      f"first_hand12_mae={comparison['first_hand12_mae_rad']:.4f}rad "
+                      f"chunk_mae={comparison['chunk_mae_rad']:.4f}rad",flush=True)
             index.write(json.dumps(row, ensure_ascii=False) + "\n")
             index.flush()
             timings.append(elapsed_ms)
@@ -204,6 +279,22 @@ def main() -> int:
         "dry_run": True,
         "robot_command_sent": False,
     }
+    if gt_rows:
+        def aggregate(key):
+            return float(np.mean([r[key] for r in gt_rows]))
+        summary["ground_truth"]={
+            "episode":args.gt_episode,
+            "frames_compared":len(gt_rows),
+            "first_arm6_mae_rad":aggregate("first_arm6_mae_rad"),
+            "first_hand12_mae_rad":aggregate("first_hand12_mae_rad"),
+            "first_action_mae_rad":aggregate("first_action_mae_rad"),
+            "chunk_mae_rad":aggregate("chunk_mae_rad"),
+            "chunk_arm6_mae_rad":aggregate("chunk_arm6_mae_rad"),
+            "chunk_hand12_mae_rad":aggregate("chunk_hand12_mae_rad"),
+            "meaning":"Open-loop action-label fit only; NOT a robot collision/success test.",
+        }
+        (output_dir/"ground_truth_comparison.json").write_text(
+            json.dumps(gt_rows,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     return 0
 
