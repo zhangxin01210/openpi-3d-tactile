@@ -1506,7 +1506,7 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
             "depth_provenance":"UNVERIFIED; do not use audit NPZ as front_depth_native in policy",
             "tcp_wrench_provenance":"UNVERIFIED; no verified arm force/torque key selected",
             "records":records}
-    (out/"observation_schema.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\\n",encoding="utf-8")
+    (out/"observation_schema.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     print("[AUDIT-ONLY] schema:",out/"observation_schema.json",flush=True)
 
 
@@ -1549,7 +1549,7 @@ def main() -> int:
         raise ValueError("--tactile-reset-verify-threshold must be non-negative")
     if args.index_splay_deadzone_min > args.index_splay_deadzone_max:
         raise ValueError("--index-splay-deadzone-min must be <= --index-splay-deadzone-max")
-    if not args.dry_run and args.contact_safety_config is None and not args.check_config:
+    if not args.dry_run and args.contact_safety_config is None and not args.check_config and args.capture_observation_audit is None:
         raise ValueError("Actuation forbidden without --contact-safety-config; this is not a hardware E-stop")
     args.contact_safety_limits = (
         load_safety_limits(args.contact_safety_config)
