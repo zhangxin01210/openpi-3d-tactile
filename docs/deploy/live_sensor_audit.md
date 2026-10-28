@@ -1,0 +1,69 @@
+# Live sensor discovery, WITHOUT PI0 commands — staged robot-host validation
+
+Current status: GitHub source prepared; no actual UR7e/XHand/RealSense SDK
+observation or camera registration verified in this development session.
+
+## Why this gate precedes the online perception bridge
+
+The established training geometry preprocessor consumes NATIVE front depth
+pixels and the calibrated depth intrinsics, while RGBTrack consumes DEPTH
+REGISTERED TO FRONT RGB and the color intrinsics. The older LeRobot client
+`get_depth()` does not identify which coordinate system its output represents.
+Identical 480x640 image sizes are **not** evidence of identical pixel frames.
+The 1972-dim state includes 12 XHand joint torques, NOT 6 UR arm torques or
+a verified TCP six-axis wrench. Never synthesize these channels from names.
+
+## Hardware-host read-only discovery (operator present)
+
+Use the robot machine's existing trusted LeRobot / EtherCAT Python environment;
+the exact environment path depends on that machine. The `--dataset-dir`
+directory supplies `meta/info.json` with the ORIGINAL ordered 1972-dim
+state feature names and original 18 action names, NOT model weights.
+
+```bash
+cd /path/to/openpi-3d-tactile-pr1
+sudo -E /path/to/robot-python \
+  deploy/ur7e_xhand_deploy_3d_tactile_multi.py \
+  --dataset-dir /path/to/training/dataset \
+  --capture-observation-audit output/deploy/live_sensor_audit_001 \
+  --capture-audit-frames 5 \
+  --spatial-cameras front
+```
+
+Do **not** use `--check-config` together with audit. The audit branch is
+executed before any WebSocket inference connection or policy-control branch;
+it NEVER calls `reset_to_home()`, tactile zero, `send_action()` or policy
+inference. It connects SDK devices and reads observations, then disconnects.
+Observe robot safety precautions nonetheless; use no glass or fragile objects.
+
+Outputs are in a NEW directory:
+- `observation_schema.json`: all top-level and arm-observation field names,
+  array shapes/dtypes, possible force/torque key hints, acquisition monotonic
+  times, raw XHand peak diagnostics and status.
+- `audit_0000.npz`, ...: 5 RGB samples, raw 1972 vector, and any available
+  *unverified* front-depth array.
+- The depth candidate key is deliberately named
+  `front_depth_coordinate_system_UNVERIFIED`. These files do NOT have a
+  `front_depth_native` field and are **NOT** valid input to
+  `run_online_perception.py`.
+
+After an audit, confirm from the real camera driver source/SDK:
+- Native depth pixel frame and depth intrinsics; whether hardware/SDK has
+  already aligned/filtered depth to RGB.
+- Registered-to-RGB depth construction using EXACT shared calibration,
+  depth scale in original sensor units, camera timestamps and latency.
+- The real 6D arm/TCP force/torque acquisition path, units, reference frame,
+  timestamp freshness, and whether it is filtered/bias-corrected.
+- The exact state ordering, simultaneous RGB slots, no uncalibrated wrist
+  camera in 3D preprocessing, and independent hardware safety stop.
+
+Do not make a live policy packet adapter until the native-vs-aligned depth
+contract is verified; otherwise a visually plausible point cloud can
+produce false hand–object relationships. After the data boundary is confirmed,
+reuse `_rgb_registered_depth` and the existing
+`run_online_perception.py --follow` plus
+`run_policy_dry_run.py --follow` exactly as in the replay chain.
+
+The control client's existing synchronous inference and 15 Hz loop remain
+insufficient to guarantee detection of impacts between sensor samples.
+No glass actuation is authorized by this audit.
