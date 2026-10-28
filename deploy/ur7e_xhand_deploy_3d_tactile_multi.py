@@ -86,7 +86,7 @@ def load_safety_limits(path: str | Path) -> dict:
     path=Path(path).expanduser().resolve()
     cfg=json.loads(path.read_text(encoding="utf-8"))
     required={
-        "schema_version","reviewed_for_glass_task","arm_wrench_observation_key",
+        "schema_version","reviewed_for_glass_task",
         "tactile_peak_limits_raw","tactile_emergency_step_change_limits_raw",
         "tactile_replan_step_change_limits_raw", "replan_enabled",
         "replan_min_interval_s", "arm_tcp_force_norm_limit_n",
@@ -96,9 +96,9 @@ def load_safety_limits(path: str | Path) -> dict:
         raise ValueError(f"Safety config must contain exactly {sorted(required)}")
     if cfg["reviewed_for_glass_task"] is not True:
         raise ValueError("Safety configuration is not explicitly reviewed for glass manipulation")
-    name=cfg["arm_wrench_observation_key"]
-    if not isinstance(name,str) or not name.strip():
-        raise ValueError("Arm 6D wrench observation key must be explicitly configured")
+    # Live UR7eXHand.get_observation() provides two separate vectors.
+    # Their semantics are fixed at the device interface: [Fx,Fy,Fz] in N,
+    # [Tx,Ty,Tz] in Nm. Never accept a configurable hand torque substitute.
     for key in ("tactile_peak_limits_raw","tactile_emergency_step_change_limits_raw",
                 "tactile_replan_step_change_limits_raw"):
         v=np.asarray(cfg[key],dtype=float)
@@ -161,14 +161,18 @@ class ContactSafetyGuard:
                     raise SafetyTrip(f"tactile_emergency_step_change finger={i} raw_delta={step[i]:.5g} >= {emergency[i]:.5g}")
             else:
                 step=np.zeros(FINGERS,dtype=float)
-            key=self.cfg["arm_wrench_observation_key"]
-            if key not in observation:
-                raise SafetyTrip(f"Arm 6D wrench missing: {key}; XHand joint torque is not arm torque")
-            wrench=np.asarray(observation[key],dtype=np.float64)
-            if wrench.shape!=(6,) or not np.isfinite(wrench).all():
-                raise SafetyTrip(f"Arm wrench {key} missing/nonfinite/invalid: {wrench.shape}")
-            force=float(np.linalg.norm(wrench[:3]))
-            torque=float(np.linalg.norm(wrench[3:]))
+            for key in ("arm_tcp_force","arm_tcp_torque"):
+                if key not in observation:
+                    raise SafetyTrip(f"Required measured UR TCP sensor missing: {key}; "
+                                     "XHand hand_joint_i.torque is motor current, NOT UR torque")
+            tcp_force=np.asarray(observation["arm_tcp_force"],dtype=np.float64)
+            tcp_torque=np.asarray(observation["arm_tcp_torque"],dtype=np.float64)
+            if tcp_force.shape!=(3,) or tcp_torque.shape!=(3,):
+                raise SafetyTrip(f"Invalid UR TCP force/torque shapes: {tcp_force.shape}, {tcp_torque.shape}")
+            if not np.isfinite(tcp_force).all() or not np.isfinite(tcp_torque).all():
+                raise SafetyTrip("Invalid non-finite UR TCP force/torque")
+            force=float(np.linalg.norm(tcp_force))
+            torque=float(np.linalg.norm(tcp_torque))
             if force>=float(self.cfg["arm_tcp_force_norm_limit_n"]):
                 raise SafetyTrip(f"arm_tcp_force_norm {force:.5g} N exceeds threshold")
             if torque>=float(self.cfg["arm_tcp_torque_norm_limit_nm"]):
@@ -934,6 +938,10 @@ def build_robot(args: argparse.Namespace):
             servo_time=1.0 / args.arm_control_freq,
             servo_lookahead_time=1.0 / args.arm_control_freq,
             max_relative_target=args.arm_max_relative_target,
+            # Required by the independent contact interlock; UR7eXHand
+            # exposes arm_tcp_force (3 N) and arm_tcp_torque (3 Nm).
+            # These are EXTRA observation keys; do not append to 1972-state.
+            record_tcp_force_torque=True,
             cameras={},
         ),
         hand_config=xhand_config.XHandConfig(
@@ -1600,6 +1608,21 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
         arrays={"robot_state":state,"capture_start_monotonic_ns":np.asarray(start_ns,dtype=np.int64),
                 "capture_end_monotonic_ns":np.asarray(end_ns,dtype=np.int64)}
         diagnostics={}
+        # Only store the SDK's actual values, including separate UR TCP force
+        # and torque vectors; NEVER invent zeros when missing.
+        for key,unit in (("arm_tcp_force","N"),("arm_tcp_torque","Nm")):
+            raw=obs.get(key)
+            if raw is None:
+                diagnostics[key]={"status":"missing","expected_shape":[3],"unit":unit}
+                continue
+            sample=np.asarray(raw,dtype=np.float64)
+            if sample.shape!=(3,) or not np.isfinite(sample).all():
+                raise ValueError(f"Invalid live {key} shape or values: {sample.shape}")
+            arrays[key]=sample
+            diagnostics[key]={"status":"captured_unverified", "shape":[3],"unit":unit,
+                              "norm":float(np.linalg.norm(sample)),
+                              "sdk_provenance":"record_tcp_force_torque=True, not calibrated or freshness-verified"}
+
         for role in ("front","left","right"):
             camera_name="cam_"+role
             try:
@@ -1638,13 +1661,16 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
         with file.open("xb") as stream:
             np.savez_compressed(stream,**arrays)
         print(f"[AUDIT-ONLY] {i+1}/{n}: rgb={[k for k in arrays if k.endswith('_rgb')]} "
-              f"depth={diagnostics['front_depth']['status']} wrench_candidates={torque_key_hints}",flush=True)
+              f"depth={diagnostics['front_depth']['status']} "
+              f"UR_force={diagnostics['arm_tcp_force']['status']} "
+              f"UR_torque={diagnostics['arm_tcp_torque']['status']}",flush=True)
         if i+1<n:
             time.sleep(max(0.,1.0/max(1,args.fps)-(time.monotonic_ns()-start_ns)*1e-9))
     report={"schema_version":1,"mode":"READ_ONLY_UNVERIFIED_SENSOR_DISCOVERY",
             "frames":n,"no_home_reset":True,"no_actions_sent":True,"pi0_server_used":False,
             "depth_provenance":"UNVERIFIED; do not use audit NPZ as front_depth_native in policy",
-            "tcp_wrench_provenance":"UNVERIFIED; no verified arm force/torque key selected",
+            "tcp_wrench_provenance":"UR7eConfig.record_tcp_force_torque=True; split arm_tcp_force/arm_tcp_torque; "
+                                     "units/reference frame/timestamp/force bias require physical verification",
             "records":records}
     (out/"observation_schema.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     print("[AUDIT-ONLY] schema:",out/"observation_schema.json",flush=True)
