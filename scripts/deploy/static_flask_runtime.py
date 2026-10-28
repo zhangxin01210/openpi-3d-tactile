@@ -82,3 +82,47 @@ class StaticFlaskRuntime:
                 "status":"flask_static_anchor_prior",
                 "pose_source":"static_geometry_prior",
                 "observed_pose_valid":False}
+
+
+class AutoFrame0FlaskRuntime:
+    """Estimate target flask ONCE from selected-position SAM2 mask + RGBTrack.
+
+    No pre-recorded Episode-23 pose is used. The observed rigid transform is
+    held for later frames, exactly as in the reviewed static-target branch.
+    The first-frame estimate is a machine observation, NOT human-reviewed.
+    Use only for no-motion inference until the real scene is checked.
+    """
+    def __init__(self):
+        self.anchor = None
+
+    def next(self, *, frame_index, tracker=None, rgb=None, depth_m=None, mask=None,
+             K=None, T_base_color=None):
+        frame=int(frame_index)
+        if frame==0:
+            if self.anchor is not None:
+                raise ValueError("Auto flask initialization already performed")
+            if tracker is None or mask is None or not np.asarray(mask).any():
+                raise ValueError("Auto flask frame-0 requires valid SAM2 mask and RGBTrack")
+            result=tracker.estimate(frame_index=0,rgb=rgb,depth_m=depth_m,
+                                    mask=mask,K=K,T_base_color=T_base_color)
+            if not result.valid:
+                raise ValueError("Auto frame-0 RGBTrack flask estimate invalid")
+            T=np.asarray(result.T_base_object,dtype=np.float64)
+            if (T.shape!=(4,4) or not np.isfinite(T).all() or
+                not np.allclose(T[3], [0,0,0,1],atol=1e-4) or
+                not np.allclose(T[:3,:3].T@T[:3,:3],np.eye(3),atol=1e-2) or
+                not np.isclose(np.linalg.det(T[:3,:3]),1.,atol=1e-2)):
+                raise ValueError("Auto flask first-frame pose is not rigid")
+            self.anchor=T.copy()
+            return {"frame_index":frame,"T_base_link_object":self.anchor.copy(),
+                    "valid":True,"confidence":float(result.confidence),
+                    "status":"flask_auto_frame0_observed",
+                    "pose_source":"auto_frame0_rgbtrack_observed",
+                    "observed_pose_valid":True}
+        if frame<1 or self.anchor is None:
+            raise ValueError("Auto static flask must initialize on frame 0")
+        return {"frame_index":frame,"T_base_link_object":self.anchor.copy(),
+                "valid":True,"confidence":0.08,
+                "status":"flask_static_anchor_prior",
+                "pose_source":"static_geometry_prior",
+                "observed_pose_valid":False}
