@@ -532,6 +532,10 @@ def main() -> int:
     parser.add_argument("--pose-mode", choices=("depth", "no_depth", "unknown_scale"), default="depth")
     parser.add_argument("--masks-only", action="store_true", help="Run SAM2 causal masks and contract geometry without RGBTrack pose estimation.")
     parser.add_argument("--static-target-anchor-json", type=Path)
+    parser.add_argument("--auto-static-flask-from-frame0", action="store_true",
+                        help="Use the selected SAM2 position prompt, observe flask once via RGBTrack at frame 0, "
+                             "freeze that measured pose from frame 1; avoids reusing an unrelated scene's anchor. "
+                             "No physical actuation authorization.")
     parser.add_argument(
         "--static-target-anchor-source",
         choices=("human_reviewed",),
@@ -622,6 +626,12 @@ def main() -> int:
     static_anchor = None
     static_anchor_metadata = None
     static_flask_runtime = None
+    if args.auto_static_flask_from_frame0 and args.static_target_anchor_json is not None:
+        raise ValueError("Choose exactly one flask pose source: reviewed anchor OR auto frame-0")
+    if args.auto_static_flask_from_frame0 and args.static_target_anchor_source is not None:
+        raise ValueError("Auto frame-0 flask initialization cannot claim human_reviewed provenance")
+    if args.auto_static_flask_from_frame0 and args.masks_only:
+        raise ValueError("Auto frame-0 flask initialization requires RGBTrack, not --masks-only")
     if args.static_target_anchor_json is not None:
         from scripts.deploy.static_flask_runtime import load_reviewed_anchor
         if args.static_target_anchor_source != "human_reviewed":
@@ -636,11 +646,22 @@ def main() -> int:
         # Static target provenance is checked against current episode and calibration above.
     elif args.static_target_anchor_source is not None:
         raise ValueError("--static-target-anchor-source requires --static-target-anchor-json")
-    if geometry_spec["target_flask_motion"] == "static" and static_anchor is None and not args.masks_only:
+    if (geometry_spec["target_flask_motion"] == "static" and static_anchor is None
+            and not args.masks_only and not args.auto_static_flask_from_frame0):
         raise ValueError(
-            "Training geometry config declares target_flask static; supply its explicit frame-0 anchor "
-            "with --static-target-anchor-json and --static-target-anchor-source"
+            "Training geometry config declares target_flask static; supply a reviewed anchor "
+            "or use --auto-static-flask-from-frame0 to estimate current scene's flask once"
         )
+    if args.auto_static_flask_from_frame0:
+        if geometry_spec["target_flask_motion"] != "static":
+            raise ValueError("Auto frame-0 static flask requires training config target_flask_motion=static")
+        if geometry_spec["static_prior_start_frame"] != 1:
+            raise ValueError("Auto frame-0 static flask requires static prior starting at frame 1")
+        from scripts.deploy.static_flask_runtime import AutoFrame0FlaskRuntime
+        static_flask_runtime = AutoFrame0FlaskRuntime()
+        static_anchor_metadata = {"source":"auto_frame0_rgbtrack_observed",
+                                  "human_reviewed":False,
+                                  "reference_template_episode":args.position_template_episode}
     if geometry_spec["target_flask_motion"] == "static" and static_anchor is not None and not args.masks_only:
         from scripts.deploy.static_flask_runtime import StaticFlaskRuntime
         static_flask_runtime = StaticFlaskRuntime(static_anchor)
@@ -802,6 +823,11 @@ def main() -> int:
                     pose_rows[name]["mask_valid"] = bool(valid)
                     pose_rows[name]["mask_status"] = status
                     pose_rows[name]["recovery"] = bool(recovery)
+                    if (name == "target_flask" and frame_index == 0
+                            and args.auto_static_flask_from_frame0):
+                        if not pose_rows[name]["valid"]:
+                            raise ValueError("Auto frame-0 flask is invalid; cannot freeze unknown geometry")
+                        builder.set_auto_frame0_static_target(pose_rows[name]["T_base_link_object"])
                     object_pose_ms = (time.perf_counter() - object_pose_started) * 1000.0
                     pose_rows[name]["rgbtrack_latency_ms"] = object_pose_ms if name in tracker_by_name and not (name == "target_flask" and static_flask_runtime is not None and frame_index > 0) else 0.0
                     rgbtrack_latency_ms += pose_rows[name]["rgbtrack_latency_ms"]
@@ -929,7 +955,11 @@ def main() -> int:
                 "scale_manifest": str(args.scale_manifest.expanduser().resolve()),
                 "training_geometry": geometry_spec,
                 "static_target_anchor_source": args.static_target_anchor_source,
-                "static_flask_runtime": "f0_training_upright_then_reviewed_static_prior" if static_flask_runtime else None,
+                "static_flask_runtime": (
+                    "f0_rgbtrack_observed_then_auto_static_prior" if args.auto_static_flask_from_frame0
+                    else "f0_training_upright_then_reviewed_static_prior" if static_flask_runtime
+                    else None
+                ),
                 "static_target_anchor": static_anchor_metadata,
                 "rgbtrack_training_policy": rgbtrack_runtime,
                 "front_calibration": calibration.provenance,
