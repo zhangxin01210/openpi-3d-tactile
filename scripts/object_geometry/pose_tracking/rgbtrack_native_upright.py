@@ -25,6 +25,33 @@ import rgbtrack_adapter as adapter
 import rgbtrack_upright_full as upright
 
 
+_RUNTIME_POLICY_STATE: dict[str, Any] | None = None
+
+
+def write_runtime_report() -> dict[str, Any] | None:
+    """Write the same diagnostic report after an external frame-by-frame caller."""
+    if _RUNTIME_POLICY_STATE is None:
+        return None
+    state = _RUNTIME_POLICY_STATE
+    report = {
+        "schema_version": 1,
+        "experiment": "RGBTrack native recovery + constrained upright candidate search",
+        "parameters": state["parameters"],
+        "summary": dict(state["stats"]),
+        "funnel_events": list(state["events"]),
+        "warnings": [
+            "Diagnostic only; not ground-truth 6D poses.",
+            "SAM2 mask centroid is unreliable during occlusion.",
+            "Transparent objects can contain background depth.",
+            "valid=True does not demonstrate metric contact accuracy.",
+        ],
+    }
+    path = state["output"] / "native_upright_report.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+    return report
+
+
 def arr(x: Any) -> np.ndarray:
     return x.detach().cpu().numpy() if hasattr(x, "detach") else np.asarray(x)
 
@@ -82,6 +109,19 @@ def main() -> int:
     runtime: dict[int, dict] = {}
     stats = Counter()
     events: list[dict] = []
+    global _RUNTIME_POLICY_STATE
+    _RUNTIME_POLICY_STATE = {
+        "output": out,
+        "parameters": {
+            "follow_max_tilt_deg": switches.follow_max_tilt_deg,
+            "recovery_center_max_px": switches.recovery_center_max_px,
+            "recovery_depth_l1_max_m": switches.recovery_depth_l1_max_m,
+            "initial_upright_selection": "delegated to rgbtrack_upright_full.py",
+            "recovery_hypotheses": 10,
+        },
+        "stats": stats,
+        "events": events,
+    }
 
     def ensure_with_recovery(self):
         original_ensure(self)
@@ -287,25 +327,7 @@ def main() -> int:
     print("[COMBINED] Tilt/2D-center sanity gates reject inconsistent updates; no pose clamping.", flush=True)
     result = upright.main()
     out.mkdir(parents=True, exist_ok=True)
-    report = {
-        "schema_version": 1,
-        "experiment": "RGBTrack native recovery + constrained upright candidate search",
-        "parameters": {
-            "follow_max_tilt_deg": switches.follow_max_tilt_deg,
-            "recovery_center_max_px": switches.recovery_center_max_px,
-            "recovery_depth_l1_max_m": switches.recovery_depth_l1_max_m,
-            "initial_upright_selection": "delegated to rgbtrack_upright_full.py",
-            "recovery_hypotheses": 10,
-        },
-        "summary": dict(stats), "funnel_events": events,
-        "warnings": [
-            "This is an experiment, NOT a verified 6D pose source.",
-            "SAM2 mask centroid can be biased by occlusion.",
-            "Glass depth can be background; depth warnings are reported separately.",
-            "valid=True does not imply precise hand-to-funnel metric relation.",
-        ],
-    }
-    (out / "native_upright_report.json").write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+    write_runtime_report()
     print("[COMBINED] report:", out / "native_upright_report.json", flush=True)
     return int(result)
 
