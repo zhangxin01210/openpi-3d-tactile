@@ -25,8 +25,7 @@ def main():
         raise FileExistsError(a.output)
     episodes=a.episodes
     if episodes is None:
-        ds=RawSpatialDataset(a.dataset,episode=None)
-        episodes=list(ds.episode_indices)
+        episodes=list(RawSpatialDataset.discover_episode_ids(a.dataset))
     rows=[]
     for ep in episodes:
         ds=RawSpatialDataset(a.dataset,episode=ep)
