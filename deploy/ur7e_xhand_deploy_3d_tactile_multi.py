@@ -611,6 +611,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--contact-safety-config", type=Path,
                         help="Mandatory reviewed XHand tactile + measured arm TCP wrench limits for any actuating run")
     parser.add_argument("--dry-run", action="store_true", help="Run inference without sending policy actions; home reset still runs unless --no-home is set")
+    parser.add_argument("--capture-observation-audit", type=Path,
+                        help="Read-only robot/camera observation probe: no PI0 server, home reset or action sending")
+    parser.add_argument("--capture-audit-frames", type=int, default=5,
+                        help="How many live observations to audit without any policy control")
     parser.add_argument("--check-config", action="store_true", help="Validate dataset wiring and exit")
     parser.add_argument("--yes", action="store_true", help="Skip interactive start confirmation")
     parser.add_argument("--verbose", action="store_true")
@@ -1409,6 +1413,104 @@ def run_policy_once(
     return frame_idx
 
 
+
+def _audit_shape(value):
+    """Minimal, non-sensitive schema report; do not reinterpret raw camera depth."""
+    if isinstance(value, dict):
+        return {"kind": "dict", "keys": sorted(map(str,value))}
+    try:
+        arr=np.asarray(value)
+    except (TypeError,ValueError):
+        return {"kind": type(value).__name__}
+    if arr.dtype.kind in "iufb":
+        result={"kind":"array","shape":list(arr.shape),"dtype":str(arr.dtype)}
+        if arr.size and arr.dtype.kind in "iuf":
+            finite=arr[np.isfinite(arr)]
+            result["nonfinite_count"]=int(arr.size-finite.size)
+            result["nonzero_count"]=int(np.count_nonzero(finite))
+        return result
+    return {"kind":type(value).__name__}
+
+
+def capture_observation_audit(robot, args: argparse.Namespace, state_names: list[str]) -> None:
+    """Read actual live fields only. Output is NOT a validated perception packet.
+
+    Depth comes from the existing LeRobot accessor but may be RAW, aligned,
+    rescaled, or filtered. Never assign front_depth_native or aligned keys.
+    """
+    out=args.capture_observation_audit.expanduser().resolve()
+    if out.exists():
+        raise FileExistsError(f"Refusing to overwrite live observation audit: {out}")
+    out.mkdir(parents=True,exist_ok=False)
+    records=[]
+    n=int(args.capture_audit_frames)
+    if n<1 or n>100:
+        raise ValueError("--capture-audit-frames must be 1..100")
+    print("[AUDIT-ONLY] Connecting to read sensors. No policy server, homing, tactile reset or actions.",flush=True)
+    for i in range(n):
+        start_ns=time.monotonic_ns()
+        obs=robot.get_observation()
+        end_ns=time.monotonic_ns()
+        state=build_env_state(obs,state_names)
+        raw_keys=sorted(map(str,obs))
+        arm_obs=robot.arm.get_observation()
+        arm_keys=sorted(map(str,arm_obs))
+        if state.shape!=(1972,) or not np.isfinite(state).all():
+            raise ValueError(f"Live state does not meet training contract [1972]: {state.shape}")
+        arrays={"robot_state":state,"capture_start_monotonic_ns":np.asarray(start_ns,dtype=np.int64),
+                "capture_end_monotonic_ns":np.asarray(end_ns,dtype=np.int64)}
+        diagnostics={}
+        for role in ("front","left","right"):
+            camera_name="cam_"+role
+            try:
+                arrays[role+"_rgb"]=get_image(obs,camera_name,args.realsense_height,args.realsense_width)
+                diagnostics[role+"_rgb"]={"status":"captured","shape":list(arrays[role+"_rgb"].shape)}
+            except (KeyError,TypeError,ValueError) as exc:
+                diagnostics[role+"_rgb"]={"status":"missing","error":str(exc)}
+        try:
+            # The existing LeRobot getter does NOT prove camera depth is native.
+            candidate=np.asarray(get_depth(obs,"cam_front"))
+            if candidate.ndim!=2 or candidate.dtype.kind not in "iuf" or not np.isfinite(candidate).all():
+                raise ValueError(f"Unexpected front depth candidate shape/dtype {candidate.shape}/{candidate.dtype}")
+            arrays["front_depth_coordinate_system_UNVERIFIED"]=candidate
+            diagnostics["front_depth"]={"status":"captured_unverified",
+                                        "shape":list(candidate.shape),"dtype":str(candidate.dtype),
+                                        "depth_coordinate_system":"UNKNOWN",
+                                        "depth_scale_m_per_unit":"UNKNOWN"}
+        except (KeyError,TypeError,ValueError) as exc:
+            diagnostics["front_depth"]={"status":"missing_or_invalid","error":str(exc)}
+        try:
+            tactile=extract_tactile_diagnostics(state)[2]
+            diagnostics["tactile"]={"per_finger_max_raw":np.max(tactile,axis=1).astype(float).tolist()}
+        except (ValueError,TypeError) as exc:
+            diagnostics["tactile"]={"error":str(exc)}
+        torque_key_hints=tuple(k for k in raw_keys+arm_keys if any(
+            word in k.lower() for word in ("wrench","actual_tcp_force","tcp_force","joint_torque","joint_effort","ft_sensor")))
+        record={"audit_index":i,"start_monotonic_ns":start_ns,"end_monotonic_ns":end_ns,
+                "observation_keys":raw_keys,"arm_observation_keys":arm_keys,
+                "observation_schema":{key:_audit_shape(value) for key,value in obs.items()},
+                "arm_observation_schema":{key:_audit_shape(value) for key,value in arm_obs.items()},
+                "torque_or_wrench_key_candidates_NOT_VERIFIED":list(torque_key_hints),
+                "diagnostics":diagnostics,
+                "never_sent_robot_action":True}
+        records.append(record)
+        file=out/f"audit_{i:04d}.npz"
+        with file.open("xb") as stream:
+            np.savez_compressed(stream,**arrays)
+        print(f"[AUDIT-ONLY] {i+1}/{n}: rgb={[k for k in arrays if k.endswith('_rgb')]} "
+              f"depth={diagnostics['front_depth']['status']} wrench_candidates={torque_key_hints}",flush=True)
+        if i+1<n:
+            time.sleep(max(0.,1.0/max(1,args.fps)-(time.monotonic_ns()-start_ns)*1e-9))
+    report={"schema_version":1,"mode":"READ_ONLY_UNVERIFIED_SENSOR_DISCOVERY",
+            "frames":n,"no_home_reset":True,"no_actions_sent":True,"pi0_server_used":False,
+            "depth_provenance":"UNVERIFIED; do not use audit NPZ as front_depth_native in policy",
+            "tcp_wrench_provenance":"UNVERIFIED; no verified arm force/torque key selected",
+            "records":records}
+    (out/"observation_schema.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\\n",encoding="utf-8")
+    print("[AUDIT-ONLY] schema:",out/"observation_schema.json",flush=True)
+
+
+
 def iter_run_indices(args: argparse.Namespace):
     if args.run_mode == "single":
         yield 1, 1
@@ -1437,6 +1539,10 @@ def main() -> int:
         raise ValueError("--max-action-chunk-size must be positive")
     if args.record_queue_size <= 0:
         raise ValueError("--record-queue-size must be positive")
+    if not 1 <= args.capture_audit_frames <= 100:
+        raise ValueError("--capture-audit-frames must be 1..100")
+    if args.capture_observation_audit is not None and args.check_config:
+        raise ValueError("--capture-observation-audit and --check-config cannot be combined")
     if args.num_runs < 0:
         raise ValueError("--num-runs must be non-negative")
     if args.tactile_reset_verify_threshold < 0:
@@ -1486,6 +1592,24 @@ def main() -> int:
     print(f"Run mode: {args.run_mode}, num_runs: {'until Ctrl+C' if args.num_runs == 0 else args.num_runs}")
     print(f"Dry run: {args.dry_run}")
     print(f"Diagnostic recording: {args.record_dir if args.record_dir is not None else 'disabled'}")
+
+    if args.capture_observation_audit is not None:
+        # Standalone sensor-only mode: no policy server, no reset-to-home,
+        # no contact controller, and never execute a model action.
+        args.spatial_cameras=("front",)
+        args.spatial_use_visual=True
+        args.spatial_use_tactile=True
+        validate_state_schema(state_names,args)
+        robot=build_robot(args)
+        try:
+            robot.connect(calibrate=False)
+            if not robot.is_connected:
+                raise RuntimeError("Sensor audit robot connection failed")
+            capture_observation_audit(robot,args,state_names)
+        finally:
+            if robot.is_connected:
+                robot.disconnect()
+        return 0
 
     if args.check_config:
         configure_input_mode_from_metadata(args, metadata=None)
