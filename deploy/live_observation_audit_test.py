@@ -143,3 +143,38 @@ def test_build_robot_enables_ur_wrench_without_mutating_training_state(monkeypat
     assert robot_cfg.arm_config.record_tcp_force_torque is True
     assert robot_cfg.cameras["cam_front"].use_depth is True
     assert robot_cfg.cameras["cam_right"].use_depth is False
+
+
+def test_single_script_sensor_only_http_forwarder_no_actions(monkeypatch):
+    import io
+    from types import SimpleNamespace
+
+    obs,names=_input()
+    robot=MockRobot(obs)
+    token="only-sensors-no-actions-12345"
+    monkeypatch.setenv("OPENPI_LIVE_PACKET_TOKEN",token)
+    requests=[]
+    class Reply:
+        def __init__(self,frame): self.frame=frame
+        def __enter__(self): return self
+        def __exit__(self,*_): return False
+        def read(self):
+            return json.dumps({"accepted_frame":self.frame,"no_robot_action":True}).encode()
+
+    def fake_urlopen(request,timeout):
+        assert request.get_header("X-live-packet-token")==token
+        with np.load(io.BytesIO(request.data),allow_pickle=False) as packet:
+            assert packet["robot_state"].shape==(1972,)
+            assert "front_depth_native" in packet.files
+            assert "front_depth_color_aligned" not in packet.files
+            assert packet["front_depth_native"].dtype==np.uint16
+            idx=int(packet["frame_index"])
+        requests.append(idx)
+        return Reply(idx)
+    monkeypatch.setattr(client.urllib.request,"urlopen",fake_urlopen)
+    monkeypatch.setattr(client.time,"sleep",lambda _:None)
+    args=SimpleNamespace(live_packet_url="http://127.0.0.1:8765/frame",
+                         live_packet_frames=2,realsense_height=12,realsense_width=16,fps=15)
+    client.capture_live_packet_stream(robot,args,names)
+    assert requests==[0,1]
+    assert robot.reads==2
