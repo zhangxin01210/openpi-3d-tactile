@@ -3,7 +3,7 @@
 ## State of integration
 
 `deploy/contact_safety.py` is a two-tier application-level monitor
-for raw XHand tactile taxels and the arm's **6D TCP wrench**. It runs before
+for raw XHand tactile taxels and the arm's measured **TCP force (3D) and torque (3D)**. It runs before
 each policy action and once again after a potentially blocking Pi0 inference.
 Moderate tactile changes may discard remaining actions and request a new Pi0 chunk ONLY when explicitly enabled. Hard limits latch and terminate the run; they never replan-and-continue. `robot.stop()` is called on the
 fault path; its physical stopping distance and behavior must be tested on
@@ -11,15 +11,16 @@ a non-fragile surrogate. Independent UR protective-stop, conservative speed
 and acceleration limits, and a physically accessible hardware E-stop remain
 required. This is not a deterministic real-time or safety-certified controller.
 
-**Actuation remains BLOCKED:** No real six-axis arm wrench observation key
-has yet been confirmed in `UR7eXHand.get_observation()`. Existing 1972-state
-array includes hand torque but NOT arm torque. The client fails closed
-when the configured real arm-wrench key is absent. Do not invent a key or
-use a hand torque field as the arm wrench. Its frame, zeroing, units and
-freshness must be verified against RTDE / UR SDK and device manual; the
-application monitors force and torque norms in the supplied frame, *not*
-the six UR joint torques. If only joint torques are exposed, define and
-validate a separate explicit interface before enabling actuation.
+**Actuation remains BLOCKED pending physical safety validation:** The
+standalone robot script now passes `record_tcp_force_torque=True` to
+`UR7eConfig`; on this LeRobot version, combined observations are expected to
+include `arm_tcp_force` shape (3,) [N] and `arm_tcp_torque` shape (3,)
+[Nm]. The guard checks both independently and fails closed if either is
+missing/malformed. Confirm these facts with the SECOND read-only audit before
+any actuator command. The exact RTDE force-bias, reference frame, timestamps
+and protective-stop behavior still require independent physical validation.
+The 1972-state still contains hand motor **current** labelled
+`hand_joint_i.torque`, NOT measured UR joint torque.
 
 ## Data survey — never automatic limits
 
@@ -51,7 +52,6 @@ be deliberately determined on the physical system:
 {
   "schema_version": 1,
   "reviewed_for_glass_task": false,
-  "arm_wrench_observation_key": "REAL_VERIFIED_ARM_WRENCH_KEY",
   "tactile_peak_limits_raw": [null, null, null, null, null],
   "tactile_emergency_step_change_limits_raw": [null, null, null, null, null],
   "tactile_replan_step_change_limits_raw": [null, null, null, null, null],
@@ -64,8 +64,8 @@ be deliberately determined on the physical system:
 ```
 
 This intentionally fails validation until operators establish and review
-real sensor-specific limits. The measured wrench needs a verified 6-element
-array [Fx,Fy,Fz,Tx,Ty,Tz] in N and N m. A single raw force peak is a per-taxel
+real sensor-specific limits. The measured UR interface supplies two explicit 3-element
+arrays (arm_tcp_force in N, arm_tcp_torque in Nm), not a synthetic 6-element key. A single raw force peak is a per-taxel
 norm, not a finger resultant. An observation gap trips; large blocking
 inference can cause a stale-gap trip, which is safer than executing a stale
 chunk. Nonfinite/missing sensor data trips. `--contact-safety-config` is
@@ -96,3 +96,18 @@ cover the gaps.
 ## Paper evaluation protocol
 
 Keep `replan_enabled=false` for the primary fixed-chunk comparison and use identical hard-stop protection on every method. Event-replanning is a distinct, disclosed policy-scheduling ablation, enabled identically for all compared methods and with equal inference budget reporting. It is not a certified safety action. A transient contact event never overrides a hard stop. No threshold has been validated against breakage force.
+
+## October 28 live audit updates
+
+The first read-only audit yielded five 640x480 RGB pairs and front 480x640
+uint16 depth arrays of **unknown coordinate frame**. UR TCP force and torque
+were absent because `record_tcp_force_torque` had been left off. The next
+revision now turns it on in `build_robot()`; run a new *read-only* audit and
+check both fields are present as 3-vectors before treating the interface as
+available. Every one of the five XHand taxel arrays was entirely zero, not
+only its 5 peak summaries. That cannot distinguish genuinely unloaded hand
+from an SDK stale/placeholder packet. In particular, XHand's previous-value
+fallback / zero-filled sensor failure must be identified and reported as a
+separate sensor-health signal; a finite 1972-vector is insufficient to assert
+safety monitor freshness. Do NOT authorize contact/glass control until this is
+resolved. The calibration and protection thresholds are still NOT set.
