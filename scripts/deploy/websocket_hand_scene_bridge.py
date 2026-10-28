@@ -23,10 +23,10 @@ import time
 import numpy as np
 
 from scripts.deploy.run_policy_dry_run import _geometry_from_npz
-from scripts.deploy.position_initialization import REFERENCE_EPISODES
+from scripts.deploy.position_initialization import SCENE_POSITION_TO_EPISODE
 
-# Complete reviewed 2D positive/negative clicks; episode 0 lacks funnel clicks.
-SELECTABLE_SCENE_POSITIONS=(23,38,49,58,65)
+# Operator-facing positions 1..6; scene 1 combines E0 flask/E23 funnel clicks.
+SELECTABLE_SCENE_POSITIONS=tuple(SCENE_POSITION_TO_EPISODE)
 
 FRAME_KEYS=("front_rgb","left_rgb","right_rgb","front_depth_native",
             "robot_state","timestamp_s","frame_index")
@@ -136,7 +136,7 @@ class HandScenePerceptionBridge:
             "--scale-manifest",str(self.scale_manifest),
             "--front-calibration-profile",
             str(self.repo_root/"configs/ur7e_xhand/front_calibration_candidate.json"),
-            "--episode",str(self.scene_position),
+            "--episode",str(SCENE_POSITION_TO_EPISODE[self.scene_position]),
             "--register-missing-color-depth",
             "--follow",
         ]
@@ -150,7 +150,7 @@ class HandScenePerceptionBridge:
         if self.prompt_file is not None:
             cmd+=["--prompts",str(self.prompt_file)]
         else:
-            cmd+=["--position-template-episode",str(self.scene_position),
+            cmd+=["--position-template-episode",str(SCENE_POSITION_TO_EPISODE[self.scene_position]),
                   "--template-reviewed-for-current-scene"]
         return cmd
 
@@ -219,7 +219,7 @@ class HandScenePerceptionBridge:
             raise ValueError(f"Unknown --scene-position {position}; allowed {SELECTABLE_SCENE_POSITIONS}")
         if self.prompt_file is not None:
             raise ValueError("Client --scene-position cannot be combined with fixed server --prompts")
-        if self.anchor_json is not None and position!=self.position_template_episode:
+        if self.anchor_json is not None and SCENE_POSITION_TO_EPISODE[position]!=self.position_template_episode:
             raise ValueError("Fixed reviewed flask anchor does not match selected scene position")
         self.close()  # Old SAM2/RGBTrack process, not WebSocket/Pi0 process.
         self.session_counter+=1
@@ -234,7 +234,7 @@ class HandScenePerceptionBridge:
         self.scene_position=position
         self.session_id=session
         self._reset_causal_policy()
-        print(f"[SCENE] selected={position} session={self.session_counter} "
+        print(f"[SCENE] selected={position} reference_episode={SCENE_POSITION_TO_EPISODE[position]} session={self.session_counter} "
               "source=reviewed_2d_clicks applied_to_CURRENT_live_frame0 "
               "flask_pose=RGBTrack_current_frame0_only",flush=True)
 
