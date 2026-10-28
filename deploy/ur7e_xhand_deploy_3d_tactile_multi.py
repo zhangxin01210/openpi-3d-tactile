@@ -676,8 +676,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
     parser.add_argument("--dataset-name", type=str, default=DEFAULT_DATASET_NAME)
-    parser.add_argument("--scene-position", type=int, choices=(23,38,49,58,65), default=None,
-                        help="Choose previously reviewed SAM2 positive/negative 2D seed clicks; "
+    parser.add_argument("--scene-position", type=int, choices=(1,2,3,4,5,6), default=None,
+                        help="Choose scene 1..6 (1=E0 flask+E23 funnel, 2=E23, 3=E38, 4=E49, 5=E58, 6=E65). "
                              "ONLY those clicks are reused; applies to CURRENT live first RGB frame. "
                              "Select for each robot run; no server restart needed.")
     parser.add_argument("--task", type=str, default=DEFAULT_TASK)
