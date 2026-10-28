@@ -41,6 +41,7 @@ uv run --group dev python deploy/render_pi0_diagnostics.py \
 import argparse
 import functools
 import importlib
+import io
 import json
 import logging
 import os
@@ -51,6 +52,8 @@ import termios
 import threading
 import time
 import tty
+import urllib.error
+import urllib.request
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -755,6 +758,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--contact-safety-config", type=Path,
                         help="Mandatory reviewed XHand tactile + measured arm TCP wrench limits for any actuating run")
     parser.add_argument("--dry-run", action="store_true", help="Run inference without sending policy actions; home reset still runs unless --no-home is set")
+    parser.add_argument("--live-packet-url", type=str,
+                        help="SENSOR-ONLY HTTP receiver /frame on inference host. "
+                             "No Pi0 websocket, no homing or policy actions.")
+    parser.add_argument("--live-packet-frames", type=int, default=48,
+                        help="Max raw LeRobot frame packets to send in sensor-only mode")
     parser.add_argument("--capture-observation-audit", type=Path,
                         help="Read-only robot/camera observation probe: no PI0 server, home reset or action sending")
     parser.add_argument("--capture-audit-frames", type=int, default=5,
@@ -1683,6 +1691,67 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
 
 
 
+
+def capture_live_packet_stream(robot,args:argparse.Namespace,state_names:list[str])->None:
+    """Send EXACT LeRobot RGB/raw depth/state fields to inference computer.
+
+    This branch never touches PI0 websocket, sends an arm action, homes or
+    resets tactile. Receiver registers front depth with shared training
+    rgbtrack_adapter rather than reimplementing calibration on robot host.
+    """
+    target=args.live_packet_url
+    if not isinstance(target,str) or not target.startswith("http://") or not target.endswith("/frame"):
+        raise ValueError("--live-packet-url must be http://<trusted-inference-host>:<port>/frame")
+    token=os.environ.get("OPENPI_LIVE_PACKET_TOKEN","")
+    if len(token)<16:
+        raise ValueError("Set the same OPENPI_LIVE_PACKET_TOKEN on robot and inference host")
+    n=int(args.live_packet_frames)
+    if not 1<=n<=1000:
+        raise ValueError("--live-packet-frames must be in 1..1000")
+    dt=1.0/max(1,args.fps)
+    print(f"[LIVE SENSOR-ONLY] frames={n}, destination={target}; NO actuation",flush=True)
+    for frame in range(n):
+        started=time.monotonic()
+        observation=robot.get_observation()
+        state=build_env_state(observation,state_names)
+        if state.shape!=(1972,) or not np.isfinite(state).all():
+            raise ValueError(f"Live robot state invalid: {state.shape}")
+        rgb={}
+        for role in ("front","left","right"):
+            image=get_image(observation,f"cam_{role}",args.realsense_height,args.realsense_width)
+            if image.dtype!=np.uint8 or image.shape!=(args.realsense_height,args.realsense_width,3):
+                raise ValueError(f"Invalid {role} RGB {image.shape} {image.dtype}")
+            rgb[role+"_rgb"]=image
+        # In LeRobot training this SAME observation.depths.cam_front was
+        # persisted to parquet; do not align, normalize or resample here.
+        raw_depth=np.asarray(get_depth(observation,"cam_front"))
+        if raw_depth.dtype!=np.uint16 or raw_depth.shape!=(args.realsense_height,args.realsense_width):
+            raise ValueError(f"Live LeRobot front depth unexpected: {raw_depth.dtype} {raw_depth.shape}")
+        packet=dict(rgb,front_depth_native=raw_depth,robot_state=state,
+                    timestamp_s=np.asarray(started,dtype=np.float64),
+                    frame_index=np.asarray(frame,dtype=np.int64))
+        buffer=io.BytesIO()
+        np.savez_compressed(buffer,**packet)
+        request=urllib.request.Request(
+            target,data=buffer.getvalue(),method="POST",
+            headers={"Content-Type":"application/octet-stream",
+                     "X-Live-Packet-Token":token})
+        try:
+            with urllib.request.urlopen(request,timeout=30.) as response:
+                ack=json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            message=exc.read().decode("utf-8",errors="replace")
+            raise RuntimeError(f"Live receiver rejected frame {frame}: HTTP {exc.code} {message}") from exc
+        if ack.get("accepted_frame")!=frame or ack.get("no_robot_action") is not True:
+            raise RuntimeError(f"Invalid live receiver acknowledgement at frame={frame}: {ack}")
+        print(f"[LIVE SENSOR-ONLY] forwarded frame={frame}/{n-1}, "
+              f"elapsed_ms={(time.monotonic()-started)*1000:.1f}",flush=True)
+        remaining=dt-(time.monotonic()-started)
+        if remaining>0:
+            time.sleep(remaining)
+
+
+
 def iter_run_indices(args: argparse.Namespace):
     if args.run_mode == "single":
         yield 1, 1
@@ -1715,13 +1784,18 @@ def main() -> int:
         raise ValueError("--capture-audit-frames must be 1..100")
     if args.capture_observation_audit is not None and args.check_config:
         raise ValueError("--capture-observation-audit and --check-config cannot be combined")
+    if args.capture_observation_audit is not None and args.live_packet_url is not None:
+        raise ValueError("Choose either offline observation audit or live packet forwarding")
+    if args.live_packet_url is not None and args.check_config:
+        raise ValueError("--live-packet-url and --check-config cannot be combined")
     if args.num_runs < 0:
         raise ValueError("--num-runs must be non-negative")
     if args.tactile_reset_verify_threshold < 0:
         raise ValueError("--tactile-reset-verify-threshold must be non-negative")
     if args.index_splay_deadzone_min > args.index_splay_deadzone_max:
         raise ValueError("--index-splay-deadzone-min must be <= --index-splay-deadzone-max")
-    if not args.dry_run and args.contact_safety_config is None and not args.check_config and args.capture_observation_audit is None:
+    if (not args.dry_run and args.contact_safety_config is None and not args.check_config
+            and args.capture_observation_audit is None and args.live_packet_url is None):
         raise ValueError("Actuation forbidden without --contact-safety-config; this is not a hardware E-stop")
     args.contact_safety_limits = (
         load_safety_limits(args.contact_safety_config)
@@ -1778,6 +1852,27 @@ def main() -> int:
             if not robot.is_connected:
                 raise RuntimeError("Sensor audit robot connection failed")
             capture_observation_audit(robot,args,state_names)
+        finally:
+            if robot.is_connected:
+                robot.disconnect()
+        return 0
+
+    if args.live_packet_url is not None:
+        # Exactly like audit: standalone robot-side sensor-only streaming.
+        args.spatial_cameras=("front",)
+        args.spatial_use_visual=True
+        args.spatial_use_tactile=True
+        validate_state_schema(state_names,args)
+        if args.realsense_width!=640 or args.realsense_height!=480:
+            raise ValueError("Live packet receiver expects training RGB-D 640x480")
+        if not os.environ.get("OPENPI_LIVE_PACKET_TOKEN"):
+            raise ValueError("OPENPI_LIVE_PACKET_TOKEN is required for live packet forwarding")
+        robot=build_robot(args)
+        try:
+            robot.connect(calibrate=False)
+            if not robot.is_connected:
+                raise RuntimeError("Sensor-only robot connection failed")
+            capture_live_packet_stream(robot,args,state_names)
         finally:
             if robot.is_connected:
                 robot.disconnect()
