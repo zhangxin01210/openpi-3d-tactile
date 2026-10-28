@@ -1591,6 +1591,7 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
         raise FileExistsError(f"Refusing to overwrite live observation audit: {out}")
     out.mkdir(parents=True,exist_ok=False)
     records=[]
+    previous_raw_tactile=None
     n=int(args.capture_audit_frames)
     if n<1 or n>100:
         raise ValueError("--capture-audit-frames must be 1..100")
@@ -1643,22 +1644,42 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
         except (KeyError,TypeError,ValueError) as exc:
             diagnostics["front_depth"]={"status":"missing_or_invalid","error":str(exc)}
         try:
-            # Raw 120-taxel/5-finger force vectors, using the TRAINING 1972 layout.
-            peaks=raw_tactile_finger_peaks(state)
+            # Strict TRAINING layout: [52 prefix, (24 metadata + 120*3 raw)*5].
+            # This is read-only diagnostics; identical samples cannot prove
+            # the SDK read succeeded (it may reuse cached previous values).
+            blocks=state[TACTILE_START:].reshape(TACTILE_SENSOR_COUNT,TACTILE_BLOCK_SIZE)
+            raw=blocks[:,TACTILE_RAW_FORCE_OFFSET:].reshape(TACTILE_SENSOR_COUNT,
+                                                              TACTILE_TAXELS_PER_FINGER,3)
+            peaks=np.linalg.norm(raw,axis=-1).max(axis=1)
+            changes=(np.any(raw != previous_raw_tactile,axis=(1,2))
+                     if previous_raw_tactile is not None else None)
+            nonzero_counts=np.count_nonzero(np.any(raw!=0,axis=-1),axis=1)
+            meta=blocks[:,:TACTILE_RAW_FORCE_OFFSET]
             diagnostics["tactile"]={
                 "per_finger_max_raw":peaks.astype(float).tolist(),
-                "all_raw_taxels_zero":bool(np.all(peaks==0.)),
+                "per_finger_nonzero_taxel_counts":nonzero_counts.astype(int).tolist(),
+                "per_finger_calc_force_norm_raw":np.linalg.norm(meta[:,:3],axis=1).astype(float).tolist(),
+                "per_finger_unchanged_vs_previous":(
+                    np.logical_not(changes).tolist() if changes is not None else None),
+                "all_raw_taxels_zero":bool(np.all(nonzero_counts==0)),
                 "raw_tactile_freshness_verified":False,
-                "warning":"All-zero taxels do not prove working XHand sensors; SDK may hold prior/placeholder data",
+                "state_layout_raw_start_names":(
+                    [state_names[TACTILE_BLOCK_START+finger*TACTILE_BLOCK_SIZE+
+                                 TACTILE_RAW_FORCE_OFFSET]
+                     for finger in range(TACTILE_SENSOR_COUNT)] if i==0 else None),
+                "warning":"Unchanged/all-zero taxels do NOT establish SDK sample freshness or sensor health",
             }
+            previous_raw_tactile=raw.copy()
         except (ValueError,TypeError) as exc:
             diagnostics["tactile"]={"error":str(exc)}
         torque_key_hints=tuple(k for k in raw_keys+arm_keys if any(
             word in k.lower() for word in ("wrench","actual_tcp_force","tcp_force","joint_torque","joint_effort","ft_sensor")))
         record={"audit_index":i,"start_monotonic_ns":start_ns,"end_monotonic_ns":end_ns,
                 "observation_keys":raw_keys,"arm_observation_keys":arm_keys,
-                "observation_schema":{key:_audit_shape(value) for key,value in obs.items()},
-                "arm_observation_schema":{key:_audit_shape(value) for key,value in arm_obs.items()},
+                # Full 1972-key schemas repeat at every frame and make a
+                # 60-frame contact diagnostic unreadable. First frame suffices.
+                "observation_schema":{key:_audit_shape(value) for key,value in obs.items()} if i==0 else {},
+                "arm_observation_schema":{key:_audit_shape(value) for key,value in arm_obs.items()} if i==0 else {},
                 "torque_or_wrench_key_candidates_NOT_VERIFIED":list(torque_key_hints),
                 "diagnostics":diagnostics,
                 "never_sent_robot_action":True}
@@ -1669,7 +1690,8 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
         print(f"[AUDIT-ONLY] {i+1}/{n}: rgb={[k for k in arrays if k.endswith('_rgb')]} "
               f"depth={diagnostics['front_depth']['status']} "
               f"UR_force={diagnostics['arm_tcp_force']['status']} "
-              f"UR_torque={diagnostics['arm_tcp_torque']['status']}",flush=True)
+              f"UR_torque={diagnostics['arm_tcp_torque']['status']} "
+              f"taxels={diagnostics.get('tactile',{}).get('per_finger_nonzero_taxel_counts')}",flush=True)
         if i+1<n:
             time.sleep(max(0.,1.0/max(1,args.fps)-(time.monotonic_ns()-start_ns)*1e-9))
     report={"schema_version":1,"mode":"READ_ONLY_UNVERIFIED_SENSOR_DISCOVERY",
