@@ -84,7 +84,7 @@ def main():
     }
     print(f"[WEBSOCKET HAND-SCENE] port={args.port} checkpoint={model_path}",flush=True)
     print("[WEBSOCKET HAND-SCENE] BLOCKING DRY-RUN ONLY, no robot action transport in server",flush=True)
-    server=WebsocketPolicyServer(policy=worker,host="0.0.0.0",port=args.port,metadata=meta)
+    server=WebsocketPolicyServer(policy=worker,host="0.0.0.0",port=args.port,metadata=meta, infer_threaded=True)
     try:
         server.serve_forever()
     finally:
