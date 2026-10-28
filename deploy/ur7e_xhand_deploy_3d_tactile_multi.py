@@ -1643,8 +1643,14 @@ def capture_observation_audit(robot, args: argparse.Namespace, state_names: list
         except (KeyError,TypeError,ValueError) as exc:
             diagnostics["front_depth"]={"status":"missing_or_invalid","error":str(exc)}
         try:
-            tactile=extract_tactile_diagnostics(state)[2]
-            diagnostics["tactile"]={"per_finger_max_raw":np.max(tactile,axis=1).astype(float).tolist()}
+            # Raw 120-taxel/5-finger force vectors, using the TRAINING 1972 layout.
+            peaks=raw_tactile_finger_peaks(state)
+            diagnostics["tactile"]={
+                "per_finger_max_raw":peaks.astype(float).tolist(),
+                "all_raw_taxels_zero":bool(np.all(peaks==0.)),
+                "raw_tactile_freshness_verified":False,
+                "warning":"All-zero taxels do not prove working XHand sensors; SDK may hold prior/placeholder data",
+            }
         except (ValueError,TypeError) as exc:
             diagnostics["tactile"]={"error":str(exc)}
         torque_key_hints=tuple(k for k in raw_keys+arm_keys if any(
