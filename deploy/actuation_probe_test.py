@@ -61,3 +61,31 @@ def test_blocked_inference_rechecks_external_robot_drift():
     moved=origin.copy(); moved[6]=0.07
     with pytest.raises(SafetyTrip,match="moved during blocked"):
         check_probe_inference_idle_drift(_observation(origin),_observation(moved),FALLBACK_ACTION_NAMES)
+
+
+
+def test_plastic_probe_requires_explicit_plastic_review_without_claiming_glass(tmp_path):
+    import json
+    from deploy.ur7e_xhand_deploy_3d_tactile_multi import load_safety_limits
+    config={
+        "schema_version":1,
+        "reviewed_for_glass_task":False,
+        "reviewed_for_plastic_probe":True,
+        "tactile_peak_limits_raw":[8.]*5,
+        "tactile_emergency_step_change_limits_raw":[6.]*5,
+        "tactile_replan_step_change_limits_raw":[3.]*5,
+        "replan_enabled":False,
+        "replan_min_interval_s":0.25,
+        "arm_tcp_force_norm_limit_n":10.,
+        "arm_tcp_torque_norm_limit_nm":1.5,
+        "max_observation_gap_s":1.,
+    }
+    file=tmp_path/"limits.json"
+    file.write_text(json.dumps(config))
+    assert load_safety_limits(file,plastic_probe=True)["reviewed_for_plastic_probe"] is True
+    with pytest.raises(ValueError,match="exactly"):
+        load_safety_limits(file)  # plastic sign-off must NEVER enable glass
+    config["reviewed_for_plastic_probe"]=False
+    file.write_text(json.dumps(config))
+    with pytest.raises(ValueError,match="reviewed_for_plastic_probe"):
+        load_safety_limits(file,plastic_probe=True)
