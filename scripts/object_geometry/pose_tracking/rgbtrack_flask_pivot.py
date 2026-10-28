@@ -188,6 +188,68 @@ def compute_target_records(raw, initial, mesh_verts, sign, args):
     return output, qa, report
 
 
+def install_flask_upright_register(est, mesh_vertices, R_base_cam, *,
+                                   flask_mouth_axis='auto', flask_init_tilt_deg=20.,
+                                   flask_upright_max_rank=180, decisions=None):
+    """Shared TRAINING/DEPLOYMENT frame-0 flask candidate selection.
+
+    A wrapped RGBTrack register still uses its scored/refined hypotheses. Only
+    one selected upright candidate replaces its top-ranked pose and tracker
+    state. Never use this as an unrestricted pose optimizer or as review proof.
+    """
+    if decisions is None:
+        decisions = []
+    width=z_end_stats(np.asarray(mesh_vertices,dtype=float))
+    if flask_mouth_axis=='auto':
+        sign=width['mouth_sign']
+        if width['ambiguous']:
+            print('[FLASK WARNING] mouth direction ambiguous; confirm candidate image',flush=True)
+    elif flask_mouth_axis in ('+z','-z'):
+        sign=+1 if flask_mouth_axis=='+z' else -1
+    else:
+        raise ValueError('flask_mouth_axis must be auto, +z, or -z')
+    if not 0 < float(flask_init_tilt_deg) < 90 or int(flask_upright_max_rank)<1:
+        raise ValueError('Invalid flask upright selection thresholds')
+    decision={'mouth_sign':sign,'mesh_axis_inference':width}
+    decisions.append(decision)
+    orig_register=est.register
+
+    def constrained_register(*rargs,**rkwargs):
+        default=orig_register(*rargs,**rkwargs)
+        poses=as_array(est.poses)
+        scores=as_array(est.scores).reshape(-1)
+        C=as_array(est.get_tf_to_centered_mesh())
+        if poses.shape[1:]!=(4,4) or len(poses)!=len(scores):
+            raise RuntimeError('Unexpected RGBTrack candidate set')
+        if not np.allclose(poses[0]@C,as_array(default),rtol=1e-3,atol=1e-3):
+            raise RuntimeError('Internal centered-mesh transform differs')
+        axis_local=np.array([0.,0.,float(sign)])
+        axes=np.einsum('ij,njk,k->ni',R_base_cam,poses[:,:3,:3],axis_local)
+        tilts=np.degrees(np.arccos(np.clip(axes[:,2]/np.maximum(np.linalg.norm(axes,axis=1),1e-9),-1,1)))
+        eligible=np.flatnonzero(tilts[:flask_upright_max_rank]<=flask_init_tilt_deg)
+        if not len(eligible):
+            raise RuntimeError('No upright target flask candidate in top-ranked set; inspect mesh axis')
+        rank=int(eligible[0])
+        chosen=poses[rank]
+        selected_public=chosen@C
+        import torch
+        from scipy.spatial.transform import Rotation
+        est.pose_last=torch.as_tensor(chosen,device='cuda',dtype=torch.float32)
+        est.xyz=est.pose_last[:3,3]
+        est.tracker.initialize(chosen[:3,3].reshape(3,1),Rotation.from_matrix(chosen[:3,:3]).as_euler('xyz').reshape(3,1))
+        est.best_id=rank
+        est.track_good=True
+        decision.update({'chosen_rank':rank,'chosen_tilt_deg':float(tilts[rank]),
+                         'default_tilt_deg':float(tilts[0]),
+                         'chosen_raw_score':float(scores[rank]),'default_raw_score':float(scores[0]),
+                         'eligible_in_top_rank':int(len(eligible)), 'candidate_count':len(poses)})
+        print(f'[FLASK INIT] target upright rank={rank} tilt={tilts[rank]:.2f}deg vs default {tilts[0]:.2f}deg',flush=True)
+        return selected_public
+    est.register=constrained_register
+    return decision
+
+
+
 def run(args):
     repo=Path(args.repo_root).resolve()
     source=Path(args.source_pose_run).resolve()
@@ -220,46 +282,13 @@ def run(args):
         if self.object_name!='target_flask' or id(self._estimator) in hooked:return
         est=self._estimator
         hooked.add(id(est))
-        width=z_end_stats(np.asarray(self._mesh.vertices,dtype=float))
-        if args.flask_mouth_axis=='auto':
-            sign=width['mouth_sign']
-            if width['ambiguous']:
-                print('[FLASK WARNING] mouth direction ambiguous by width; inferred',sign,'; confirm from HTML!',flush=True)
-        else:sign=+1 if args.flask_mouth_axis=='+z' else -1
-        decisions.append({'mouth_sign':sign,'mesh_axis_inference':width})
-        orig_register=est.register
-        def constrained_register(*rargs,**rkwargs):
-            default=orig_register(*rargs,**rkwargs)
-            poses=as_array(est.poses)
-            scores=as_array(est.scores).reshape(-1)
-            C=as_array(est.get_tf_to_centered_mesh())
-            if poses.shape[1:]!=(4,4) or len(poses)!=len(scores):
-                raise RuntimeError('Unexpected RGBTrack candidate set')
-            if not np.allclose(poses[0]@C,as_array(default),rtol=1e-3,atol=1e-3):
-                raise RuntimeError('Internal centered-mesh transform differs')
-            axis_local=np.array([0.,0.,float(sign)])
-            axes=np.einsum('ij,njk,k->ni',R_base_cam,poses[:,:3,:3],axis_local)
-            tilts=np.degrees(np.arccos(np.clip(axes[:,2]/np.maximum(np.linalg.norm(axes,axis=1),1e-9),-1,1)))
-            eligible=np.flatnonzero(tilts[:args.flask_upright_max_rank]<=args.flask_init_tilt_deg)
-            if not len(eligible):
-                raise RuntimeError('No upright target flask candidate in top-ranked set; inspect mesh axis')
-            rank=int(eligible[0])
-            chosen=poses[rank]
-            selected_public=chosen@C
-            import torch
-            from scipy.spatial.transform import Rotation
-            est.pose_last=torch.as_tensor(chosen,device='cuda',dtype=torch.float32)
-            est.xyz=est.pose_last[:3,3]
-            est.tracker.initialize(chosen[:3,3].reshape(3,1),Rotation.from_matrix(chosen[:3,:3]).as_euler('xyz').reshape(3,1))
-            est.best_id=rank
-            est.track_good=True
-            decisions[-1].update({'chosen_rank':rank,'chosen_tilt_deg':float(tilts[rank]),
-                                  'default_tilt_deg':float(tilts[0]),
-                                  'chosen_raw_score':float(scores[rank]),'default_raw_score':float(scores[0]),
-                                  'eligible_in_top_rank':int(len(eligible)), 'candidate_count':len(poses)})
-            print(f'[FLASK INIT] target upright rank={rank} tilt={tilts[rank]:.2f}deg vs default {tilts[0]:.2f}deg',flush=True)
-            return selected_public
-        est.register=constrained_register
+        install_flask_upright_register(
+            est, self._mesh.vertices, R_base_cam,
+            flask_mouth_axis=args.flask_mouth_axis,
+            flask_init_tilt_deg=args.flask_init_tilt_deg,
+            flask_upright_max_rank=args.flask_upright_max_rank,
+            decisions=decisions,
+        )
     adapter.RGBTrackObject._ensure_estimator=ensure_flask_upright
     try:
         adapter.run(full_args)
