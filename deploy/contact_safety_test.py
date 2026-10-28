@@ -33,9 +33,9 @@ def test_trip_latches_and_blocks_future_steps(case):
     t=[0.]
     g=ContactSafetyGuard(config(),clock=lambda:t[0])
     obs={"arm_tcp_force":np.zeros(3),"arm_tcp_torque":np.zeros(3)}
-    g.check(observation=obs,state=state(2))
+    g.check(observation=obs,state=state(9 if case=="jump" else 2))
     if case=="tactile": s=state(12)
-    elif case=="jump": s=state(11)
+    elif case=="jump": s=state(0)  # dangerous sudden loss, no absolute peak violation
     else: s=state(2)
     if case=="force": obs["arm_tcp_force"]=np.array([13,0,0])
     if case=="torque": obs["arm_tcp_torque"]=np.array([0,0,3])
@@ -98,3 +98,17 @@ def test_arm_tcp_force_torque_fail_closed_when_invalid(invalid):
     guard=ContactSafetyGuard(config(),clock=lambda:0.)
     with pytest.raises(SafetyTrip):
         guard.check(observation=obs,state=state(1))
+
+
+def test_reviewed_safety_config_uses_split_rtde_contract(tmp_path):
+    import json
+    from deploy.contact_safety import load_safety_limits
+    c=config()
+    c.update(schema_version=1,reviewed_for_glass_task=True)
+    file=tmp_path/"limits.json"
+    file.write_text(json.dumps(c))
+    assert load_safety_limits(file)["replan_enabled"] is False
+    c["arm_wrench_observation_key"]="arm_tcp_wrench"  # forbidden legacy contract
+    file.write_text(json.dumps(c))
+    with pytest.raises(ValueError,match="exactly"):
+        load_safety_limits(file)
