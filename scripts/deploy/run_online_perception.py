@@ -534,8 +534,8 @@ def main() -> int:
     parser.add_argument("--static-target-anchor-json", type=Path)
     parser.add_argument(
         "--static-target-anchor-source",
-        choices=("human_reviewed", "reference_geometry"),
-        help="Provenance for the static flask anchor; reference_geometry is replay-only.",
+        choices=("human_reviewed",),
+        help="Only explicit human-reviewed current-scene static flask anchors are accepted.",
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-frames", type=int)
@@ -748,8 +748,9 @@ def main() -> int:
                     mask, score, status, valid, recovery = masks[name]
                     corrected = status == "corrected"
                     object_pose_started = time.perf_counter()
-                    if corrected and name == "target_flask" and static_flask_runtime is not None and frame_index > 0:
-                        # A static training prior is not overwritten by SAM2 corrections.
+                    if corrected and name == "target_flask" and static_flask_runtime is not None:
+                        # Keep the installed training upright selector on frame 0.
+                        # After frame 0, no target observation is consumed at all.
                         pass
                     elif corrected and name in tracker_by_name:
                         tracker_by_name[name] = RGBTrackObject(
