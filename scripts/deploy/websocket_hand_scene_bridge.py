@@ -83,7 +83,11 @@ class HandScenePerceptionBridge:
                  scale_manifest:Path|None=None):
         self.policy=policy
         self.repo_root=Path(repo_root).resolve()
-        self.perception_python=Path(perception_python).resolve()
+        # Keep the venv's *entry-point path*, including its python symlink.
+        # pathlib.resolve() follows .venv-perception/bin/python to the shared
+        # base interpreter, which skips the virtualenv's site-packages (SAM2's
+        # hydra-core etc.) even though direct venv Python imports succeed.
+        self.perception_python=Path(os.path.abspath(os.path.expanduser(str(perception_python))))
         self.workdir=Path(workdir).resolve()
         self.anchor_json=Path(anchor_json).resolve() if anchor_json is not None else None
         self.episode=episode
