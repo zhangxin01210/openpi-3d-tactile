@@ -103,13 +103,14 @@ class HandScenePerceptionBridge:
         self.session_id=None
         self.worker=None
         self._started=False
-        if self.workdir.exists():
-            raise FileExistsError(f"Refusing to use existing perception spool: {self.workdir}")
+        if self.workdir.exists() and not self.workdir.is_dir():
+            raise NotADirectoryError(f"Perception spool is not a directory: {self.workdir}")
         if self.anchor_json is not None and not self.anchor_json.is_file():
             raise FileNotFoundError(f"Selected-position reviewed flask anchor missing: {self.anchor_json}")
         if not self.perception_python.is_file():
             raise FileNotFoundError("Original perception virtualenv Python not found")
-        self.workdir.mkdir(parents=True)
+        # Previous sessions are read-only archives; never overwrite them.
+        self.workdir.mkdir(parents=True, exist_ok=True)
 
     @property
     def metadata(self):
@@ -222,9 +223,19 @@ class HandScenePerceptionBridge:
         if self.anchor_json is not None and SCENE_POSITION_TO_EPISODE[position]!=self.position_template_episode:
             raise ValueError("Fixed reviewed flask anchor does not match selected scene position")
         self.close()  # Old SAM2/RGBTrack process, not WebSocket/Pi0 process.
-        self.session_counter+=1
-        self.session_root=self.workdir/f"scene_{position}_session_{self.session_counter:04d}"
-        self.session_root.mkdir(parents=True,exist_ok=False)
+        # A restarted WebSocket process may reuse the same workdir. Allocate
+        # a fresh unique session directory without deleting historical data.
+        candidate=self.session_counter
+        while True:
+            candidate+=1
+            root=self.workdir/f"scene_{position}_session_{candidate:04d}"
+            try:
+                root.mkdir(parents=True,exist_ok=False)
+            except FileExistsError:
+                continue
+            self.session_counter=candidate
+            self.session_root=root
+            break
         (self.session_root/"raw").mkdir()
         (self.session_root/"perception").mkdir()
         self.next_index=0
