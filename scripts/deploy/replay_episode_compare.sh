@@ -68,7 +68,7 @@ PYTHONPATH="$ROOT/src:$ROOT" "$PI_PY" -u \
  --config pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1 \
  --checkpoint "$CHECKPOINT" --frame-stride 16 \
  --gt-dataset "$DATASET" --gt-episode "$EPISODE" \
- --prompt "Move the funnel over the target flask and insert it."
+ --prompt "Pick up the glass funnel, align its stem with the opening of the small beaker, and insert it until it is fully seated."
 
 echo "===== ACTION COMPARISON ====="
 "$PI_PY" - "$RUN/policy/summary.json" <<'PY'
