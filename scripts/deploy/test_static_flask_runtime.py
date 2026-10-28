@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from scripts.deploy.static_flask_runtime import StaticFlaskRuntime, load_reviewed_anchor
+from scripts.deploy.static_flask_runtime import AutoFrame0FlaskRuntime, StaticFlaskRuntime, load_reviewed_anchor
 
 
 class Tracker:
@@ -65,3 +65,31 @@ def test_anchor_has_explicit_review_and_calibration_provenance(tmp_path):
     anchor.write_text(json.dumps(record))
     with pytest.raises(ValueError,match="human-reviewed"):
         load_reviewed_anchor(anchor,episode=23,calibration_profile=cal)
+
+
+
+def test_auto_flask_estimates_current_frame0_once_and_holds_without_training_anchor():
+    current=np.eye(4)
+    current[:3,3]=[.33,.44,.17]
+    tracker=Tracker(current)
+    auto=AutoFrame0FlaskRuntime()
+    frame0=auto.next(frame_index=0,tracker=tracker,mask=np.ones((12,14),dtype=bool))
+    assert frame0["pose_source"]=="auto_frame0_rgbtrack_observed"
+    assert frame0["observed_pose_valid"]
+    np.testing.assert_array_equal(frame0["T_base_link_object"],current)
+    for i in range(1,5):
+        result=auto.next(frame_index=i)
+        assert result["pose_source"]=="static_geometry_prior"
+        assert not result["observed_pose_valid"]
+        np.testing.assert_array_equal(result["T_base_link_object"],current)
+    assert tracker.calls==1
+    with pytest.raises(ValueError,match="already performed"):
+        auto.next(frame_index=0,tracker=tracker,mask=np.ones((12,14),bool))
+
+
+def test_auto_flask_rejects_missing_or_invalid_frame0():
+    auto=AutoFrame0FlaskRuntime()
+    with pytest.raises(ValueError,match="initialize on frame 0"):
+        auto.next(frame_index=1)
+    with pytest.raises(ValueError,match="requires valid"):
+        auto.next(frame_index=0,mask=np.zeros((4,4),dtype=bool))
