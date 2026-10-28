@@ -1949,6 +1949,9 @@ def main() -> int:
             raise ValueError("Motion probe needs no --dry-run, --no-home and --run-mode single")
         if args.contact_safety_config is None:
             raise ValueError("Motion probe requires independently reviewed --contact-safety-config")
+        if args.max_action_chunk_size<args.actuation_probe_steps:
+            raise ValueError("Motion probe steps must fit within ONE chunk; "
+                             "--max-action-chunk-size >= --actuation-probe-steps")
         if args.action_scale!=1.0 or args.smoothing_alpha!=1.0:
             raise ValueError("Motion probe requires unchanged absolute joint angles; no action scaling/smoothing")
         if args.arm_max_relative_target>0.02:
@@ -2073,6 +2076,8 @@ def main() -> int:
         )
     configure_input_mode_from_metadata(args, metadata)
     validate_state_schema(state_names, args)
+    if args.actuation_probe_steps and not metadata.get("hand_scene_history_required",False):
+        raise ValueError("Motion probe requires the verified hand-scene geometry server, not a legacy Pi0 policy")
     if metadata.get("hand_scene_history_required",False):
         if args.scene_position not in tuple(metadata.get("hand_scene_positions",())):
             raise ValueError(f"This WebSocket geometry server requires --scene-position, "
