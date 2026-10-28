@@ -106,6 +106,18 @@ class OnlineObjectGeometryBuilder:
         self._previous_frame: int | None = None
         self._last_timestamp: float | None = None
 
+    def set_auto_frame0_static_target(self, transform: np.ndarray) -> None:
+        """Freeze an observed first-frame flask pose for future causal frames.
+
+        Distinct from a human-reviewed anchor. Called only AFTER RGBTrack
+        actually observed frame 0, before the first frame is encoded.
+        """
+        if self._previous_frame is not None or self._static_anchor is not None:
+            raise ValueError("Static flask auto initialization must occur once, before frame-0 build")
+        self._static_anchor = as_transform(transform, "auto_frame0_static_target")
+        if self._static_anchor_start_frame != 1:
+            raise ValueError("Auto frame-0 static prior must begin at frame 1")
+
     def reset_episode(self) -> None:
         """Reset all tactile history and frame-order checks."""
         self._hand_scene.reset()
