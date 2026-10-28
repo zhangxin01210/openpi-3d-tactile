@@ -138,3 +138,24 @@ def test_server_restart_reuses_spool_without_overwriting_old_sessions(monkeypatc
     assert bridge.session_root==work/"scene_1_session_0002"
     assert (bridge.session_root/"raw"/"frame_000000.npz").exists()
     assert marker.read_text()=="old sessions must survive"
+
+
+
+def test_perception_python_venv_entrypoint_symlink_is_not_resolved(monkeypatch,tmp_path):
+    """Regression: .venv/bin/python symlink must not launch the base interpreter."""
+    venv_bin=tmp_path/".venv-perception"/"bin"
+    venv_bin.mkdir(parents=True)
+    base=tmp_path/"base-python"
+    base.write_text("fake base interpreter")
+    venv_executable=venv_bin/"python"
+    venv_executable.symlink_to(base)
+    policy=SimpleNamespace(metadata={},infer=lambda obs: {"actions":np.zeros((50,18))})
+    bridge=HandScenePerceptionBridge(
+        policy,repo_root=tmp_path,perception_python=venv_executable,
+        workdir=tmp_path/"session-root"
+    )
+    assert bridge.perception_python == venv_executable
+    assert bridge.perception_python != venv_executable.resolve()
+    bridge.scene_position=1
+    bridge.session_root=bridge.workdir/"scene_1_session_0001"
+    assert bridge._worker_command()[0] == str(venv_executable)
