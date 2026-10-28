@@ -532,6 +532,9 @@ def main() -> int:
     parser.add_argument("--pose-mode", choices=("depth", "no_depth", "unknown_scale"), default="depth")
     parser.add_argument("--masks-only", action="store_true", help="Run SAM2 causal masks and contract geometry without RGBTrack pose estimation.")
     parser.add_argument("--static-target-anchor-json", type=Path)
+    parser.add_argument("--register-missing-color-depth", action="store_true",
+                        help="Live WebSocket raw LeRobot packets only: use the SAME RGBTrack training "
+                             "_rgb_registered_depth to derive RGB-aligned depth from original native front depth")
     parser.add_argument("--auto-static-flask-from-frame0", action="store_true",
                         help="Use the selected SAM2 position prompt, observe flask once via RGBTrack at frame 0, "
                              "freeze that measured pose from frame 1; avoids reusing an unrelated scene's anchor. "
@@ -604,6 +607,12 @@ def main() -> int:
     from openpi.policies.hand_scene_online import OnlineObjectGeometryBuilder
 
     calibration = load_front_calibration(root, args.front_calibration_profile)
+    registration_camera = None
+    registration_fn = None
+    if args.register_missing_color_depth:
+        from rgbtrack_adapter import _load_front_camera_for_depth_registration, _rgb_registered_depth
+        registration_camera = _load_front_camera_for_depth_registration(root, args.front_calibration_profile)
+        registration_fn = _rgb_registered_depth
     scales = OnlineObjectGeometryBuilder.load_scale_manifest(args.scale_manifest)
     geometry_spec = _load_training_geometry_spec(
         args.geometry_config,
@@ -745,6 +754,16 @@ def main() -> int:
                 if args.max_frames is not None and number >= max(0, args.max_frames):
                     break
                 started = time.perf_counter()
+                if args.register_missing_color_depth and "front_depth_color_aligned" not in raw:
+                    # Identical to training's export_training_episode_packets.py
+                    # registration. Never use a fabricated/resized RGB depth.
+                    if "front_depth_native" not in raw or "front_rgb" not in raw:
+                        raise KeyError("Live native depth and front RGB are both required")
+                    native=np.asarray(raw["front_depth_native"])
+                    color=np.asarray(raw["front_rgb"])
+                    aligned_m=registration_fn(native,registration_camera,color.shape[:2])
+                    aligned=np.asarray(aligned_m,dtype=np.float32)/np.float32(registration_camera.depth_scale_m_per_unit)
+                    raw={**raw,"front_depth_color_aligned":aligned}
                 packet = _validate_packet(source_path, raw)
                 frame_index = int(packet["frame_index"])
                 timestamp_s = float(packet["timestamp_s"])
