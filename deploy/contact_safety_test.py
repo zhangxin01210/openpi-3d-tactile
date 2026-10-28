@@ -32,7 +32,7 @@ def test_no_excess_safe_reading():
 def test_trip_latches_and_blocks_future_steps(case):
     t=[0.]
     g=ContactSafetyGuard(config(),clock=lambda:t[0])
-    obs={"arm_tcp_wrench":np.zeros(6)}
+    obs={"arm_tcp_force":np.zeros(3),"arm_tcp_torque":np.zeros(3)}
     g.check(observation=obs,state=state(2))
     if case=="tactile": s=state(12)
     elif case=="jump": s=state(11)
@@ -45,14 +45,14 @@ def test_trip_latches_and_blocks_future_steps(case):
     with pytest.raises(SafetyTrip):
         g.check(observation=obs,state=s)
     with pytest.raises(SafetyTrip,match="latched"):
-        g.check(observation={"arm_tcp_wrench":np.zeros(6)},state=state(0))
+        g.check(observation={"arm_tcp_force":np.zeros(3),"arm_tcp_torque":np.zeros(3)},state=state(0))
 
 def test_contact_event_replans_without_latched_stop():
     cfg=config()
     cfg["replan_enabled"]=True
     t=[0.]
     guard=ContactSafetyGuard(cfg,clock=lambda:t[0])
-    observation={"arm_tcp_wrench":np.zeros(6)}
+    observation={"arm_tcp_force":np.zeros(3),"arm_tcp_torque":np.zeros(3)}
     guard.check(observation=observation,state=state(1))
     t[0]=0.1
     event=guard.check(observation=observation,state=state(6))
@@ -68,7 +68,7 @@ def test_contact_event_replans_without_latched_stop():
 def test_fixed_16_step_schedule_default_has_no_contact_replan():
     cfg=config()
     guard=ContactSafetyGuard(cfg,clock=lambda:0.)
-    obs={"arm_tcp_wrench":np.zeros(6)}
+    obs={"arm_tcp_force":np.zeros(3),"arm_tcp_torque":np.zeros(3)}
     guard.check(observation=obs,state=state(1))
     event=guard.check(observation=obs,state=state(6))
     assert event["replan_recommended"] is False
