@@ -621,20 +621,19 @@ def main() -> int:
     )
     static_anchor = None
     static_anchor_metadata = None
+    static_flask_runtime = None
     if args.static_target_anchor_json is not None:
-        anchor_payload = json.loads(args.static_target_anchor_json.read_text(encoding="utf-8"))
-        static_anchor_metadata = anchor_payload if isinstance(anchor_payload, dict) else None
-        anchor_value = anchor_payload.get("T_base_link_object") if isinstance(anchor_payload, dict) else anchor_payload
-        static_anchor = np.asarray(anchor_value, dtype=np.float64)
+        from scripts.deploy.static_flask_runtime import load_reviewed_anchor
+        if args.static_target_anchor_source != "human_reviewed":
+            raise ValueError("Production static target requires human_reviewed anchor provenance")
+        static_anchor, static_anchor_metadata = load_reviewed_anchor(
+            args.static_target_anchor_json,
+            episode=args.episode,
+            calibration_profile=args.front_calibration_profile,
+        )
         if args.static_target_anchor_source is None:
             raise ValueError("A static target prior requires --static-target-anchor-source")
-        if args.static_target_anchor_source == "reference_geometry":
-            try:
-                replay_dir.relative_to(root / "data" / "deploy" / "replay")
-            except ValueError as exc:
-                raise ValueError("reference_geometry anchors are allowed only for saved replay data") from exc
-            if args.follow:
-                raise ValueError("reference_geometry anchors cannot be used with a live --follow stream")
+        # Static target provenance is checked against current episode and calibration above.
     elif args.static_target_anchor_source is not None:
         raise ValueError("--static-target-anchor-source requires --static-target-anchor-json")
     if geometry_spec["target_flask_motion"] == "static" and static_anchor is None and not args.masks_only:
@@ -642,6 +641,9 @@ def main() -> int:
             "Training geometry config declares target_flask static; supply its explicit frame-0 anchor "
             "with --static-target-anchor-json and --static-target-anchor-source"
         )
+    if geometry_spec["target_flask_motion"] == "static" and static_anchor is not None and not args.masks_only:
+        from scripts.deploy.static_flask_runtime import StaticFlaskRuntime
+        static_flask_runtime = StaticFlaskRuntime(static_anchor)
     builder = OnlineObjectGeometryBuilder.from_meshes(
         funnel_mesh=args.funnel_mesh,
         flask_mesh=args.target_flask_mesh,
@@ -680,6 +682,24 @@ def main() -> int:
             )
             for name in OBJECTS
         }
+    if static_flask_runtime is not None:
+        from rgbtrack_flask_pivot import install_flask_upright_register
+        target_tracker = tracker_by_name["target_flask"]
+        original_ensure = target_tracker._ensure_estimator
+        flask_decisions = []
+        def ensure_training_flask_upright():
+            original_ensure()
+            if not flask_decisions:
+                install_flask_upright_register(
+                    target_tracker._estimator,
+                    target_tracker._mesh.vertices,
+                    calibration.T_base_color[:3, :3],
+                    flask_mouth_axis="auto",
+                    flask_init_tilt_deg=float(geometry_spec["rgbtrack"].get("flask_max_tilt_deg", 20)),
+                    flask_upright_max_rank=180,
+                    decisions=flask_decisions,
+                )
+        target_tracker._ensure_estimator = ensure_training_flask_upright
     # Force the optional JAX import to CPU; vision CUDA stays with PyTorch.
     os.environ.setdefault("JAX_PLATFORMS", "cpu")
     from openpi.spatial.config import make_baseline_config
@@ -728,7 +748,10 @@ def main() -> int:
                     mask, score, status, valid, recovery = masks[name]
                     corrected = status == "corrected"
                     object_pose_started = time.perf_counter()
-                    if corrected and name in tracker_by_name:
+                    if corrected and name == "target_flask" and static_flask_runtime is not None and frame_index > 0:
+                        # A static training prior is not overwritten by SAM2 corrections.
+                        pass
+                    elif corrected and name in tracker_by_name:
                         tracker_by_name[name] = RGBTrackObject(
                             repo_root=root,
                             object_name=name,
@@ -741,6 +764,19 @@ def main() -> int:
                         )
                     if name not in tracker_by_name:
                         pose_rows[name] = _invalid_pose(frame_index)
+                    elif name == "target_flask" and static_flask_runtime is not None:
+                        depth_m = packet["front_depth_color_aligned"].astype(np.float32) * calibration.depth_scale_m_per_unit
+                        if frame_index == 0 and not valid:
+                            raise ValueError("Cannot initialize static flask from invalid frame-0 SAM2 mask")
+                        pose_rows[name] = static_flask_runtime.next(
+                            frame_index=frame_index,
+                            tracker=tracker_by_name[name] if frame_index == 0 else None,
+                            rgb=rgb if frame_index == 0 else None,
+                            depth_m=depth_m if frame_index == 0 else None,
+                            mask=mask if frame_index == 0 else None,
+                            K=calibration.K_color if frame_index == 0 else None,
+                            T_base_color=calibration.T_base_color if frame_index == 0 else None,
+                        )
                     else:
                         depth_m = packet["front_depth_color_aligned"].astype(np.float32) * calibration.depth_scale_m_per_unit
                         result = tracker_by_name[name].estimate(
@@ -766,7 +802,7 @@ def main() -> int:
                     pose_rows[name]["mask_status"] = status
                     pose_rows[name]["recovery"] = bool(recovery)
                     object_pose_ms = (time.perf_counter() - object_pose_started) * 1000.0
-                    pose_rows[name]["rgbtrack_latency_ms"] = object_pose_ms if name in tracker_by_name else 0.0
+                    pose_rows[name]["rgbtrack_latency_ms"] = object_pose_ms if name in tracker_by_name and not (name == "target_flask" and static_flask_runtime is not None and frame_index > 0) else 0.0
                     rgbtrack_latency_ms += pose_rows[name]["rgbtrack_latency_ms"]
 
                 geometry_started = time.perf_counter()
@@ -892,6 +928,7 @@ def main() -> int:
                 "scale_manifest": str(args.scale_manifest.expanduser().resolve()),
                 "training_geometry": geometry_spec,
                 "static_target_anchor_source": args.static_target_anchor_source,
+                "static_flask_runtime": "f0_training_upright_then_reviewed_static_prior" if static_flask_runtime else None,
                 "static_target_anchor": static_anchor_metadata,
                 "rgbtrack_training_policy": rgbtrack_runtime,
                 "front_calibration": calibration.provenance,
