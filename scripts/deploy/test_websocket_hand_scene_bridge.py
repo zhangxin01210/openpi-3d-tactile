@@ -68,6 +68,8 @@ def test_bridge_injects_exact_geometry_into_existing_policy_and_forbids_session_
         "observation.state":first["robot_state"],
         "observation.depths.cam_front":first["front_depth_native"],
         "observation.images.cam_front":first["front_rgb"],
+        "observation.images.cam_left":first["left_rgb"],
+        "observation.images.cam_right":first["right_rgb"],
     }
     pred=worker.infer(obs)
     assert pred["actions"].shape==(50,18)
@@ -99,6 +101,8 @@ def test_geometry_frame_must_match_pi0_observation(monkeypatch,tmp_path):
         "observation.state":np.ones(1972),
         "observation.depths.cam_front":frame["front_depth_native"],
         "observation.images.cam_front":frame["front_rgb"],
+        "observation.images.cam_left":frame["left_rgb"],
+        "observation.images.cam_right":frame["right_rgb"],
     }
     with pytest.raises(ValueError,match="state and last geometry"):
         worker.infer(obs)
