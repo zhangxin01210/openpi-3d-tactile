@@ -187,18 +187,27 @@ footer{padding:10px 20px;font-size:12px;color:#adbdd0} code{color:#a8d8ff} @medi
 </style><script>'''+plotly_js+'''</script></head><body>
 <header><strong>Episode 3D 追踪审计</strong><button id="play">▶ 播放</button>
 <button id="back">◀</button><input type="range" id="slider" min="0" max="'''+str(len(frames)-1)+'''" value="0" step="1"/>
-<button id="next">▶</button><span id="seek"></span><label>速度<select id="speed"><option value="1200">慢</option><option selected value="450">正常</option><option value="200">快</option></select></label></header>
+<button id="next">▶</button><span id="seek"></span><label><input type="checkbox" id="show_scene" checked> 场景点云</label><label>速度<select id="speed"><option value="1200">慢</option><option selected value="450">正常</option><option value="200">快</option></select></label></header>
 <main><div id="scene"></div><aside><img id="rgb"/><p id="status"></p><div id="details"></div></aside></main>
 <footer>绿色：漏斗 mesh 采样点；蓝色：目标烧瓶 mesh 采样点；五色：XHand 五指触觉位置。<br>
 红字/缺失：追踪 invalid；黄字：预测姿态非观测；<strong>所有状态仅表示 RGBTrack 的输出，不等于位姿精度得到验证。</strong>
-点云在 base_link 坐标，单位米；3D 图可旋转缩放，切换帧时保持视角。RGB 图的彩色点为 Mesh 真实表面采样点重投影，而不是包围框。</footer>
+点云在 base_link 坐标，单位米；若开启场景层，则展示训练端 SpatialPreprocessor 从原生深度生成的 4096 点中的确定性显示子集。RGB 颜色来自原始相机；灰色表示 RGB 无效。3D 图可旋转缩放，切换帧时保持视角。RGB 图的彩色点为 Mesh 真实表面采样点重投影，而不是包围框。</footer>
 <script>
 const FRAMES='''+data_json+''';
 const fingerColors=['#f97316','#d946ef','#facc15','#10b981','#f43f5e'];
 const F=FRAMES.length;let current=0,timer=null;
 const slider=document.getElementById('slider'), seek=document.getElementById('seek');
 function cloud(pos,name,color,size=2.8,opacity=1){if(!pos)pos=[];return {type:'scatter3d',mode:'markers',name,x:pos.map(p=>p[0]),y:pos.map(p=>p[1]),z:pos.map(p=>p[2]),marker:{size,color,opacity},hovertemplate:'x=%{x:.3f} y=%{y:.3f} z=%{z:.3f}<extra>'+name+'</extra>'};}
-function traceSet(f){let d=[cloud(f.object_xyz.funnel,'funnel', '#36c86f',3.0,f.pose.funnel.valid?0.9:0.06),cloud(f.object_xyz.target_flask,'target_flask','#27aceb',3.1,f.pose.target_flask.valid?0.9:0.06)];
+function traceSet(f){let d=[];
+  const sceneToggle=document.getElementById('show_scene');
+  if(f.scene_xyz && (!sceneToggle || sceneToggle.checked)){
+    const p=f.scene_xyz;d.push({type:'scatter3d',mode:'markers',name:'Canonical scene cloud',
+      x:p.map(x=>x[0]),y:p.map(x=>x[1]),z:p.map(x=>x[2]),
+      marker:{size:1.4,color:f.scene_rgb||'#888',opacity:0.46},
+      hovertemplate:'scene x=%{x:.3f} y=%{y:.3f} z=%{z:.3f}<extra></extra>'});
+  }
+  d.push(cloud(f.object_xyz.funnel,'funnel', '#36c86f',3.0,f.pose.funnel.valid?0.9:0.06),
+         cloud(f.object_xyz.target_flask,'target_flask','#27aceb',3.1,f.pose.target_flask.valid?0.9:0.06));
   for(let i=0;i<5;i++)d.push(cloud(f.hand[i],'finger '+i,fingerColors[i],3));
   const tr=f.trajectory||{};
   for(let n of ['funnel','target_flask'])d.push({type:'scatter3d',mode:'lines',name:n+' movement',x:(tr[n]||[]).map(x=>x[0]),y:(tr[n]||[]).map(x=>x[1]),z:(tr[n]||[]).map(x=>x[2]),line:{color:n==='funnel'?'#15a64c':'#0a73ac',width:3},showlegend:false,hoverinfo:'skip'});
@@ -215,6 +224,7 @@ function updateStatus(f){let p=f.pose;let str=[];
   document.getElementById('status').innerHTML=str.join('<br>');
   let extra=['frame = '+f.frame,'3D pose is used only if valid. No pose imputation.'];
   for(let n of ['funnel','target_flask']){extra.push('['+n+'] min distance per finger (cm): '+(f.distance_cm[n]||[]).map(v=>v===null?'—':v.toFixed(1)).join(' / '));}
+  if(f.scene_xyz) extra.push('scene: '+f.scene_full_points+' canonical points, '+f.scene_xyz.length+' displayed, RGB-valid '+(100*f.scene_rgb_valid_fraction).toFixed(1)+'%');
   document.getElementById('details').textContent=extra.join('\\n');
 }
 function draw(idx){idx=Math.max(0,Math.min(F-1,idx));current=idx;let f=FRAMES[idx];slider.value=idx;seek.textContent='帧 '+f.frame+' ('+(idx+1)+'/'+F+')';
@@ -222,7 +232,7 @@ function draw(idx){idx=Math.max(0,Math.min(F-1,idx));current=idx;let f=FRAMES[id
   Plotly.react('scene',traceSet(f),layout,config);}
 document.getElementById('next').onclick=()=>draw(current+1);
 document.getElementById('back').onclick=()=>draw(current-1);
-slider.oninput=()=>draw(Number(slider.value));
+slider.oninput=()=>draw(Number(slider.value));document.getElementById('show_scene').onchange=()=>draw(current);
 document.getElementById('play').onclick=()=>{let b=document.getElementById('play');if(timer){clearInterval(timer);timer=null;b.textContent='▶ 播放';return;}
   b.textContent='⏸ 暂停';timer=setInterval(()=>{if(current>=F-1){clearInterval(timer);timer=null;b.textContent='▶ 播放';return;}draw(current+1)},Number(document.getElementById('speed').value));};
 document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')draw(current+1);if(e.key==='ArrowLeft')draw(current-1)});
@@ -243,8 +253,18 @@ def main():
     p.add_argument('--mesh-points',type=int,default=220,help='Sampled points per mesh for interactive HTML; metric mesh source unchanged')
     p.add_argument('--taxels-per-finger',type=int,default=30)
     p.add_argument('--no-rgb',action='store_true',help='Skip synchronized RGB if video unavailable')
+    p.add_argument('--scene-cameras',default='none',
+                   help='Optional canonical scene cloud, e.g. front,left or front; default none preserves prior viewer')
+    p.add_argument('--scene-display-points',type=int,default=800,
+                   help='Display subset from the complete canonical 4096-point cloud, NOT a different preprocess')
     a=p.parse_args()
-    if a.viz_stride<1 or a.mesh_points<16 or a.taxels_per_finger<1: p.error('Invalid sample/stride')
+    if a.viz_stride<1 or a.mesh_points<16 or a.taxels_per_finger<1 or a.scene_display_points<16:
+        p.error('Invalid sample/stride/display count')
+    scene_roles = tuple(v.strip() for v in a.scene_cameras.split(',') if v.strip() and v.strip() != 'none')
+    if len(set(scene_roles))!=len(scene_roles) or any(v not in ('front','left') for v in scene_roles):
+        p.error('--scene-cameras must be none, front, or front,left (no uncalibrated wrist camera)')
+    if a.no_rgb and scene_roles:
+        p.error('--no-rgb cannot be combined with --scene-cameras; canonical color association requires RGB')
     repo=a.repo_root.expanduser().resolve();out=a.output.expanduser().resolve();run=a.pose_run.expanduser().resolve()
     data=a.dataset.expanduser().resolve(); profile=Path(a.calibration_profile)
     if not profile.is_absolute():profile=repo/profile
@@ -264,6 +284,13 @@ def main():
     cfg,_=make_front_geometry_config(repo,profile)
     prep=SpatialPreprocessor.from_repo_root(repo_root=repo,config=cfg)
     ds=RawSpatialDataset(data,episode=a.episode)
+    if scene_roles:
+        missing_depth=sorted(set(scene_roles)-set(ds.depth_roles))
+        missing_rgb=sorted(set(scene_roles)-set(ds.camera_roles))
+        if missing_depth or missing_rgb:
+            raise ValueError(f'Scene camera roles missing native dataset channels: depth={missing_depth}, RGB={missing_rgb}; '
+                             f'available depth={ds.depth_roles}, RGB={ds.camera_roles}. '
+                             'Choose --scene-cameras front only if that is the verified training contract.')
     local={name:get_mesh(repo/rel,a.mesh_points,seed=20261025+i) for i,(name,rel) in enumerate(MESH_PATHS.items())}
     # use same points for distances and projection to avoid hidden geometry differences
     csv_records=[];frame_payload=[];history={'funnel':[],'target_flask':[]}
@@ -330,8 +357,65 @@ def main():
             last=(f,r['_T'])
         jump_report[name]=jumps
 
-    # RGB overlay is synchronized by exact frame index, not by sequential order or raw-depth direct indexing.
-    if not a.no_rgb:
+    # The 3D scene cloud is made exclusively by the TRAINING spatial preprocess:
+    # native depth optical pixels -> calibrated base_link -> ROI -> voxel -> 4096 points.
+    # Never back-project already RGB-registered depth as if it were native.
+    if scene_roles:
+        from openpi.spatial.config import make_baseline_config
+        from openpi.spatial.calibration_profile import apply_front_calibration_profile
+        scene_config=make_baseline_config().with_camera_roles(*scene_roles)
+        scene_config=apply_front_calibration_profile(scene_config, profile)
+        scene_preprocessor=SpatialPreprocessor.from_repo_root(repo_root=repo,config=scene_config)
+        rgb_streams={role:iter(ds.iter_video_frames(role,selected=viz_set)) for role in scene_roles}
+        dic={frame:i for i,frame in enumerate(chosen)}
+        seen=set()
+        from rgbtrack_adapter import load_front_calibration
+        cam=load_front_calibration(repo,profile)
+        T_cam_base=np.linalg.inv(check_pose(cam.T_base_color,'front camera T_base_color'))
+        for row in ds.iter_rows(selected=viz_set,depth_roles=scene_roles):
+            frame=int(row['frame_index'])
+            if frame not in dic:raise ValueError(f'Unexpected depth frame {frame}')
+            rgb_by_role={}
+            for role in scene_roles:
+                try:
+                    v=next(rgb_streams[role])
+                except StopIteration as exc:
+                    raise ValueError(f'Missing {role} RGB frame {frame}') from exc
+                if int(v.frame_index)!=frame:
+                    raise ValueError(f'RGB/depth frame mismatch: {role} {v.frame_index} != {frame}')
+                rgb_by_role[role]=np.asarray(v.rgb)
+            depth_by_role={role:np.asarray(row[f'observation.depths.cam_{role}']) for role in scene_roles}
+            geometry=scene_preprocessor.preprocess_visual(depth_by_role=depth_by_role,rgb_by_role=rgb_by_role)
+            cloud_xyz=np.asarray(geometry.xyz_m,dtype=np.float32)
+            cloud_rgb=np.asarray(geometry.rgb,dtype=np.uint8)
+            cloud_valid=np.asarray(geometry.rgb_valid,dtype=bool)
+            if (cloud_xyz.shape!=(scene_config.visual.num_points,3) or
+                    cloud_rgb.shape!=(len(cloud_xyz),3) or
+                    cloud_valid.shape!=(len(cloud_xyz),) or
+                    not np.isfinite(cloud_xyz).all()):
+                raise ValueError(f'Unexpected canonical scene geometry at frame {frame}')
+            idx=np.linspace(0,len(cloud_xyz)-1,min(a.scene_display_points,len(cloud_xyz)),dtype=np.int32)
+            item=frame_payload[dic[frame]]
+            item['scene_xyz']=cloud_xyz[idx].round(4).tolist()
+            item['scene_rgb']=[
+                'rgb(%d,%d,%d)'%tuple(map(int,color)) if valid else '#888888'
+                for color,valid in zip(cloud_rgb[idx],cloud_valid[idx])
+            ]
+            item['scene_full_points']=int(len(cloud_xyz))
+            item['scene_rgb_valid_fraction']=round(float(np.mean(cloud_valid)),4)
+            if 'front' in rgb_by_role:
+                xyz={name:(np.asarray(item['object_xyz'][name],dtype=np.float32)
+                           if item['object_xyz'][name] else None) for name in MESH_PATHS}
+                item['jpg']=_rgb_to_jpeg_data(rgb_by_role['front'],xyz,T_cam_base,cam.K_color)
+            else:
+                item['jpg']=None
+            seen.add(frame)
+            if len(seen)%100==0:
+                print(f'[SCENE] canonical {scene_config.visual.num_points} pts, displayed {len(idx)}; '
+                      f'processed {len(seen)} frames',flush=True)
+        if seen!=viz_set:
+            raise ValueError(f'Missing RGB-D scene frames: {sorted(viz_set-seen)[:10]}')
+    elif not a.no_rgb:
         sys.path.insert(0,str(repo/'scripts/object_geometry/pose_tracking'))
         from rgbtrack_adapter import load_front_calibration
         cam=load_front_calibration(repo,profile)
@@ -358,6 +442,11 @@ def main():
     report={'episode':a.episode,'pose_run':str(run),'pose_run_manifest_sha256':digest(run/'manifest.json'),
             'frames_all':len(all_ids),'frames_html':len(chosen),'viz_stride':a.viz_stride,
             'mesh_points_per_object':a.mesh_points,'taxels_per_finger':a.taxels_per_finger,
+            'scene_cameras':list(scene_roles),
+            'scene_points_canonical':4096 if scene_roles else 0,
+            'scene_display_points':a.scene_display_points if scene_roles else 0,
+            'scene_geometry_source':'SpatialPreprocessor.preprocess_visual, native depth by role' if scene_roles else None,
+            'scene_rgb_frames_source':'RawSpatialDataset.iter_video_frames' if scene_roles else None,
             'model_scores_are_not_calibrated_pose_accuracy':True,
             'calibration_profile':str(profile),'objects':{},'pose_jump_warnings_heuristic_not_ground_truth':jump_report,
             'warning':'RGBTrack poses may drift when occluded. Invalid poses are NOT imputed. No ground-truth accuracy claimed. Full pose and distances remain in JSONL/CSV.'}
