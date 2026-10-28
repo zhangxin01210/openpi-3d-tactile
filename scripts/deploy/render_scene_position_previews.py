@@ -17,7 +17,9 @@ import cv2
 import numpy as np
 
 ROOT=Path(__file__).resolve().parents[2]
-POSITIONS=(23,38,49,58,65)
+from scripts.deploy.position_initialization import SCENE_POSITION_TO_EPISODE, resolve_prompts
+
+POSITIONS=tuple(SCENE_POSITION_TO_EPISODE)
 BGR_COLORS={"funnel":(0,158,255), "target_flask":(245,150,45)}
 
 
@@ -48,7 +50,9 @@ def draw_reference(rgb: np.ndarray, prompt: dict, position: int) -> np.ndarray:
                     cv2.line(canvas,(px-6,py-6),(px+6,py+6),color,3,cv2.LINE_AA)
                     cv2.line(canvas,(px-6,py+6),(px+6,py-6),color,3,cv2.LINE_AA)
     header=np.zeros((80,w,3),dtype=np.uint8)
-    cv2.putText(header,f"--scene-position {position}",(12,31),
+    episode=SCENE_POSITION_TO_EPISODE[position]
+    label=f"--scene-position {position}   (ref E{episode})"
+    cv2.putText(header,label,(12,31),
                 cv2.FONT_HERSHEY_SIMPLEX,.89,(255,255,255),2,cv2.LINE_AA)
     cv2.putText(header,"Funnel: orange   Flask: blue   + filled   - X mark",
                 (12,58),cv2.FONT_HERSHEY_SIMPLEX,.54,(225,225,225),1,cv2.LINE_AA)
@@ -65,12 +69,17 @@ def generate(*,dataset:Path,output:Path,reader_factory,
     panels=[]
     meta=[]
     for position in positions:
-        file=ROOT/"tools/hoi_level1_snapshot/metadata/six_positions"/f"episode_e{position:02d}_seed_prompts.json"
-        payload=json.loads(file.read_text(encoding="utf-8"))
-        if payload.get("manual_reviewed_prompts") is not True or payload.get("episode_index")!=position:
-            raise ValueError(f"Unreviewed reference prompt: {file}")
-        ds=reader_factory(dataset,episode=position)
+        if position not in SCENE_POSITION_TO_EPISODE:
+            raise ValueError(f"Unknown operator scene position {position}")
+        episode=SCENE_POSITION_TO_EPISODE[position]
+        ds=reader_factory(dataset,episode=episode)
         image=next(ds.iter_video_frames("front",selected={0})).rgb
+        prompts=resolve_prompts(
+            repo_root=ROOT,prompt_file=None,template_episode=episode,
+            template_confirmed=True,first_frame_rgb_shape=image.shape,
+        )
+        payload={"image_width":image.shape[1],"image_height":image.shape[0],
+                 "objects":prompts["objects"]}
         panel=draw_reference(image,payload,position)
         dst=output/f"scene_position_{position}_reference_points.png"
         if not cv2.imwrite(str(dst),panel):
@@ -78,11 +87,13 @@ def generate(*,dataset:Path,output:Path,reader_factory,
         panels.append(panel)
         meta.append({
             "position":position,
-            "reference_training_episode":position,
+            "reference_training_episode":episode,
             "preview":dst.name,
-            "source_training_image_role":"front frame 0",
-            "reference_keypoints":str(file.relative_to(ROOT)),
-            "used_by_live_inference":"2D points ONLY; not the reference image or its 6D pose",
+            "source_training_image_role":"front frame 0 (OPERATOR PREVIEW ONLY)",
+            "clicks":prompts["initialization_provenance"],
+            "funnel_reference_episode":23 if position==1 else episode,
+            "flask_reference_episode":episode,
+            "used_by_live_inference":"2D points ONLY; NOT the reference image or its 6D pose",
         })
         print(f"[PREVIEW] --scene-position {position}: {dst}",flush=True)
     height,width=panels[0].shape[:2]
