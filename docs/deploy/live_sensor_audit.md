@@ -15,16 +15,20 @@ a verified TCP six-axis wrench. Never synthesize these channels from names.
 
 ## Hardware-host read-only discovery (operator present)
 
-Use the robot machine's existing trusted LeRobot / EtherCAT Python environment;
-the exact environment path depends on that machine. The `--dataset-dir`
-directory supplies `meta/info.json` with the ORIGINAL ordered 1972-dim
-state feature names and original 18 action names, NOT model weights.
+The deployment host runs the EXISTING standalone LeRobot client. Copy
+ONLY the updated `deploy/ur7e_xhand_deploy_3d_tactile_multi.py` from PR #1
+to `~/code/lerobot/scripts/ur7e_xhand/ur7e_xhand_deploy_3d_tactile_multi.py`.
+Keep a backup of the robot host's previous script. No `contact_safety.py` or
+other openpi repository modules are needed for this read-only mode.
+
+Run in the robot machine's **existing** LeRobot / EtherCAT Python environment.
+The `--dataset-dir` supplies the original `meta/info.json` feature ordering:
 
 ```bash
-cd /path/to/openpi-3d-tactile-pr1
-sudo -E /path/to/robot-python \
-  deploy/ur7e_xhand_deploy_3d_tactile_multi.py \
-  --dataset-dir /path/to/training/dataset \
+cd ~/code/lerobot
+sudo -E "$(which python)" \
+  scripts/ur7e_xhand/ur7e_xhand_deploy_3d_tactile_multi.py \
+  --dataset-dir data/1018_peg_all \
   --capture-observation-audit output/deploy/live_sensor_audit_001 \
   --capture-audit-frames 5 \
   --spatial-cameras front
