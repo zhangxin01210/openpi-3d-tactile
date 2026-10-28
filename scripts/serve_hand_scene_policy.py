@@ -33,12 +33,6 @@ def main():
                    help="Original RGBTrack/SAM2 virtualenv Python")
     p.add_argument("--workdir",type=Path,required=True,
                    help="New, empty server-local temporary perception spool")
-    p.add_argument("--static-target-anchor-json",type=Path,required=True,
-                   help="Human-reviewed anchor for CURRENT physical scene")
-    group=p.add_mutually_exclusive_group()
-    group.add_argument("--position-template-episode",type=int,default=23)
-    group.add_argument("--prompts",type=Path)
-    p.add_argument("--episode",type=int,default=23)
     p.add_argument("--timeout-s",type=float,default=180.)
     p.add_argument("--sam2-checkpoint",type=Path)
     p.add_argument("--sam2-source",type=Path)
@@ -65,10 +59,8 @@ def main():
         repo_root=root,
         perception_python=args.perception_python,
         workdir=args.workdir,
-        anchor_json=args.static_target_anchor_json,
-        episode=args.episode,
-        position_template_episode=args.position_template_episode,
-        prompt_file=args.prompts,
+        anchor_json=None,
+        prompt_file=None,
         timeout_s=args.timeout_s,
         sam2_checkpoint=args.sam2_checkpoint,
         rgbtrack_weights=args.rgbtrack_weights,
@@ -83,6 +75,8 @@ def main():
         "hand_scene_history_required":True,
     }
     print(f"[WEBSOCKET HAND-SCENE] port={args.port} checkpoint={model_path}",flush=True)
+    print("[WEBSOCKET HAND-SCENE] robot-side --scene-position selects reviewed 2D clicks on LIVE frame0; "
+          "flask 6D initialized from LIVE RGBTrack once; server stays up across runs",flush=True)
     print("[WEBSOCKET HAND-SCENE] BLOCKING DRY-RUN ONLY, no robot action transport in server",flush=True)
     server=WebsocketPolicyServer(policy=worker,host="0.0.0.0",port=args.port,metadata=meta, infer_threaded=True)
     try:
