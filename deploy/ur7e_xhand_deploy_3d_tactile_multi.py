@@ -1245,8 +1245,16 @@ def run_policy_once(
                 loop_start = time.perf_counter()
                 obs = robot.get_observation()
                 env_state = build_env_state(obs, state_names)
+                contact_event = None
                 if safety is not None:
-                    safety.check(observation=obs, state=env_state)
+                    contact_event = safety.check(observation=obs, state=env_state)
+                if contact_event is not None and contact_event["replan_recommended"]:
+                    # Moderate tactile event: invalidate unexecuted actions.
+                    # This is an explicitly enabled POLICY SCHEDULER, not a safety stop.
+                    action_chunk = None
+                    print(f"[CONTACT REPLAN] frame={frame_idx} finger(s)="
+                          f"{contact_event['replan_triggered_fingers']}; "
+                          "discarded remaining chunk, querying current observation",flush=True)
 
                 should_query = (
                     action_chunk is None
@@ -1318,7 +1326,16 @@ def run_policy_once(
                 if should_query and safety is not None:
                     obs = robot.get_observation()
                     env_state = build_env_state(obs, state_names)
-                    safety.check(observation=obs, state=env_state)
+                    after_infer_contact = safety.check(observation=obs, state=env_state)
+                    if after_infer_contact["replan_recommended"]:
+                        # Never execute a stale action after contact changed
+                        # during blocking inference. A safe new query happens
+                        # only on a later loop iteration, with fresh sensors.
+                        print(f"[CONTACT REPLAN] frame={frame_idx} changed during inference; "
+                              "discarding action chunk; no command sent",flush=True)
+                        action_chunk = None
+                        frame_idx += 1
+                        continue
                 query_count += 1
                 executed_chunk_step = chunk_idx
                 raw_action = action_chunk[chunk_idx].copy()
