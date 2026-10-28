@@ -213,6 +213,10 @@ class HandScenePerceptionBridge:
         if not np.array_equal(np.asarray(obs["observation.images.cam_front"]),
                               last["front_rgb"]):
             raise ValueError("Policy front image and geometry input differ")
+        # Match frame/timestamp used for SAME-frame spatial preprocessing and
+        # causal geometry. Old client timestamp was synthetic frame_idx/fps.
+        obs["frame_index"]=last["frame_index"]
+        obs["timestamp_s"]=last["timestamp_s"]
         self._publish(entries)
         if not self._started:
             self._launch()
