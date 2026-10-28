@@ -111,7 +111,8 @@ def _ground_truth_actions(dataset_root: Path, episode: int) -> dict[int, np.ndar
     return result
 
 
-def _gt_comparison(prediction: np.ndarray, frame: int, ground_truth: dict[int,np.ndarray]):
+def _gt_comparison(prediction: np.ndarray, frame: int, ground_truth: dict[int,np.ndarray],
+                   robot_state: np.ndarray | None = None):
     """Compare first step and valid future steps using recorded-frame alignment."""
     truth=ground_truth.get(frame)
     if truth is None:
@@ -127,7 +128,21 @@ def _gt_comparison(prediction: np.ndarray, frame: int, ground_truth: dict[int,np
     chunk_error=np.abs(predicted[indices]-gt_chunk)
     def stat(a):
         return float(np.mean(a))
+    # Crucial: because actions are ABSOLUTE targets, simply holding the
+    # current arm/hand positions can look "close" to GT. Report the hold
+    # baseline so a close match is not confused with learned motion.
+    baseline={}
+    if robot_state is not None:
+        state=np.asarray(robot_state,dtype=np.float32)
+        if state.shape!=(1972,):
+            raise ValueError(f"Cannot compute hold baseline from state {state.shape}")
+        hold=np.concatenate([state[:6],state[28:40]])
+        baseline={
+            "hold_first_arm6_mae_rad":float(np.abs(hold[:6]-truth[:6]).mean()),
+            "hold_first_hand12_mae_rad":float(np.abs(hold[6:]-truth[6:]).mean()),
+        }
     return {
+        **baseline,
         "gt_first_action_18d": truth.tolist(),
         "first_action_mae_rad":stat(error),
         "first_arm6_mae_rad":stat(error[:6]),
@@ -250,7 +265,8 @@ def main() -> int:
                 "robot_command_sent": False,
             }
             if gt_actions is not None:
-                comparison=_gt_comparison(actions,frame_index,gt_actions)
+                comparison=_gt_comparison(actions,frame_index,gt_actions,
+                                          robot_state=observation["observation.state"])
                 row["ground_truth"]=comparison
                 gt_rows.append({"frame_index":frame_index,**comparison})
                 print(f"[GT] frame={frame_index} first_arm6_mae={comparison['first_arm6_mae_rad']:.4f}rad "
@@ -295,6 +311,8 @@ def main() -> int:
             "first_arm6_mae_rad":aggregate("first_arm6_mae_rad"),
             "first_hand12_mae_rad":aggregate("first_hand12_mae_rad"),
             "first_action_mae_rad":aggregate("first_action_mae_rad"),
+            "hold_first_arm6_mae_rad":aggregate("hold_first_arm6_mae_rad"),
+            "hold_first_hand12_mae_rad":aggregate("hold_first_hand12_mae_rad"),
             "chunk_mae_rad":aggregate("chunk_mae_rad"),
             "chunk_arm6_mae_rad":aggregate("chunk_arm6_mae_rad"),
             "chunk_hand12_mae_rad":aggregate("chunk_hand12_mae_rad"),
