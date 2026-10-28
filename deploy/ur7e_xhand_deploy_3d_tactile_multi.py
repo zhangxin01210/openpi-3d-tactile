@@ -54,6 +54,7 @@ import time
 import tty
 import urllib.error
 import urllib.request
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -1350,6 +1351,33 @@ def prepare_robot_for_policy_run(robot, args: argparse.Namespace, run_index: int
         input(f"Press ENTER to start PI0 run {run_label}. Use Ctrl+C to stop: ")
 
 
+
+def raw_hand_scene_history_frame(obs, state, args, ordinal):
+    """Original per-control-frame inputs; NO robot-side segmentation/registration.
+
+    Runs only when the WebSocket server specifically advertises its geometry
+    service. The SAME rgb/depth/state fields go to ordinary Pi0 and the
+    causal perception history. Uncalibrated wrist stays an RGB-only image.
+    """
+    frame={
+        "frame_index":np.asarray(int(ordinal),dtype=np.int64),
+        "timestamp_s":np.asarray(time.monotonic(),dtype=np.float64),
+        "robot_state":np.asarray(state,dtype=np.float32).copy(),
+        "front_depth_native":np.asarray(get_depth(obs,"cam_front")).copy(),
+    }
+    for role in ("front","left","right"):
+        frame[f"{role}_rgb"]=get_image(
+            obs,f"cam_{role}",args.realsense_height,args.realsense_width).copy()
+    if frame["robot_state"].shape!=(1972,) or not np.isfinite(frame["robot_state"]).all():
+        raise ValueError("Hand-scene frame requires finite 1972-dimensional state")
+    if frame["front_depth_native"].shape!=(480,640) or frame["front_depth_native"].dtype!=np.uint16:
+        raise ValueError("Hand-scene frame requires original uint16 LeRobot Front depth")
+    for role in ("front","left","right"):
+        if frame[f"{role}_rgb"].shape!=(480,640,3) or frame[f"{role}_rgb"].dtype!=np.uint8:
+            raise ValueError(f"Invalid original LeRobot {role} RGB image")
+    return frame
+
+
 def run_policy_once(
     *,
     robot,
@@ -1374,6 +1402,13 @@ def run_policy_once(
     end_reason = "duration"
     safety = ContactSafetyGuard(args.contact_safety_limits) if args.contact_safety_limits is not None else None
     client.reset()
+    use_server_geometry=bool(getattr(args,"server_metadata",{}).get("hand_scene_geometry_service",False))
+    history=[]
+    geometry_ordinal=0
+    geometry_session=f"{uuid.uuid4().hex}-{run_index}"
+    if use_server_geometry and not args.dry_run:
+        raise ValueError("The geometry server is a blocking correctness implementation; "
+                         "robot action sending disabled pending measured online latency / hardware stop")
     recorder = (
         DiagnosticRecorder(
             root_dir=args.record_dir,
@@ -1405,6 +1440,15 @@ def run_policy_once(
                 loop_start = time.perf_counter()
                 obs = robot.get_observation()
                 env_state = build_env_state(obs, state_names)
+                if use_server_geometry:
+                    # Store EVERY raw observed step, even when Pi0 is not
+                    # queried yet; SAM2 video memory cannot skip 15 control
+                    # frames and claim continuous causal tracking.
+                    if len(history)>=64:
+                        raise ValueError("Unprocessed hand-scene frame backlog exceeds 64: "
+                                         "no silent geometry-frame dropping")
+                    history.append(raw_hand_scene_history_frame(obs,env_state,args,geometry_ordinal))
+                    geometry_ordinal+=1
                 contact_event = None
                 if safety is not None:
                     contact_event = safety.check(observation=obs, state=env_state)
@@ -1433,6 +1477,17 @@ def run_policy_once(
                         current_action_step=current_action_step,
                         frame_idx=frame_idx,
                     )
+                    if use_server_geometry:
+                        if not history:
+                            raise ValueError("Empty current hand-scene history")
+                        observation["hand_scene_session"]=geometry_session
+                        observation["hand_scene_history"]=list(history)
+                        # Client's current state/camera/depth must equal the
+                        # last geometry observation, even for event replanning.
+                        observation["observation.state"]=history[-1]["robot_state"]
+                        observation["observation.depths.cam_front"]=history[-1]["front_depth_native"]
+                        for role in ("front","left","right"):
+                            observation[f"observation.images.cam_{role}"]=history[-1][f"{role}_rgb"]
                     if recorder is not None:
                         recorder.record_query_input(
                             query_id=query_id,
@@ -1463,6 +1518,10 @@ def run_policy_once(
                                 client_roundtrip_ms=infer_ms,
                             )
                         n_action_steps = action_chunk.shape[0]
+                        if use_server_geometry:
+                            # All pending frames were accepted and included
+                            # in the geometry of the successful inference.
+                            history.clear()
                         current_action_step += 1
                         active_fallback = False
                     except Exception as exc:
@@ -1906,6 +1965,15 @@ def main() -> int:
         )
     configure_input_mode_from_metadata(args, metadata)
     validate_state_schema(state_names, args)
+    if metadata.get("hand_scene_history_required",False):
+        if not args.dry_run:
+            raise ValueError("Hand-scene WebSocket server is for no-motion dry run until "
+                             "batch perception latency and physical safety are validated")
+        if args.realsense_width!=640 or args.realsense_height!=480:
+            raise ValueError("Hand-scene server expects recorded 640x480 RGB-D")
+        if "front" not in args.spatial_cameras:
+            raise ValueError("Hand-scene server requires original front RGB-D")
+
     print(f"Policy input mode: {args.policy_input_mode}")
     print(f"Spatial depth cameras: {', '.join(args.spatial_cameras) if args.spatial_cameras else 'none'}")
     print(f"Spatial visual input: {args.spatial_use_visual}")
