@@ -212,7 +212,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 DEFAULT_DATASET_ROOT = REPO_ROOT / "data"
 DEFAULT_DATASET_NAME = "grasp_pipette"
-DEFAULT_TASK = "press the button 4 times and put it into the box"
+DEFAULT_TASK = "Pick up the glass funnel, align its stem with the opening of the small beaker, and insert it until it is fully seated."
 DEFAULT_SERVER_PORT = 8990
 TACTILE_SENSOR_COUNT = 5
 TACTILE_BLOCK_SIZE = 384
