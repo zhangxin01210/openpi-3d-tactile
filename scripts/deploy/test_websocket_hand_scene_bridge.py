@@ -124,3 +124,17 @@ def test_geometry_and_policy_must_share_current_frame(monkeypatch,tmp_path):
     with pytest.raises(ValueError,match="state and last geometry"):
         bridge.infer(obs)
     assert bridge.next_index==0
+
+
+
+def test_server_restart_reuses_spool_without_overwriting_old_sessions(monkeypatch,tmp_path):
+    work=tmp_path/"websocket-sessions"
+    old=work/"scene_1_session_0001"
+    old.mkdir(parents=True)
+    marker=old/"old_perception.log"
+    marker.write_text("old sessions must survive")
+    policy,bridge=setup_bridge(tmp_path,monkeypatch)
+    bridge.infer(observation("new-session",1,[frame(0)]))
+    assert bridge.session_root==work/"scene_1_session_0002"
+    assert (bridge.session_root/"raw"/"frame_000000.npz").exists()
+    assert marker.read_text()=="old sessions must survive"
