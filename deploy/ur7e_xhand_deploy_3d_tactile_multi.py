@@ -676,6 +676,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
     parser.add_argument("--dataset-name", type=str, default=DEFAULT_DATASET_NAME)
+    parser.add_argument("--scene-position", type=int, choices=(23,38,49,58,65), default=None,
+                        help="Choose previously reviewed SAM2 positive/negative 2D seed clicks; "
+                             "ONLY those clicks are reused; applies to CURRENT live first RGB frame. "
+                             "Select for each robot run; no server restart needed.")
     parser.add_argument("--task", type=str, default=DEFAULT_TASK)
     parser.add_argument("--prompt", type=str, default=None, help="Override prompt sent to PI0 server.")
     parser.add_argument("--fps", type=int, default=15)
@@ -1406,6 +1410,10 @@ def run_policy_once(
     history=[]
     geometry_ordinal=0
     geometry_session=f"{uuid.uuid4().hex}-{run_index}"
+    if use_server_geometry:
+        available=getattr(args,"server_metadata",{}).get("hand_scene_positions",[])
+        if args.scene_position is None or args.scene_position not in available:
+            raise ValueError(f"Choose --scene-position from server reviewed 2D prompt sets {available}")
     if use_server_geometry and not args.dry_run:
         raise ValueError("The geometry server is a blocking correctness implementation; "
                          "robot action sending disabled pending measured online latency / hardware stop")
@@ -1481,6 +1489,7 @@ def run_policy_once(
                         if not history:
                             raise ValueError("Empty current hand-scene history")
                         observation["hand_scene_session"]=geometry_session
+                        observation["hand_scene_position"]=int(args.scene_position)
                         observation["hand_scene_history"]=list(history)
                         # Client's current state/camera/depth must equal the
                         # last geometry observation, even for event replanning.
@@ -1966,6 +1975,11 @@ def main() -> int:
     configure_input_mode_from_metadata(args, metadata)
     validate_state_schema(state_names, args)
     if metadata.get("hand_scene_history_required",False):
+        if args.scene_position not in tuple(metadata.get("hand_scene_positions",())):
+            raise ValueError(f"This WebSocket geometry server requires --scene-position, "
+                             f"select from {metadata.get('hand_scene_positions')}")
+        print(f"[SCENE] using selected 2D human keypoints {args.scene_position} "
+              "on CURRENT camera frame 0; flask pose re-estimated via RGBTrack",flush=True)
         if not args.dry_run:
             raise ValueError("Hand-scene WebSocket server is for no-motion dry run until "
                              "batch perception latency and physical safety are validated")
