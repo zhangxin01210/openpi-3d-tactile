@@ -2,11 +2,10 @@
 
 ## State of integration
 
-`deploy/contact_safety.py` is an application-level fail-closed monitor
+`deploy/contact_safety.py` is a two-tier application-level monitor
 for raw XHand tactile taxels and the arm's **6D TCP wrench**. It runs before
 each policy action and once again after a potentially blocking Pi0 inference.
-A trip latches and terminates the run; it never requests a new policy chunk
-and then continues pushing against glass. `robot.stop()` is called on the
+Moderate tactile changes may discard remaining actions and request a new Pi0 chunk ONLY when explicitly enabled. Hard limits latch and terminate the run; they never replan-and-continue. `robot.stop()` is called on the
 fault path; its physical stopping distance and behavior must be tested on
 a non-fragile surrogate. Independent UR protective-stop, conservative speed
 and acceleration limits, and a physically accessible hardware E-stop remain
@@ -54,7 +53,10 @@ be deliberately determined on the physical system:
   "reviewed_for_glass_task": false,
   "arm_wrench_observation_key": "REAL_VERIFIED_ARM_WRENCH_KEY",
   "tactile_peak_limits_raw": [null, null, null, null, null],
-  "tactile_step_change_limits_raw": [null, null, null, null, null],
+  "tactile_emergency_step_change_limits_raw": [null, null, null, null, null],
+  "tactile_replan_step_change_limits_raw": [null, null, null, null, null],
+  "replan_enabled": false,
+  "replan_min_interval_s": null,
   "arm_tcp_force_norm_limit_n": null,
   "arm_tcp_torque_norm_limit_nm": null,
   "max_observation_gap_s": null
@@ -90,3 +92,7 @@ A 15 Hz application loop provides at most one observation every ~67 ms when
 running on schedule; impact can occur between samples. The 16-action Pi0 chunk
 is NOT a permitted blind 16-step motion. Hardware contact protection must
 cover the gaps.
+
+## Paper evaluation protocol
+
+Keep `replan_enabled=false` for the primary fixed-chunk comparison and use identical hard-stop protection on every method. Event-replanning is a distinct, disclosed policy-scheduling ablation, enabled identically for all compared methods and with equal inference budget reporting. It is not a certified safety action. A transient contact event never overrides a hard stop. No threshold has been validated against breakage force.
