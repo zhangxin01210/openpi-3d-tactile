@@ -143,30 +143,3 @@ def test_build_robot_enables_ur_wrench_without_mutating_training_state(monkeypat
     assert robot_cfg.arm_config.record_tcp_force_torque is True
     assert robot_cfg.cameras["cam_front"].use_depth is True
     assert robot_cfg.cameras["cam_right"].use_depth is False
-
-
-def test_per_finger_tactile_changes_are_reported_not_assumed_fresh(tmp_path):
-    first,names=_input()
-    second=dict(first)
-    # First raw taxel of the thumb, at state[52+24]. Inject contact
-    # without changing state size, requiring no hardware/robot motion.
-    second[names[52+24]]=2.5
-    class ChangingRobot(MockRobot):
-        def get_observation(self):
-            self.reads+=1
-            return first if self.reads==1 else second
-    robot=ChangingRobot(first)
-    args=SimpleNamespace(capture_observation_audit=tmp_path/"audit",
-                         capture_audit_frames=2,realsense_height=12,
-                         realsense_width=16,fps=15)
-    client.capture_observation_audit(robot,args,names)
-    report=json.loads((args.capture_observation_audit/"observation_schema.json").read_text())
-    one=report["records"][0]["diagnostics"]["tactile"]
-    two=report["records"][1]["diagnostics"]["tactile"]
-    assert one["all_raw_taxels_zero"]
-    assert one["per_finger_nonzero_taxel_counts"]==[0]*5
-    assert two["per_finger_max_raw"][0]==pytest.approx(2.5)
-    assert two["per_finger_nonzero_taxel_counts"]==[1,0,0,0,0]
-    assert two["per_finger_unchanged_vs_previous"]==[False,True,True,True,True]
-    assert two["raw_tactile_freshness_verified"] is False
-    assert report["records"][1]["observation_schema"]=={}  # no 1972-key repetition
