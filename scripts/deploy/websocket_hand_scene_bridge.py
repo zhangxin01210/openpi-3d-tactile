@@ -137,6 +137,7 @@ class HandScenePerceptionBridge:
             "--front-calibration-profile",
             str(self.repo_root/"configs/ur7e_xhand/front_calibration_candidate.json"),
             "--episode",str(self.scene_position),
+            "--register-missing-color-depth",
             "--follow",
         ]
         if self.anchor_json is not None:
