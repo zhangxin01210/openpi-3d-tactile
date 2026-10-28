@@ -621,7 +621,7 @@ def main() -> int:
                 raise ValueError("reference_geometry anchors cannot be used with a live --follow stream")
     elif args.static_target_anchor_source is not None:
         raise ValueError("--static-target-anchor-source requires --static-target-anchor-json")
-    if geometry_spec["target_flask_motion"] == "static" and static_anchor is None:
+    if geometry_spec["target_flask_motion"] == "static" and static_anchor is None and not args.masks_only:
         raise ValueError(
             "Training geometry config declares target_flask static; supply its explicit frame-0 anchor "
             "with --static-target-anchor-json and --static-target-anchor-source"
