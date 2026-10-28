@@ -39,7 +39,7 @@ def main():
     group.add_argument("--position-template-episode",type=int,default=23)
     group.add_argument("--prompts",type=Path)
     p.add_argument("--episode",type=int,default=23)
-    p.add_argument("--timeout-s",type=float,default=45.)
+    p.add_argument("--timeout-s",type=float,default=180.)
     p.add_argument("--sam2-checkpoint",type=Path)
     p.add_argument("--sam2-source",type=Path)
     p.add_argument("--rgbtrack-weights",type=Path)
