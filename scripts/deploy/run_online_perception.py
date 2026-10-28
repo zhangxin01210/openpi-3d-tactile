@@ -638,7 +638,7 @@ def main() -> int:
             raise ValueError("Production static target requires human_reviewed anchor provenance")
         static_anchor, static_anchor_metadata = load_reviewed_anchor(
             args.static_target_anchor_json,
-            episode=args.episode,
+            episode=(args.position_template_episode if args.position_template_episode is not None else args.episode),
             calibration_profile=args.front_calibration_profile,
         )
         if args.static_target_anchor_source is None:
