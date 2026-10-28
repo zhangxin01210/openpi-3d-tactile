@@ -106,6 +106,13 @@ class OnlineObjectGeometryBuilder:
         self._previous_frame: int | None = None
         self._last_timestamp: float | None = None
 
+    def reset_episode(self) -> None:
+        """Reset all tactile history and frame-order checks."""
+        self._hand_scene.reset()
+        self._ema.reset()
+        self._previous_frame = None
+        self._last_timestamp = None
+
     @staticmethod
     def _validate_points(points: np.ndarray, name: str) -> np.ndarray:
         value = np.asarray(points, dtype=np.float32)
@@ -211,9 +218,13 @@ class OnlineObjectGeometryBuilder:
                 force = None
             else:
                 force = np.maximum(force, 0.0)
-        self._tactile.force = force
-        # Training treats a discontinuity as a missing/invalid tactile sample.
-        state = self._hand_scene.next(episode=0, frame=frame)
+        # Share the offline state machine, including nearest-neighbour mask handling.
+        state = self._hand_scene.next_from_arrays(
+            frame=frame,
+            force_norm=force,
+            funnel_mask=funnel_mask,
+            funnel_mask_hand_offset_xy=funnel_mask_hand_offset_xy,
+        )
         ema = self._ema.update(
             timestamp_s=timestamp, force_norm=force if contiguous else None
         )
@@ -222,23 +233,6 @@ class OnlineObjectGeometryBuilder:
         state["manipulated_geometry_quality"] = np.asarray(float(funnel.valid), dtype=np.float32)
         state["target_geometry_quality"] = np.asarray(float(target.valid), dtype=np.float32)
 
-        # Same nearest-neighbour mask resampling and invalid-offset semantics
-        # as load_downsampled_mask + CausalHandSceneState in production.py.
-        if funnel_mask is not None and funnel_mask_hand_offset_xy is not None:
-            import cv2
-            raw_mask = np.asarray(funnel_mask)
-            offset = np.asarray(funnel_mask_hand_offset_xy, dtype=np.float32)
-            if raw_mask.ndim != 2 or offset.shape != (2,) or not np.isfinite(offset).all():
-                raise ValueError("Invalid funnel mask or calibrated hand offset")
-            small = cv2.resize(
-                (raw_mask > 0).astype(np.uint8),
-                (FUNNEL_MASK_SIZE, FUNNEL_MASK_SIZE),
-                interpolation=cv2.INTER_NEAREST,
-            ) > 0
-            state["funnel_mask"] = small
-            state["funnel_mask_valid"] = np.asarray(True)
-            state["funnel_mask_quality"] = np.asarray(1.0, dtype=np.float32)
-            state["funnel_mask_hand_offset_xy"] = offset
         state["causal_tactile"] = CausalTactileSample(
             ema_before_force_norm=ema.ema_before_force_norm,
             ema_after_force_norm=ema.ema_after_force_norm,
