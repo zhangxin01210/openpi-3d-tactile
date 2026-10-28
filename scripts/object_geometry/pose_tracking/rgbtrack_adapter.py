@@ -79,6 +79,11 @@ class _BatchedRGBTrackPredictor:
         self.predictor = predictor
         self.batch_size = int(batch_size)
 
+    def __getattr__(self, name: str) -> Any:
+        # FoundationPose also accesses .model/.cfg and some modes call
+        # predict_depth_batches. Preserve the upstream predictor interface.
+        return getattr(self.predictor, name)
+
     def predict(self, *args: Any, **kwargs: Any):
         poses = kwargs.get("ob_in_cams")
         if poses is None or len(poses) <= self.batch_size:
