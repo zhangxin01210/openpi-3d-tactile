@@ -178,3 +178,24 @@ def test_single_script_sensor_only_http_forwarder_no_actions(monkeypatch):
     client.capture_live_packet_stream(robot,args,names)
     assert requests==[0,1]
     assert robot.reads==2
+
+
+def test_websocket_geometry_history_reuses_original_live_depth_and_state():
+    observation,names=_input()
+    observation["cam_front"]=np.zeros((480,640,3),dtype=np.uint8)
+    observation["cam_left"]=np.zeros((480,640,3),dtype=np.uint8)
+    observation["cam_right"]=np.zeros((480,640,3),dtype=np.uint8)
+    observation["depths.cam_front"]=np.full((480,640),1000,dtype=np.uint16)
+    args=SimpleNamespace(realsense_height=480,realsense_width=640)
+    state=client.build_env_state(observation,names)
+    frame=client.raw_hand_scene_history_frame(observation,state,args,0)
+    assert int(frame["frame_index"])==0
+    assert frame["timestamp_s"].shape==()
+    assert frame["robot_state"].shape==(1972,)
+    assert frame["front_depth_native"].dtype==np.uint16
+    assert "front_depth_color_aligned" not in frame
+    assert "object_geometry" not in frame
+    np.testing.assert_array_equal(frame["front_depth_native"],observation["depths.cam_front"])
+    np.testing.assert_array_equal(frame["front_rgb"],observation["cam_front"])
+    observation["depths.cam_front"][0,0]=9999
+    assert frame["front_depth_native"][0,0]==1000  # no aliasing across steps
