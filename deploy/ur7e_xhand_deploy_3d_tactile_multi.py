@@ -57,6 +57,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
+from contact_safety import ContactSafetyGuard, SafetyTrip, load_safety_limits
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "src").is_dir() else SCRIPT_DIR
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -607,6 +608,8 @@ def parse_args() -> argparse.Namespace:
         default=INDEX_SPLAY_DEADZONE_MAX_RAD,
         help="Upper bound for the index-splay action dead zone.",
     )
+    parser.add_argument("--contact-safety-config", type=Path,
+                        help="Mandatory reviewed XHand tactile + measured arm TCP wrench limits for any actuating run")
     parser.add_argument("--dry-run", action="store_true", help="Run inference without sending policy actions; home reset still runs unless --no-home is set")
     parser.add_argument("--check-config", action="store_true", help="Validate dataset wiring and exit")
     parser.add_argument("--yes", action="store_true", help="Skip interactive start confirmation")
@@ -1209,6 +1212,7 @@ def run_policy_once(
     active_query_id = -1
     active_fallback = False
     end_reason = "duration"
+    safety = ContactSafetyGuard(args.contact_safety_limits) if args.contact_safety_limits is not None else None
     client.reset()
     recorder = (
         DiagnosticRecorder(
@@ -1241,6 +1245,8 @@ def run_policy_once(
                 loop_start = time.perf_counter()
                 obs = robot.get_observation()
                 env_state = build_env_state(obs, state_names)
+                if safety is not None:
+                    safety.check(observation=obs, state=env_state)
 
                 should_query = (
                     action_chunk is None
@@ -1307,6 +1313,12 @@ def run_policy_once(
                         active_fallback = True
                     chunk_idx = 0
 
+                # Inference may block for hundreds of milliseconds. Refresh sensors
+                # BEFORE the next command; never execute a stale chunk blindly.
+                if should_query and safety is not None:
+                    obs = robot.get_observation()
+                    env_state = build_env_state(obs, state_names)
+                    safety.check(observation=obs, state=env_state)
                 query_count += 1
                 executed_chunk_step = chunk_idx
                 raw_action = action_chunk[chunk_idx].copy()
@@ -1357,6 +1369,14 @@ def run_policy_once(
                 if elapsed < dt:
                     time.sleep(dt - elapsed)
                 frame_idx += 1
+    except SafetyTrip as exc:
+        end_reason = "contact_safety_trip"
+        print(f"[CONTACT SAFETY] Latched failure: {exc}. No further commands in this run.",flush=True)
+        # Application-level stop: must be validated against physical UR/XHand
+        # behavior, independent hardware E-stop / protective stop still needed.
+        if not args.dry_run:
+            robot.stop()
+        raise
     except KeyboardInterrupt:
         end_reason = "keyboard_interrupt"
         raise
@@ -1406,6 +1426,12 @@ def main() -> int:
         raise ValueError("--tactile-reset-verify-threshold must be non-negative")
     if args.index_splay_deadzone_min > args.index_splay_deadzone_max:
         raise ValueError("--index-splay-deadzone-min must be <= --index-splay-deadzone-max")
+    if not args.dry_run and args.contact_safety_config is None and not args.check_config:
+        raise ValueError("Actuation forbidden without --contact-safety-config; this is not a hardware E-stop")
+    args.contact_safety_limits = (
+        load_safety_limits(args.contact_safety_config)
+        if args.contact_safety_config is not None else None
+    )
     require_ethercat_permissions(args)
 
     dataset_dir = resolve_dataset_dir(args)
