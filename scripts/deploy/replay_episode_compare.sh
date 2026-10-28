@@ -76,7 +76,8 @@ import json,sys
 s=json.load(open(sys.argv[1]))
 print("Pi0 queries:",s["frames"],"action horizon:",s["action_horizon"])
 print("Mean inference ms:",round(s["mean_inference_ms"],1))
-for k in ("first_arm6_mae_rad","first_hand12_mae_rad",
+for k in ("first_arm6_mae_rad","hold_first_arm6_mae_rad",
+          "first_hand12_mae_rad","hold_first_hand12_mae_rad",
           "chunk_arm6_mae_rad","chunk_hand12_mae_rad"):
     print(k,round(s["ground_truth"][k],5))
 print("Result:",sys.argv[1])
