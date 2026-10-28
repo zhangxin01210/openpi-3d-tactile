@@ -270,7 +270,7 @@ def run(args):
         '--funnel-glb',str(args.funnel_glb), '--flask-glb',str(args.flask_glb),
         '--scale-manifest',str(args.scale_manifest),
         '--front-calibration-profile',str(args.front_calibration_profile),
-        '--output',str(init_output), '--objects','target_flask',
+        '--output',str(init_output), '--weights-root',str(args.weights_root) if args.weights_root is not None else str(repo/'checkpoints/rgbtrack'), '--objects','target_flask',
         '--mode','depth','--max-frames','1','--viz-frames','0'])
     calib=adapter.load_front_calibration(repo,args.front_calibration_profile)
     R_base_cam=np.asarray(calib.T_base_color,float)[:3,:3]
@@ -344,6 +344,7 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--funnel-glb',type=Path,required=True)
     p.add_argument('--flask-glb',type=Path,required=True)
+    p.add_argument('--weights-root',type=Path,default=None,help='Path to existing RGBTrack weights, no copies')
     p.add_argument('--scale-manifest',type=Path,required=True)
     p.add_argument('--front-calibration-profile',type=Path,required=True)
     p.add_argument('--flask-mouth-axis',choices=('auto','+z','-z'),default='auto')
