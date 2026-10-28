@@ -511,7 +511,11 @@ def main() -> int:
     parser.add_argument("--sam2-config", default="configs/sam2.1/sam2.1_hiera_s.yaml")
     parser.add_argument("--sam2-backend", choices=("video_memory", "legacy_image"), default="video_memory",
                         help="Use the reviewed Level-1 SAM2 video-memory algorithm; legacy_image is for A/B comparison only.")
-    parser.add_argument("--prompts", type=Path, required=True)
+    parser.add_argument("--prompts", type=Path)
+    parser.add_argument("--position-template-episode", type=int, choices=(0, 23, 38, 49, 58, 65),
+                        help="Explicitly select one of six reviewed position references; never auto-classifies")
+    parser.add_argument("--template-reviewed-for-current-scene", action="store_true",
+                        help="Confirm that selected reference clicks were inspected against the CURRENT first frame")
     parser.add_argument("--corrections", type=Path)
     parser.add_argument("--scale-manifest", type=Path, default=ROOT / "data/pose_eval/hand_scene_metric_mesh_scales.json")
     parser.add_argument(
@@ -560,7 +564,19 @@ def main() -> int:
         sys.path.insert(0, str(sam2_source))
     if not args.sam2_checkpoint.expanduser().is_file():
         raise FileNotFoundError(f"SAM2 checkpoint is missing: {args.sam2_checkpoint}; see scripts/deploy/download_weights.py")
-    prompts = _read_json(args.prompts)
+    from scripts.deploy.position_initialization import resolve_prompts
+    first_packets = sorted(replay_dir.glob("frame_*.npz"))
+    if not first_packets:
+        raise FileNotFoundError(f"No frame packets in {replay_dir}")
+    with np.load(first_packets[0], allow_pickle=False) as initial:
+        first_rgb_shape = tuple(np.asarray(initial["front_rgb"]).shape)
+    prompts = resolve_prompts(
+        repo_root=root,
+        prompt_file=args.prompts,
+        template_episode=args.position_template_episode,
+        template_confirmed=args.template_reviewed_for_current_scene,
+        first_frame_rgb_shape=first_rgb_shape,
+    )
     corrections = _read_json(args.corrections)
     if args.sam2_backend == "video_memory":
         from sam2_video_stream import CausalVideoSAM2Stream
@@ -696,7 +712,14 @@ def main() -> int:
                 last_timestamp = timestamp_s
                 rgb = packet["front_rgb"]
                 sam2_started = time.perf_counter()
-                masks, overlap = sam2_stream.predict(frame_index, rgb, packet)
+                # Reviewed point clicks are the authoritative initialization.
+                # Older replay packets may carry a DIFFERENT mask seed; do not
+                # silently replace the six-position training prompt semantics.
+                sam2_packet = dict(packet)
+                if prompts["initialization_provenance"]["seed_kind"] == "positive_negative_points":
+                    sam2_packet.pop("funnel_seed_mask", None)
+                    sam2_packet.pop("target_flask_seed_mask", None)
+                masks, overlap = sam2_stream.predict(frame_index, rgb, sam2_packet)
                 sam2_latency_ms = (time.perf_counter() - sam2_started) * 1000.0
                 object_masks = {name: masks[name][0] for name in OBJECTS}
                 pose_rows: dict[str, dict[str, Any]] = {}
