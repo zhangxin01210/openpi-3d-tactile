@@ -40,6 +40,7 @@ import math
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
+import os
 import sys
 import time
 import types
@@ -63,6 +64,50 @@ RGBTRACK_WEIGHT_RUNS = {
     "score": "2024-01-11-20-02-45",
     "refine": "2023-10-28-18-33-37",
 }
+
+
+RGBTRACK_INIT_BATCH_SIZE = 32
+_SHARED_RGBTRACK_PREDICTORS: dict[str, tuple[Any, Any]] = {}
+
+
+class _BatchedRGBTrackPredictor:
+    """Bound candidate scoring to the validated GPU memory budget."""
+
+    def __init__(self, predictor: Any, batch_size: int = RGBTRACK_INIT_BATCH_SIZE) -> None:
+        if batch_size < 1:
+            raise ValueError("RGBTrack batch_size must be positive")
+        self.predictor = predictor
+        self.batch_size = int(batch_size)
+
+    def predict(self, *args: Any, **kwargs: Any):
+        poses = kwargs.get("ob_in_cams")
+        if poses is None or len(poses) <= self.batch_size:
+            return self.predictor.predict(*args, **kwargs)
+        outputs = []
+        for start in range(0, len(poses), self.batch_size):
+            batch_kwargs = dict(kwargs)
+            batch_kwargs["ob_in_cams"] = poses[start:start + self.batch_size]
+            scores, visualization = self.predictor.predict(*args, **batch_kwargs)
+            if visualization is not None:
+                raise RuntimeError("Chunked RGBTrack debug visualization is not supported")
+            outputs.append(scores)
+        import torch
+        return torch.cat(outputs, dim=0), None
+
+
+def _shared_rgbtrack_predictors(repo_root: Path) -> tuple[Any, Any]:
+    """Reuse the stateless scorer and refiner across independent object trackers."""
+    source = str((repo_root / "third_party" / "RGBTrack").resolve())
+    if source not in _SHARED_RGBTRACK_PREDICTORS:
+        if source not in sys.path:
+            sys.path.insert(0, source)
+        from learning.training.predict_pose_refine import PoseRefinePredictor
+        from learning.training.predict_score import ScorePredictor
+        _SHARED_RGBTRACK_PREDICTORS[source] = (
+            _BatchedRGBTrackPredictor(ScorePredictor()),
+            _BatchedRGBTrackPredictor(PoseRefinePredictor()),
+        )
+    return _SHARED_RGBTRACK_PREDICTORS[source]
 
 
 def _as_transform(value: Any, name: str) -> np.ndarray:
@@ -481,6 +526,14 @@ def _rgbtrack_commit(repo_root: Path) -> str | None:
 
 def _import_rgbtrack(repo_root: Path):  # pragma: no cover - unavailable on computer 1
     """Import RGBTrack only when actual CUDA inference was requested."""
+    # The virtual environment may carry its own Ninja even when sys.executable
+    # resolves to a shared interpreter. Keep its binary directory on PATH.
+    python_bin = Path(sys.executable).parent
+    if (python_bin / "ninja").is_file():
+        current = os.environ.get("PATH", "")
+        if str(python_bin) not in current.split(os.pathsep):
+            os.environ["PATH"] = str(python_bin) + os.pathsep + current
+
     source = (repo_root / "third_party" / "RGBTrack").resolve()
     if not source.is_dir():
         raise FileNotFoundError(f"RGBTrack submodule is missing: {source}")
@@ -615,10 +668,13 @@ class RGBTrackObject:
         if not hasattr(mesh, "vertices") or len(mesh.vertices) == 0:
             raise ValueError(f"RGBTrack mesh has no vertices: {self.mesh_path}")
         self._mesh = mesh
+        scorer, refiner = _shared_rgbtrack_predictors(self.repo_root)
         self._estimator = FoundationPose(
             model_pts=mesh.vertices,
             model_normals=mesh.vertex_normals,
             mesh=mesh,
+            scorer=scorer,
+            refiner=refiner,
             debug=0,
             debug_dir=str(self.debug_dir / self.object_name),
         )
