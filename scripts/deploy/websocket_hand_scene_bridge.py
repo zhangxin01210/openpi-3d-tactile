@@ -23,6 +23,10 @@ import time
 import numpy as np
 
 from scripts.deploy.run_policy_dry_run import _geometry_from_npz
+from scripts.deploy.position_initialization import REFERENCE_EPISODES
+
+# Complete reviewed 2D positive/negative clicks; episode 0 lacks funnel clicks.
+SELECTABLE_SCENE_POSITIONS=(23,38,49,58,65)
 
 FRAME_KEYS=("front_rgb","left_rgb","right_rgb","front_depth_native",
             "robot_state","timestamp_s","frame_index")
@@ -84,6 +88,9 @@ class HandScenePerceptionBridge:
         self.anchor_json=Path(anchor_json).resolve() if anchor_json is not None else None
         self.episode=episode
         self.position_template_episode=position_template_episode
+        self.scene_position=None
+        self.session_counter=0
+        self.session_root=None
         self.prompt_file=prompt_file
         self.timeout_s=float(timeout_s)
         if self.timeout_s<=0:raise ValueError("timeout_s must be positive")
@@ -102,8 +109,7 @@ class HandScenePerceptionBridge:
             raise FileNotFoundError(f"Selected-position reviewed flask anchor missing: {self.anchor_json}")
         if not self.perception_python.is_file():
             raise FileNotFoundError("Original perception virtualenv Python not found")
-        (self.workdir/"raw").mkdir(parents=True)
-        (self.workdir/"perception").mkdir()  # empty directory required by original script
+        self.workdir.mkdir(parents=True)
 
     @property
     def metadata(self):
@@ -112,6 +118,8 @@ class HandScenePerceptionBridge:
             "hand_scene_geometry_service":True,
             "hand_scene_history_required":True,
             "hand_scene_history_max_frames":64,
+            "hand_scene_positions":list(SELECTABLE_SCENE_POSITIONS),
+            "hand_scene_selection_source":"client_scene_position_2d_seed_points_only",
             "hand_scene_server_status":"blocking_validated_pipeline_not_safe_for_actuation",
         }
 
@@ -120,15 +128,15 @@ class HandScenePerceptionBridge:
             str(self.perception_python),"-u",
             str(self.repo_root/"scripts/deploy/run_online_perception.py"),
             "--repo-root",str(self.repo_root),
-            "--replay-dir",str(self.workdir/"raw"),
-            "--output-dir",str(self.workdir/"perception"),
+            "--replay-dir",str(self.session_root/"raw"),
+            "--output-dir",str(self.session_root/"perception"),
             "--sam2-checkpoint",str(self.sam2_checkpoint),
             "--sam2-source",str(self.sam2_source),
             "--weights-root",str(self.rgbtrack_weights),
             "--scale-manifest",str(self.scale_manifest),
             "--front-calibration-profile",
             str(self.repo_root/"configs/ur7e_xhand/front_calibration_candidate.json"),
-            "--episode",str(self.episode),
+            "--episode",str(self.scene_position),
             "--follow",
         ]
         if self.anchor_json is not None:
@@ -141,7 +149,7 @@ class HandScenePerceptionBridge:
         if self.prompt_file is not None:
             cmd+=["--prompts",str(self.prompt_file)]
         else:
-            cmd+=["--position-template-episode",str(self.position_template_episode),
+            cmd+=["--position-template-episode",str(self.scene_position),
                   "--template-reviewed-for-current-scene"]
         return cmd
 
@@ -157,7 +165,7 @@ class HandScenePerceptionBridge:
         env["PYTHONPATH"]=os.pathsep.join(prefix[1:]+[env.get("PYTHONPATH","")])
         # Do not let a JAX model in the server compete with the RGBTrack worker.
         env.setdefault("JAX_PLATFORMS","cpu")
-        logfile=(self.workdir/"perception.log").open("ab")
+        logfile=(self.session_root/"perception.log").open("ab")
         try:
             self.worker=subprocess.Popen(
                 self._worker_command(),cwd=str(self.repo_root),env=env,
@@ -170,7 +178,7 @@ class HandScenePerceptionBridge:
     def _publish(self,frames):
         for packet in frames:
             idx=int(packet["frame_index"])
-            dst=self.workdir/"raw"/f"frame_{idx:06d}.npz"
+            dst=self.session_root/"raw"/f"frame_{idx:06d}.npz"
             temp=dst.with_name(f".{dst.name}.{os.getpid()}.tmp")
             try:
                 with temp.open("xb") as f:
@@ -180,29 +188,71 @@ class HandScenePerceptionBridge:
                 temp.unlink(missing_ok=True)
 
     def _await_output(self,index):
-        output=self.workdir/"perception"/"frames"/f"frame_{index:06d}.npz"
+        output=self.session_root/"perception"/"frames"/f"frame_{index:06d}.npz"
         deadline=time.monotonic()+self.timeout_s
         while time.monotonic()<deadline:
             if output.is_file():
                 return output
             if self.worker is not None and self.worker.poll() is not None:
-                log=(self.workdir/"perception.log")
+                log=(self.session_root/"perception.log")
                 tail=log.read_text(errors="replace")[-5000:] if log.exists() else ""
                 raise RuntimeError(f"Online perception exited rc={self.worker.returncode}: {tail}")
             time.sleep(.025)
         raise TimeoutError(f"Online perception timed out waiting for frame {index}; "
-                           f"inspect {self.workdir}/perception.log")
+                           f"inspect {self.session_root}/perception.log")
+
+    def _reset_causal_policy(self):
+        """Reset policy tactile EMA before new session, but do NOT reload Pi0."""
+        pipeline=getattr(self.policy,"_input_transform",None)
+        if pipeline is None:
+            return  # Lightweight test policies have no transform state.
+        transforms=getattr(pipeline,"transforms",())
+        resets=[x for x in transforms if callable(getattr(x,"reset_tactile_ema",None))]
+        if not resets:
+            raise RuntimeError("Cannot locate Pi0 spatial/tactile causal reset in loaded policy")
+        for item in resets:
+            item.reset_tactile_ema()
+
+    def _start_session(self,session:str,position:int):
+        if position not in SELECTABLE_SCENE_POSITIONS:
+            raise ValueError(f"Unknown --scene-position {position}; allowed {SELECTABLE_SCENE_POSITIONS}")
+        if self.prompt_file is not None:
+            raise ValueError("Client --scene-position cannot be combined with fixed server --prompts")
+        if self.anchor_json is not None and position!=self.position_template_episode:
+            raise ValueError("Fixed reviewed flask anchor does not match selected scene position")
+        self.close()  # Old SAM2/RGBTrack process, not WebSocket/Pi0 process.
+        self.session_counter+=1
+        self.session_root=self.workdir/f"scene_{position}_session_{self.session_counter:04d}"
+        self.session_root.mkdir(parents=True,exist_ok=False)
+        (self.session_root/"raw").mkdir()
+        (self.session_root/"perception").mkdir()
+        self.next_index=0
+        self.previous_timestamp=float("-inf")
+        self._started=False
+        self.worker=None
+        self.scene_position=position
+        self.session_id=session
+        self._reset_causal_policy()
+        print(f"[SCENE] selected={position} session={self.session_counter} "
+              "source=reviewed_2d_clicks applied_to_CURRENT_live_frame0 "
+              "flask_pose=RGBTrack_current_frame0_only",flush=True)
 
     def infer(self,observation):
         obs=dict(observation)
         session=obs.pop("hand_scene_session",None)
         history=obs.pop("hand_scene_history",None)
+        requested=obs.pop("hand_scene_position",None)
         if not isinstance(session,str) or not session:
             raise ValueError("hand_scene_session missing; old robot client cannot bypass object geometry")
-        if self.session_id is None:
-            self.session_id=session
-        if self.session_id!=session:
-            raise RuntimeError("New robot session requires server restart (causal tracker/EMA reset)")
+        if not isinstance(requested,(int,np.integer)) or int(requested) not in SELECTABLE_SCENE_POSITIONS:
+            raise ValueError(f"hand_scene_position must be one of {SELECTABLE_SCENE_POSITIONS}, got {requested}")
+        position=int(requested)
+        if self.session_id != session:
+            # Switching at robot-side between different runs starts a new
+            # local perception/EMA session; server and model stay loaded.
+            self._start_session(session,position)
+        elif position!=self.scene_position:
+            raise ValueError("Scene selection cannot change midway through an active robot run")
         entries=validate_history(history,next_index=self.next_index,
                                  previous_timestamp=self.previous_timestamp)
         # The raw input used by Pi0 MUST correspond to the LAST frame
@@ -242,3 +292,5 @@ class HandScenePerceptionBridge:
             except subprocess.TimeoutExpired:
                 self.worker.kill()
                 self.worker.wait(timeout=3)
+        self.worker=None
+        self._started=False
