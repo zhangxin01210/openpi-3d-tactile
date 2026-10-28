@@ -74,7 +74,7 @@ class HandScenePerceptionBridge:
     def __init__(self, policy, *, repo_root:Path, perception_python:Path,
                  workdir:Path, anchor_json:Path, episode:int=23,
                  position_template_episode:int=23, prompt_file:Path|None=None,
-                 timeout_s:float=45., sam2_checkpoint:Path|None=None,
+                 timeout_s:float=180., sam2_checkpoint:Path|None=None,
                  rgbtrack_weights:Path|None=None, sam2_source:Path|None=None,
                  scale_manifest:Path|None=None):
         self.policy=policy
@@ -98,13 +98,12 @@ class HandScenePerceptionBridge:
         self._started=False
         if self.workdir.exists():
             raise FileExistsError(f"Refusing to use existing perception spool: {self.workdir}")
-        (self.workdir/"raw").mkdir(parents=True)
-        (self.workdir/"perception").mkdir()  # empty directory is OK in original script
-        # The original run_online_perception refuses NONEMPTY directories.
         if not self.anchor_json.is_file():
             raise FileNotFoundError("Current-scene reviewed static flask anchor missing")
         if not self.perception_python.is_file():
             raise FileNotFoundError("Original perception virtualenv Python not found")
+        (self.workdir/"raw").mkdir(parents=True)
+        (self.workdir/"perception").mkdir()  # empty directory required by original script
 
     @property
     def metadata(self):
@@ -210,9 +209,11 @@ class HandScenePerceptionBridge:
         if not np.array_equal(np.asarray(obs["observation.depths.cam_front"]),
                               last["front_depth_native"]):
             raise ValueError("Policy depth and geometry input differ")
-        if not np.array_equal(np.asarray(obs["observation.images.cam_front"]),
-                              last["front_rgb"]):
-            raise ValueError("Policy front image and geometry input differ")
+        for role in ("front","left","right"):
+            if not np.array_equal(
+                np.asarray(obs[f"observation.images.cam_{role}"]),last[f"{role}_rgb"]
+            ):
+                raise ValueError(f"Policy {role} RGB and geometry history input differ")
         # Match frame/timestamp used for SAME-frame spatial preprocessing and
         # causal geometry. Old client timestamp was synthetic frame_idx/fps.
         obs["frame_index"]=last["frame_index"]
