@@ -88,3 +88,43 @@ client, and its safety guard explicitly reads **separate 3D force and 3D
 torque** rather than inventing a 6D key. Use a new audit output directory,
 confirm both measured fields, then investigate XHand raw zero/fallback and
 front RGB-vs-depth geometry BEFORE wiring the policy or allowing motion.
+
+
+## Follow-up read-only tactile response check
+
+The 5-frame audit found nonzero measured UR TCP wrench values (roughly 8 N)
+but ALL FIVE XHand raw arrays were zero. This does not prove an SDK defect:
+a truly unloaded array may be all zero. To distinguish nonresponsive data
+from genuine no-contact readings, the standalone robot script now reports
+per-finger nonzero taxel counts, calculated-force norms and whether raw taxel
+values changed relative to the previous frame. **No controls or tactile
+sensor zeroing are issued by this audit.**
+
+With the robot stationary and glass removed, keep a trained operator present.
+Acquire 90 frames (~6 s at 15 FPS) while gently touching/releasing ONE
+fingerpad with a soft, non-fragile material, leaving other fingers free.
+Never touch near joints, squeeze the hand, or allow the robot to move.
+
+```bash
+sudo -E "$(which python)" \
+ scripts/ur7e_xhand/ur7e_xhand_deploy_3d_tactile_multi.py \
+ --dataset-dir data/1018_peg_all \
+ --capture-observation-audit output/deploy/live_sensor_audit_004 \
+ --capture-audit-frames 90 --spatial-cameras front
+```
+
+If no finger ever changes or nonzero taxels remain zero during deliberate
+gentle contact, block live control and inspect XHand SDK read_state error /
+last-good-value fallback, actual EtherCAT read success and sensor wiring.
+Unchanging samples do not establish a healthy XHand sensor, and no configured
+tactile threshold can fix unavailable sensor signals. The report's SDK
+freshness flag stays FALSE; only a real driver-level per-read health/time
+signal can establish freshness. The report includes the exact 1972-state
+start-name for each raw tactile block so that training field ordering can
+be checked against metadata before doing anything else.
+
+Depth remains unverified: obtain the robot-host RealSense driver's source
+for RGB vs depth alignment, the actual depth scale, the intrinsic/extrinsic
+tables and any filtering/alignment calls. Do not rename this `uint16`
+candidate as native depth merely because its shape matches RGB. Keep the
+two-stage training+RGBTrack depth contracts separate.
