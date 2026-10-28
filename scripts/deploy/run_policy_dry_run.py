@@ -165,7 +165,7 @@ def main() -> int:
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--follow", action="store_true", help="Consume atomic frame packets as the perception process writes them.")
     parser.add_argument("--idle-timeout-s", type=float, default=0.0, help="Stop a followed stream after this many seconds without a packet; 0 waits until interrupted.")
-    parser.add_argument("--prompt", default="Move the funnel over the target flask and insert it.")
+    parser.add_argument("--prompt", default="Pick up the glass funnel, align its stem with the opening of the small beaker, and insert it until it is fully seated.")
     parser.add_argument("--gt-dataset", type=Path,
                         help="Original LeRobot dataset root for comparison against recorded 18D actions")
     parser.add_argument("--gt-episode", type=int, default=23)
