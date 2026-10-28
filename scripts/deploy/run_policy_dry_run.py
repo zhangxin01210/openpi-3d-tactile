@@ -154,6 +154,8 @@ def main() -> int:
     parser.add_argument("--gt-dataset", type=Path,
                         help="Original LeRobot dataset root for comparison against recorded 18D actions")
     parser.add_argument("--gt-episode", type=int, default=23)
+    parser.add_argument("--frame-stride", type=int, default=1,
+                        help="Infer every Nth packet, e.g. 16 matches 16-step robot replanning")
     args = parser.parse_args()
     root = args.repo_root.expanduser().resolve()
     frames_dir = args.frames_dir.expanduser().resolve()
@@ -163,6 +165,8 @@ def main() -> int:
         raise FileNotFoundError(f"Trained checkpoint does not exist: {checkpoint}; refusing to use base weights")
     if args.idle_timeout_s < 0:
         raise ValueError("--idle-timeout-s must be non-negative")
+    if args.frame_stride < 1:
+        raise ValueError("--frame-stride must be >=1")
     if args.max_frames is not None and args.max_frames <= 0:
         raise ValueError("--max-frames must be positive when set")
     if output_dir.exists() and any(output_dir.iterdir()):
@@ -189,7 +193,9 @@ def main() -> int:
         for frame_number, path in enumerate(
             _frame_stream(frames_dir, follow=args.follow, idle_timeout_s=args.idle_timeout_s)
         ):
-            if args.max_frames is not None and frame_number >= max(0, args.max_frames):
+            if frame_number % args.frame_stride:
+                continue
+            if args.max_frames is not None and len(timings) >= args.max_frames:
                 break
             with np.load(path, allow_pickle=False) as source:
                 required = ("front_rgb", "left_rgb", "right_rgb", "front_depth_native", "front_depth_color_aligned", "robot_state", "timestamp_s", "frame_index")
@@ -269,6 +275,7 @@ def main() -> int:
         "frames": len(timings),
         "stream_mode": "follow" if args.follow else "replay",
         "action_horizon": int(train_config.model.action_horizon),
+        "input_frame_stride":args.frame_stride,
         "action_dim_out": 18,
         "mean_inference_ms": float(np.mean(timings)),
         "p95_inference_ms": float(np.percentile(timings, 95)),
