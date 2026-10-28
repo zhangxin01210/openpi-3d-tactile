@@ -1,109 +1,126 @@
-"""Offline checks for original WebSocket serving path with causal geometry history."""
-from pathlib import Path
+"""No-GPU tests: robot-side scene 1..6 switches SAME server's causal worker only."""
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 from scripts.deploy.websocket_hand_scene_bridge import (
-    FRAME_KEYS,HandScenePerceptionBridge,validate_history
+    SELECTABLE_SCENE_POSITIONS, HandScenePerceptionBridge, validate_history,
 )
 
 
-def _frame(i):
+def frame(i):
     return {
-        "front_rgb":np.zeros((480,640,3),np.uint8),
-        "left_rgb":np.zeros((480,640,3),np.uint8),
-        "right_rgb":np.zeros((480,640,3),np.uint8),
-        "front_depth_native":np.ones((480,640),np.uint16),
-        "robot_state":np.zeros(1972,np.float32),
-        "timestamp_s":np.asarray(100+i/15),
+        "front_rgb":np.zeros((480,640,3),dtype=np.uint8),
+        "left_rgb":np.zeros((480,640,3),dtype=np.uint8),
+        "right_rgb":np.zeros((480,640,3),dtype=np.uint8),
+        "front_depth_native":np.ones((480,640),dtype=np.uint16),
+        "robot_state":np.zeros(1972,dtype=np.float32),
+        "timestamp_s":np.asarray(100.+i/15.),
         "frame_index":np.asarray(i),
     }
 
 
-def test_history_preserves_16_contiguous_raw_frames_and_fails_closed():
-    batch=[_frame(i) for i in range(16)]
-    out=validate_history(batch,next_index=0,previous_timestamp=float("-inf"))
-    assert len(out)==16
-    assert out[0]["front_depth_native"].dtype==np.uint16
+def observation(session,position,history):
+    last=history[-1]
+    return {
+        "hand_scene_session":session,"hand_scene_position":position,
+        "hand_scene_history":history,"observation.state":last["robot_state"],
+        "observation.depths.cam_front":last["front_depth_native"],
+        **{f"observation.images.cam_{name}":last[f"{name}_rgb"]
+           for name in ("front","left","right")},
+    }
+
+
+def test_history_is_contiguous_and_refuses_stale_or_invalid_inputs():
+    seq=[frame(i) for i in range(16)]
+    assert len(validate_history(seq,next_index=0,previous_timestamp=float("-inf")))==16
     with pytest.raises(ValueError,match="discontinuity"):
-        validate_history(batch,next_index=1,previous_timestamp=float("-inf"))
+        validate_history(seq,next_index=1,previous_timestamp=float("-inf"))
     with pytest.raises(ValueError,match="timestamp"):
-        validate_history(batch,next_index=0,previous_timestamp=100.01)
-    bad=[_frame(0)]
-    bad[0].pop("left_rgb")
+        validate_history(seq,next_index=0,previous_timestamp=100.01)
+    bad=frame(0)
+    bad.pop("left_rgb")
     with pytest.raises(KeyError):
-        validate_history(bad,next_index=0,previous_timestamp=float("-inf"))
+        validate_history([bad],next_index=0,previous_timestamp=float("-inf"))
 
 
-def test_bridge_injects_exact_geometry_into_existing_policy_and_forbids_session_reuse(monkeypatch,tmp_path):
-    class StubPi0:
+def setup_bridge(tmp_path,monkeypatch):
+    class Policy:
         metadata={"spatial_camera_roles":["front"]}
-        def __init__(self):self.received=[]
+        def __init__(self):
+            self.received=[]
+            self.input_transform=SimpleNamespace(reset_tactile_ema=lambda:None)
         def infer(self,obs):
             self.received.append(obs)
-            return {"actions":np.zeros((50,18),np.float32)}
-    pi0=StubPi0()
-    anchor=tmp_path/"reviewed.json"
-    anchor.write_text("{}")
-    python=tmp_path/"perception_python"
-    python.write_text("not executed by stub")
-    worker=HandScenePerceptionBridge(pi0,repo_root=tmp_path,
-            perception_python=python,workdir=tmp_path/"work",anchor_json=anchor)
-    def fake_launch():
-        worker._started=True
+            return {"actions":np.zeros((50,18),dtype=np.float32)}
+    pi0=Policy()
+    py=tmp_path/"python";py.write_text("stub executable")
+    bridge=HandScenePerceptionBridge(
+        pi0,repo_root=tmp_path,perception_python=py,
+        workdir=tmp_path/"websocket-sessions",anchor_json=None
+    )
+    def launch():
+        bridge._started=True
     def fake_wait(index):
-        path=worker.workdir/"perception"/f"result_{index}.npz"
-        np.savez_compressed(path,dummy=np.ones(1))
-        return path
-    monkeypatch.setattr(worker,"_launch",fake_launch)
-    monkeypatch.setattr(worker,"_await_output",fake_wait)
+        p=bridge.session_root/"perception"/f"result_{index}.npz"
+        np.savez_compressed(p,dummy=np.ones(1))
+        return p
+    monkeypatch.setattr(bridge,"_launch",launch)
+    monkeypatch.setattr(bridge,"_await_output",fake_wait)
     monkeypatch.setattr("scripts.deploy.websocket_hand_scene_bridge._geometry_from_npz",
-                        lambda _:{"hand_scene":{"test":True}})
-    first=_frame(0)
-    obs={
-        "hand_scene_session":"session-A",
-        "hand_scene_history":[first],
-        "observation.state":first["robot_state"],
-        "observation.depths.cam_front":first["front_depth_native"],
-        "observation.images.cam_front":first["front_rgb"],
-        "observation.images.cam_left":first["left_rgb"],
-        "observation.images.cam_right":first["right_rgb"],
-    }
-    pred=worker.infer(obs)
-    assert pred["actions"].shape==(50,18)
-    assert pi0.received[0]["object_geometry"]["hand_scene"]["test"]
-    assert "hand_scene_history" not in pi0.received[0]
-    assert worker.next_index==1
-    assert (worker.workdir/"raw"/"frame_000000.npz").is_file()
-    assert worker.metadata["hand_scene_history_required"] is True
-    bad=dict(obs,hand_scene_session="session-B",hand_scene_history=[_frame(1)])
-    with pytest.raises(RuntimeError,match="server restart"):
-        worker.infer(bad)
-    second=_frame(1)
-    obs.update(hand_scene_history=[second],
-               **{"observation.state":second["robot_state"]})
-    worker.infer(obs)
-    assert worker.next_index==2
-    assert (worker.workdir/"raw"/"frame_000001.npz").is_file()
+                        lambda _:{"hand_scene":{"ok":True}})
+    return pi0,bridge
 
 
-def test_geometry_frame_must_match_pi0_observation(monkeypatch,tmp_path):
-    anchor=tmp_path/"a.json";anchor.write_text("{}")
-    python=tmp_path/"python";python.write_text("test")
-    pi0=SimpleNamespace(metadata={},infer=lambda o:{"actions":np.zeros((50,18))})
-    worker=HandScenePerceptionBridge(pi0,repo_root=tmp_path,
-            perception_python=python,workdir=tmp_path/"w",anchor_json=anchor)
-    frame=_frame(0)
-    obs={
-        "hand_scene_session":"S","hand_scene_history":[frame],
-        "observation.state":np.ones(1972),
-        "observation.depths.cam_front":frame["front_depth_native"],
-        "observation.images.cam_front":frame["front_rgb"],
-        "observation.images.cam_left":frame["left_rgb"],
-        "observation.images.cam_right":frame["right_rgb"],
-    }
+def test_robot_can_switch_all_six_scenes_without_reloading_pi0(monkeypatch,tmp_path):
+    from scripts.deploy.position_initialization import SCENE_POSITION_TO_EPISODE
+    assert SELECTABLE_SCENE_POSITIONS==(1,2,3,4,5,6)
+    policy,bridge=setup_bridge(tmp_path,monkeypatch)
+    old_dirs=[]
+    for scene in SELECTABLE_SCENE_POSITIONS:
+        raw=frame(0)
+        out=bridge.infer(observation(f"session-{scene}",scene,[raw]))
+        assert out["actions"].shape==(50,18)
+        assert policy.received[-1]["object_geometry"]["hand_scene"]["ok"]
+        assert bridge.scene_position==scene
+        assert bridge.next_index==1
+        assert bridge.session_counter==scene
+        assert (bridge.session_root/"raw"/"frame_000000.npz").exists()
+        cmd=bridge._worker_command()
+        assert cmd[cmd.index("--position-template-episode")+1]==str(SCENE_POSITION_TO_EPISODE[scene])
+        assert cmd[cmd.index("--episode")+1]==str(SCENE_POSITION_TO_EPISODE[scene])
+        assert "--auto-static-flask-from-frame0" in cmd
+        assert "--register-missing-color-depth" in cmd
+        assert "--static-target-anchor-json" not in cmd
+        old_dirs.append(bridge.session_root)
+    assert len(set(old_dirs))==6
+    assert len(policy.received)==6
+    assert bridge.policy is policy
+    assert bridge.metadata["hand_scene_positions"]==[1,2,3,4,5,6]
+
+
+def test_rejects_scene_change_midrun_and_missing_selection(monkeypatch,tmp_path):
+    policy,bridge=setup_bridge(tmp_path,monkeypatch)
+    first=frame(0)
+    bridge.infer(observation("first-session",1,[first]))
+    second=frame(1)
+    with pytest.raises(ValueError,match="midway"):
+        bridge.infer(observation("first-session",3,[second]))
+    assert bridge.next_index==1
+    broken=observation("second-session",1,[frame(0)])
+    broken["hand_scene_position"]=None
+    with pytest.raises(ValueError,match="hand_scene_position"):
+        bridge.infer(broken)
+    broken["hand_scene_position"]=23
+    with pytest.raises(ValueError,match="hand_scene_position"):
+        bridge.infer(broken)
+
+
+def test_geometry_and_policy_must_share_current_frame(monkeypatch,tmp_path):
+    _,bridge=setup_bridge(tmp_path,monkeypatch)
+    obs=observation("S",2,[frame(0)])
+    obs["observation.state"]=np.ones(1972,dtype=np.float32)
     with pytest.raises(ValueError,match="state and last geometry"):
-        worker.infer(obs)
-    assert worker.next_index==0
+        bridge.infer(obs)
+    assert bridge.next_index==0
