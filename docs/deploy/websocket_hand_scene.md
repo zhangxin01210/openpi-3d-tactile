@@ -58,6 +58,13 @@ No fixed anchor, no fixed template episode on server. Per-session CURRENT
 frames, SAM2 masks and RGBTrack overlays are saved under the server workdir
 in distinct scene_N_session_NNNN directories.
 
+Server restarts may reuse the same --workdir: prior scene folders/logs are
+preserved, and a new unique scene session number is allocated automatically.
+If SAM2 reports `ModuleNotFoundError: No module named 'hydra'`, install
+`hydra-core==1.3.2` into the EXACT `--perception-python` virtualenv, then
+verify `from hydra import initialize_config_module` in that interpreter before
+retrying. Ctrl+C/KeyboardInterrupt on stopping the server is normal.
+
 ## 2. amax: run robot client with a remembered position number
 
 Back up and replace ONLY the existing robot-side standalone
