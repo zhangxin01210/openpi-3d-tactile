@@ -85,7 +85,7 @@ def _positive_scalar(value, name):
     return v
 
 
-def load_safety_limits(path: str | Path) -> dict:
+def load_safety_limits(path: str | Path, *, plastic_probe: bool = False) -> dict:
     """Only explicitly reviewed hardware limits can enable robot actuation."""
     path=Path(path).expanduser().resolve()
     cfg=json.loads(path.read_text(encoding="utf-8"))
@@ -96,9 +96,14 @@ def load_safety_limits(path: str | Path) -> dict:
         "replan_min_interval_s", "arm_tcp_force_norm_limit_n",
         "arm_tcp_torque_norm_limit_nm", "max_observation_gap_s"
     }
+    if plastic_probe:
+        required=required|{"reviewed_for_plastic_probe"}
     if not isinstance(cfg,dict) or set(cfg)!=required or cfg["schema_version"]!=1:
         raise ValueError(f"Safety config must contain exactly {sorted(required)}")
-    if cfg["reviewed_for_glass_task"] is not True:
+    if plastic_probe:
+        if cfg["reviewed_for_plastic_probe"] is not True or type(cfg["reviewed_for_glass_task"]) is not bool:
+            raise ValueError("Plastic-prop motion needs separately confirmed reviewed_for_plastic_probe=true")
+    elif cfg["reviewed_for_glass_task"] is not True:
         raise ValueError("Safety configuration is not explicitly reviewed for glass manipulation")
     # Live UR7eXHand.get_observation() provides two separate vectors.
     # Their semantics are fixed at the device interface: [Fx,Fy,Fz] in N,
@@ -1647,7 +1652,9 @@ def run_policy_once(
                     # Fresh force/tactile/state immediately before EACH command.
                     obs=robot.get_observation()
                     env_state=build_env_state(obs,state_names)
-                    safety.check(observation=obs,state=env_state)
+                    probe_contact=safety.check(observation=obs,state=env_state)
+                    if probe_contact["replan_recommended"]:
+                        raise SafetyTrip("Probe contact changed; stop rather than schedule new Pi0 inference")
                     if probe_origin is None:
                         raise SafetyTrip("No validated probe origin")
                     action=limit_probe_joint_targets(
@@ -1952,6 +1959,8 @@ def main() -> int:
         if args.max_action_chunk_size<args.actuation_probe_steps:
             raise ValueError("Motion probe steps must fit within ONE chunk; "
                              "--max-action-chunk-size >= --actuation-probe-steps")
+        if args.query_frequency<=args.actuation_probe_steps:
+            raise ValueError("Motion probe cannot requery; --query-frequency must exceed --actuation-probe-steps")
         if args.action_scale!=1.0 or args.smoothing_alpha!=1.0:
             raise ValueError("Motion probe requires unchanged absolute joint angles; no action scaling/smoothing")
         if args.arm_max_relative_target>0.02:
@@ -1964,7 +1973,7 @@ def main() -> int:
             and args.capture_observation_audit is None and args.live_packet_url is None):
         raise ValueError("Actuation forbidden without --contact-safety-config; this is not a hardware E-stop")
     args.contact_safety_limits = (
-        load_safety_limits(args.contact_safety_config)
+        load_safety_limits(args.contact_safety_config, plastic_probe=bool(args.actuation_probe_steps))
         if args.contact_safety_config is not None else None
     )
     require_ethercat_permissions(args)
