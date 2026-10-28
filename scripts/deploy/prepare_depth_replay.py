@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""Audit legacy replay depth against ORIGINAL LeRobot sensor depth; optionally derive aligned depth.
+"""Derive BOTH depth-coordinate spaces from the canonical LeRobot parquet.
 
-Fail closed: identical HxW shapes are never evidence of alignment. This tool
-only accepts front_depth_raw when bitwise identical to the parquet front
-depth for the same frame. It then uses the existing calibrated RGBTrack
-registration implementation, and leaves all original NPZ files untouched.
-
-Requires the original dataset. If it is unavailable or depth differs, do not
-rename arrays or fabricate color-aligned depth.
+Legacy front_depth_raw provenance is unknown and is diagnostic ONLY. Never
+assume its 480x640 shape means native or RGB-aligned depth. Native values
+come from the original dataset, color-aligned values from the shared
+calibrated _rgb_registered_depth routine. Source replay is never changed.
 """
 from __future__ import annotations
 
@@ -102,18 +99,23 @@ def main() -> int:
             source = {name: np.asarray(packet[name]) for name in packet.files}
         if int(np.asarray(source["frame_index"]).reshape(())) != frame:
             raise ValueError(f"NPZ index mismatch: {path}")
-        old_depth = source["front_depth_raw"]
+        old_depth = source["front_depth_raw"]  # untrusted legacy field; compare for audit only
         original_depth = np.asarray(row["observation.depths.cam_front"])
-        if (old_depth.shape != original_depth.shape or old_depth.dtype != original_depth.dtype
-                or not np.array_equal(old_depth, original_depth)):
-            raise ValueError(
-                f"{path}: front_depth_raw is NOT identical to original parquet depth. "
-                "Cannot assume it is native. Stop and inspect original replay producer."
-            )
+        old_is_native = bool(
+            old_depth.shape == original_depth.shape
+            and old_depth.dtype == original_depth.dtype
+            and np.array_equal(old_depth, original_depth)
+        )
         original_state = np.asarray(row["observation.state"], dtype=np.float32)
         state = np.asarray(source["robot_state"], dtype=np.float32)
-        if original_state.shape != state.shape or not np.array_equal(original_state, state):
-            raise ValueError(f"{path}: robot_state differs from original dataset frame {frame}")
+        state_is_original = bool(
+            original_state.shape == state.shape and np.array_equal(original_state, state)
+        )
+        if output_dir is not None and not state_is_original:
+            raise ValueError(
+                f"{path}: robot_state differs from the canonical episode parquet. "
+                "Do not export a mixed-provenance policy replay; review state packing first."
+            )
 
         rgb = np.asarray(source["front_rgb"])
         if rgb.ndim != 3 or rgb.shape[2] != 3 or rgb.dtype != np.uint8:
@@ -132,8 +134,9 @@ def main() -> int:
             "frame_index": frame,
             "native_shape": list(original_depth.shape),
             "rgb_shape": list(rgb.shape),
-            "native_equals_parquet": True,
-            "state_equals_parquet": True,
+            "legacy_depth_equals_original_native": old_is_native,
+            "legacy_depth_provenance": "unknown; never reused",
+            "state_equals_parquet": state_is_original,
             "native_nonzero": int(np.count_nonzero(original_depth)),
             "aligned_nonzero": int(np.count_nonzero(registered_sensor_units)),
             "aligned_depth_unit": "original_sensor_units_float32",
@@ -151,11 +154,13 @@ def main() -> int:
         print(json.dumps(row_audit, ensure_ascii=False), flush=True)
 
     report = {
-        "status": "VERIFIED_NATIVE_AND_REGISTERED",
+        "status": "DERIVED_FROM_ORIGINAL_PARQUET" if output_dir else "AUDITED_ORIGINAL_PARQUET",
         "input_replay": str(source_dir),
         "dataset_root": str(dataset_root),
         "episode": args.episode,
         "frames_checked": len(audit_rows),
+        "native_depth_source": "RawSpatialDataset.iter_rows(observation.depths.cam_front)",
+        "legacy_depth_reused": False,
         "registration_source": "rgbtrack_adapter._rgb_registered_depth",
         "calibration_profile": str(profile.resolve()),
         "calibration_sha256": _sha256(profile.resolve()),
