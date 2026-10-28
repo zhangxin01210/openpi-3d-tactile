@@ -6,7 +6,7 @@ import pytest
 from scripts.deploy.position_initialization import resolve_prompts
 
 
-@pytest.mark.parametrize("episode", [23, 38, 49, 58, 65])
+@pytest.mark.parametrize("episode", [0, 23, 38, 49, 58, 65])
 def test_complete_six_position_reference_templates(repo_root, episode):
     result = resolve_prompts(
         repo_root=repo_root,
@@ -34,10 +34,21 @@ def test_template_requires_explicit_current_scene_review(repo_root):
                         template_confirmed=False, first_frame_rgb_shape=(480, 640, 3))
 
 
-def test_e0_snapshot_not_mistaken_for_complete_prompt(repo_root):
-    with pytest.raises(ValueError, match="only flask points"):
-        resolve_prompts(repo_root=repo_root, prompt_file=None, template_episode=0,
-                        template_confirmed=True, first_frame_rgb_shape=(480, 640, 3))
+def test_scene_1_uses_episode_zero_flask_and_episode23_funnel_clicks_only(repo_root):
+    from scripts.deploy.position_initialization import SCENE_POSITION_TO_EPISODE
+    assert SCENE_POSITION_TO_EPISODE == {1:0, 2:23, 3:38, 4:49, 5:58, 6:65}
+    result=resolve_prompts(repo_root=repo_root,prompt_file=None,template_episode=0,
+                           template_confirmed=True,first_frame_rgb_shape=(480,640,3))
+    import json
+    root=repo_root/"tools/hoi_level1_snapshot/metadata/six_positions"
+    e0=json.loads((root/"episode_e00_flask_prompts.json").read_text())
+    e23=json.loads((root/"episode_e23_seed_prompts.json").read_text())
+    assert result["objects"]["target_flask"]==e0["objects"]["target_flask"]
+    assert result["objects"]["funnel"]==e23["objects"]["funnel"]
+    provenance=result["initialization_provenance"]
+    assert provenance["scene_position"]==1
+    assert provenance["borrowed_funnel_keypoints_from_episode"]==23
+    assert provenance["reference_images_or_poses_reused"] is False
 
 
 def test_wrong_image_resolution_rejected(repo_root):
