@@ -19,7 +19,9 @@ perception:
     min_score: 0.05
     min_mask_area_px: 40
     max_mask_fraction: 0.35
-    prompt_file: data/deploy/seed_prompts.json
+    prompt_file: null # reviewed current-scene two-object prompts; provide explicitly
+    position_template_episode: null # explicit choice among 0,23,38,49,58,65; never auto-infer
+    template_reviewed_for_current_scene: false # must confirm current RGB before reuse
     corrections_file: data/deploy/manual_corrections.json
   rgbtrack:
     submodule: third_party/RGBTrack
@@ -48,13 +50,14 @@ sensors:
   camera_roles_for_geometry: [front]
   pi0_image_slots: [cam_front, cam_left, cam_right]
   front_calibration_profile: configs/ur7e_xhand/front_calibration_candidate.json
-  depth_alignment: color_aligned
-  depth_input: front_depth_raw # raw units converted using the existing camera calibration
+  depth_input_native: front_depth_native # original depth-optical sensor pixels and native units
+  depth_input_rgbtrack: front_depth_color_aligned # registered COLOR pixels, original sensor units
+  legacy_front_depth_raw: rejected # ambiguous coordinate system; do not rename
   state_input: robot_state # XHand/UR observation.state contract, length 1972
   live_camera_devices:
     front: null
     left: null
-    right: null # required Pi0 image slot; never used for pose estimation
+    right: null # legacy Pi0 image slot only; not used in geometry or pose, revisit trained-policy schema
 
 logging:
   output_directory: output/deploy/hand_scene_online
