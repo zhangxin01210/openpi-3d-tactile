@@ -70,9 +70,12 @@ def _measured_joint_positions(frames_dir: Path, frame: int) -> np.ndarray:
         saved_frame = int(np.asarray(data["frame_index"]).reshape(()))
     if saved_frame != frame or raw.shape != (1972,) or not np.isfinite(raw).all():
         raise ValueError(f"{path}: incorrect frame index, malformed 1972-state or nonfinite values")
-    # Canonical 1972 state: arm positions [0:6]; arm velocities [6:12];
-    # 4x4 ee pose [12:28]; XHand positions [28:40]; then other fields.
-    return np.concatenate((raw[:6], raw[28:40]))
+    # EXACT xhand_policy.extract_joint_state() contract:
+    # arm positions [0:6], velocities [6:12], EE pose [12:28];
+    # XHand positions and motor torque/CURRENT alternate in [28:52].
+    # Consecutive slice [28:40] is WRONG: odd positions are motor current.
+    # Never estimate action-vs-observed delta from 28:40.
+    return np.concatenate((raw[:6], raw[28:52:2]))
 
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float | None:
@@ -92,6 +95,7 @@ def analyze(
     per_model = {m: {"arm_first_abs_delta": [], "hand_first_abs_delta": [],
                      "arm_chunk_path": [], "hand_chunk_path": []} for m in names}
     per_pair = {}
+    per_joint = {}
     for frame in frames:
         q = measured[frame]
         for name in names:
@@ -114,6 +118,7 @@ def analyze(
             key = (name1, name2)
             mae = float(np.mean(np.abs(a[:, :] - b[:, :])))
             per_pair.setdefault(key, []).append(mae)
+            per_joint.setdefault(key, []).append(np.abs(a-b).mean(axis=0))
             valid_dir = (np.abs(d1) > 0.01) & (np.abs(d2) > 0.01)
             pair_rows.append({
                 "frame": frame, "model_a": name1, "model_b": name2,
@@ -142,8 +147,13 @@ def analyze(
                 "mean_chunk_all18_mae_rad": float(np.mean(values)),
                 "worst_frame": int(frames[int(np.argmax(values))]),
                 "worst_frame_chunk_all18_mae_rad": float(np.max(values)),
+                "top_joint_differences": [
+                    {"joint": JOINT_NAMES[idx], "mean_chunk_mae_rad": float(differences[idx])}
+                    for idx in np.argsort(-differences)[:6]
+                ],
             }
             for (a, b), values in per_pair.items()
+            for differences in (np.mean(np.stack(per_joint[(a, b)]), axis=0),)
         },
     }
     return joint_rows, pair_rows, summary
