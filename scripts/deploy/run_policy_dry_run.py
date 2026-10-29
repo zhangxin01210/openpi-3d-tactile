@@ -136,7 +136,9 @@ def _gt_comparison(prediction: np.ndarray, frame: int, ground_truth: dict[int,np
         state=np.asarray(robot_state,dtype=np.float32)
         if state.shape!=(1972,):
             raise ValueError(f"Cannot compute hold baseline from state {state.shape}")
-        hold=np.concatenate([state[:6],state[28:40]])
+        # XHand positions are interleaved with motor current/torque:
+        # xhand_policy.extract_joint_state() uses state[28:52:2].
+        hold=np.concatenate([state[:6],state[28:52:2]])
         baseline={
             "hold_first_arm6_mae_rad":float(np.abs(hold[:6]-truth[:6]).mean()),
             "hold_first_hand12_mae_rad":float(np.abs(hold[6:]-truth[6:]).mean()),
