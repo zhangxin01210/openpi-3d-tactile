@@ -324,6 +324,7 @@ def run_model(args):
                 "model":args.name,"frame":frame,
                 "phase":("before" if frame<args.contact_frame else ("contact" if frame==args.contact_frame else "after")),
                 "intervention":name,
+                "change_first_z_mm":cf["z_mm"][0]-actual["z_mm"][0],
                 "change_end_z_mm":cf["z_mm"][-1]-actual["z_mm"][-1],
                 "change_end_x_mm":cf["x_mm"][-1]-actual["x_mm"][-1],
                 "change_end_y_mm":cf["y_mm"][-1]-actual["y_mm"][-1],
@@ -371,6 +372,24 @@ def compare_runs(args):
     all_diffs = [dict(r,model=name) for name,(_,diffs) in runs.items() for r in diffs]
     _write_csv(args.output_dir/"all_models_intent.csv",all_rows)
     _write_csv(args.output_dir/"all_models_tactile_effect.csv",all_diffs)
+    phase_summary=[]
+    for name,(_,diffs) in runs.items():
+        for phase in ("before","contact","after"):
+            for intervention in ("pre_touch","post_touch","zero_force"):
+                chosen=[r for r in diffs if r["phase"]==phase and r["intervention"]==intervention]
+                if not chosen: continue
+                dz=np.asarray([float(r["change_end_z_mm"]) for r in chosen])
+                first_dz=np.asarray([float(r["change_first_z_mm"]) for r in chosen])
+                gap=np.asarray([float(r["change_end_thumb_index_aperture_mm"]) for r in chosen])
+                phase_summary.append({
+                    "model":name,"phase":phase,"intervention":intervention,
+                    "n":len(chosen),"mean_signed_end_z_effect_mm":float(dz.mean()),
+                    "mean_abs_end_z_effect_mm":float(np.abs(dz).mean()),
+                    "mean_abs_first_z_effect_mm":float(np.abs(first_dz).mean()),
+                    "mean_abs_thumb_index_link2_gap_effect_mm":float(np.abs(gap).mean()),
+                    "z_direction_change_fraction":float(np.mean([r["flip_up_down"] in ("True","true") for r in chosen])),
+                })
+    _write_csv(args.output_dir/"tactile_sensitivity_by_phase.csv",phase_summary)
     print(f"Confirmed matched recorded frames and fixed intervention donors; contact_frame={meta['contact_frame']}")
     print("Motion is FK of predicted joint TARGETS, not physically executed commands.")
     try:
@@ -380,6 +399,7 @@ def compare_runs(args):
     except ImportError:
         print("matplotlib unavailable; read all_models_*.csv");return
     for metric,title,filename in [
+        ("first_z_mm","Predicted NEXT target palm ΔZ (+base Z is up)","first_z_by_model.png"),
         ("end_z_mm","Predicted 16-step palm ΔZ (+base Z is up)","end_z_by_model.png"),
         ("end_rotation_deg","Predicted 16-step palm rotation","end_rotation_by_model.png"),
         ("end_target_centroid_xy_gap_change_mm","Change in palm XY gap to flask centroid (NOT mouth)","end_target_xy_gap_change.png"),
