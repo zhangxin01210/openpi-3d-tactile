@@ -14,7 +14,6 @@ joint targets; FK assumes the robot could reach them, not actual executed motion
 from __future__ import annotations
 
 import argparse
-import copy
 import csv
 import json
 from pathlib import Path
@@ -70,7 +69,15 @@ def scan_frames(root: Path, out: Path):
     rows = []
     for file in files:
         idx = int(file.stem.split("_")[-1])
-        _, geo = _get_saved(root, idx)
+        # Scan ONLY the saved causal force arrays; avoid decoding all RGB-D
+        # and raw state again from the large compressed perception archive.
+        pre = "object_geometry__hand_scene__causal_tactile__"
+        with np.load(file, allow_pickle=False) as npz:
+            geo = {"hand_scene":{"causal_tactile":{
+                k: np.asarray(npz[pre+k])
+                for k in ("ema_before_force_norm","current_minus_ema_force_norm",
+                          "current_minus_previous_force_norm","sample_valid")
+            }}}
         norm = _force_norm_from_geometry(geo)
         changes = np.asarray(
             geo["hand_scene"]["causal_tactile"]["current_minus_previous_force_norm"],
@@ -194,7 +201,8 @@ def _fk_intent(fk, mapping, robot_state, actions, target_xyz):
         q = q0.copy()
         for i, name in enumerate(ARM_NAMES): q[name] = float(action[i])
         # right_hand_link is a FIXED child of UR tool0; finger targets do NOT
-        # move its frame. Compute fingertip changes separately when needed.
+        # move its frame. These are palm movements, not measured funnel-tip
+        # movements or commanded end-effector trajectories.
         T = fk.compute(q, root="base_link")["right_hand_link"]
         d = (T[:3,3]-T0[:3,3])*1000
         xs.append(float(d[0]));ys.append(float(d[1]));zs.append(float(d[2]))
