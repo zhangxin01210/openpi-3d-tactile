@@ -34,6 +34,10 @@ CAUSAL_FIELDS = (
 )
 ARM_NAMES = ("shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
              "wrist_1_joint", "wrist_2_joint", "wrist_3_joint")
+FINGER_LINK_NAMES = (
+    "right_hand_thumb_rota_link2", "right_hand_index_rota_link2",
+    "right_hand_mid_link2", "right_hand_ring_link2", "right_hand_pinky_link2",
+)
 
 
 def _get_saved(root: Path, frame: int):
@@ -193,24 +197,44 @@ def _fk_intent(fk, mapping, robot_state, actions, target_xyz):
     q0 = joint_positions_from_state(robot_state, mapping=mapping, kinematics=fk)
     missing = [name for name in ARM_NAMES if name not in q0]
     if missing: raise ValueError(f"URDF mapping lacks arm joints {missing}")
-    T0 = fk.compute(q0, root="base_link")["right_hand_link"]
+    initial = fk.compute(q0, root="base_link")
+    T0 = initial["right_hand_link"]
+    def fingertip_origins_in_palm(transforms, palm):
+        # Finger link2 origin is an approximate KINEMATIC landmark, not a
+        # calibrated taxel contact point or physical fingertip center.
+        return np.stack([
+            palm[:3,:3].T @ (transforms[link][:3,3]-palm[:3,3])
+            for link in FINGER_LINK_NAMES
+        ])
+    finger0 = fingertip_origins_in_palm(initial,T0)
     center = np.asarray(target_xyz, dtype=float).mean(axis=0)
     center_xy = center[:2]
     distances=[]; xs=[]; ys=[]; zs=[]; angles=[]
+    finger_motion=[]; thumb_index_change=[];thumb_middle_change=[]
     for action in actions:
         q = q0.copy()
         for i, name in enumerate(ARM_NAMES): q[name] = float(action[i])
-        # right_hand_link is a FIXED child of UR tool0; finger targets do NOT
-        # move its frame. These are palm movements, not measured funnel-tip
-        # movements or commanded end-effector trajectories.
-        T = fk.compute(q, root="base_link")["right_hand_link"]
+        for name, index in mapping.items():
+            if 28 <= index < 52 and (index - 28) % 2 == 0:
+                q[name] = float(action[6+(index-28)//2])
+        # Compute BOTH palm displacement and finger articulation. Palm is a
+        # fixed child of UR tool0; finger joints do not translate the palm.
+        transforms=fk.compute(q, root="base_link")
+        T = transforms["right_hand_link"]
+        finger = fingertip_origins_in_palm(transforms,T)
+        finger_motion.append(float(np.linalg.norm(finger-finger0,axis=1).mean()*1000))
+        thumb_index_change.append(float((np.linalg.norm(finger[0]-finger[1])-np.linalg.norm(finger0[0]-finger0[1]))*1000))
+        thumb_middle_change.append(float((np.linalg.norm(finger[0]-finger[2])-np.linalg.norm(finger0[0]-finger0[2]))*1000))
         d = (T[:3,3]-T0[:3,3])*1000
         xs.append(float(d[0]));ys.append(float(d[1]));zs.append(float(d[2]))
         distances.append(float((np.linalg.norm(T[:2,3]-center_xy)-np.linalg.norm(T0[:2,3]-center_xy))*1000))
         cos = np.clip((np.trace(T0[:3,:3].T @ T[:3,:3])-1)/2,-1,1)
         angles.append(float(np.degrees(np.arccos(cos))))
     return dict(x_mm=xs,y_mm=ys,z_mm=zs,xy_mm=np.hypot(xs,ys).tolist(),
-                rotation_deg=angles,target_centroid_xy_gap_change_mm=distances)
+                rotation_deg=angles,target_centroid_xy_gap_change_mm=distances,
+                finger_link2_mean_motion_in_palm_mm=finger_motion,
+                thumb_index_link2_aperture_change_mm=thumb_index_change,
+                thumb_middle_link2_aperture_change_mm=thumb_middle_change)
 
 
 def _classify_z(z):
@@ -284,6 +308,9 @@ def run_model(args):
                 "end_y_mm":intent["y_mm"][-1],
                 "end_xy_mm":intent["xy_mm"][-1],
                 "end_rotation_deg":intent["rotation_deg"][-1],
+                "end_finger_link2_mean_motion_in_palm_mm":intent["finger_link2_mean_motion_in_palm_mm"][-1],
+                "end_thumb_index_aperture_change_mm":intent["thumb_index_link2_aperture_change_mm"][-1],
+                "end_thumb_middle_aperture_change_mm":intent["thumb_middle_link2_aperture_change_mm"][-1],
                 "end_target_centroid_xy_gap_change_mm":intent["target_centroid_xy_gap_change_mm"][-1],
             }
             outputs.append(row)
@@ -298,6 +325,7 @@ def run_model(args):
                 "change_end_x_mm":cf["x_mm"][-1]-actual["x_mm"][-1],
                 "change_end_y_mm":cf["y_mm"][-1]-actual["y_mm"][-1],
                 "change_end_rotation_deg":cf["rotation_deg"][-1]-actual["rotation_deg"][-1],
+                "change_end_thumb_index_aperture_mm":cf["thumb_index_link2_aperture_change_mm"][-1]-actual["thumb_index_link2_aperture_change_mm"][-1],
                 "actual_end_z_mm":actual["z_mm"][-1],
                 "counterfactual_end_z_mm":cf["z_mm"][-1],
                 "flip_up_down":_classify_z(actual["z_mm"][-1]) != _classify_z(cf["z_mm"][-1]),
@@ -351,6 +379,7 @@ def compare_runs(args):
         ("end_z_mm","Predicted 16-step palm ΔZ (+base Z is up)","end_z_by_model.png"),
         ("end_rotation_deg","Predicted 16-step palm rotation","end_rotation_by_model.png"),
         ("end_target_centroid_xy_gap_change_mm","Change in palm XY gap to flask centroid (NOT mouth)","end_target_xy_gap_change.png"),
+        ("end_thumb_index_aperture_change_mm","Predicted thumb-index link2 distance change (negative = closing)","thumb_index_aperture.png"),
     ]:
         fig,ax=plt.subplots(figsize=(12,5))
         for name,(rows,_) in runs.items():
@@ -372,7 +401,7 @@ def compare_runs(args):
                title=f"Effect on next 16-step palm-Z intention: {condition}")
         ax.legend();fig.tight_layout()
         fig.savefig(args.output_dir/f"tactile_effect_{condition}.png",dpi=155);plt.close(fig)
-    print(f"Saved 6 diagnostic plots + paired intervention table: {args.output_dir}")
+    print(f"Saved diagnostic plots + paired intervention table: {args.output_dir}")
 
 
 def main():
