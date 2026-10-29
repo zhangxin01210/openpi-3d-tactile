@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Causal per-frame SAM2 -> RGBTrack -> Hand-Scene packet producer.
 
-Replay input is a directory of one-frame NPZ files. Each file is consumed in
-frame order and contains only the current raw observation; no SAM2 video
-predictor or future-frame window is used. The same frame schema is suitable
+Replay input is a directory of one-frame NPZ files. Each file is consumed in frame order and contains only current raw observations.
+SAM2 video memory only observes current and preceding frames. The same frame schema is suitable
 for a live sensor adapter writing one packet at a time.
 """
 
@@ -194,7 +193,7 @@ def _read_frames(path: Path, *, follow: bool = False):
 
 def _validate_packet(file: Path, data: Mapping[str, np.ndarray]) -> dict[str, Any]:
     required = (
-        "front_rgb", "left_rgb", "right_rgb", "front_depth_raw", "robot_state", "timestamp_s", "frame_index"
+        "front_rgb", "left_rgb", "right_rgb", "front_depth_native", "front_depth_color_aligned", "robot_state", "timestamp_s", "frame_index"
     )
     missing = [key for key in required if key not in data]
     if missing:
@@ -205,11 +204,16 @@ def _validate_packet(file: Path, data: Mapping[str, np.ndarray]) -> dict[str, An
         if image.dtype != np.uint8 or image.ndim != 3 or image.shape[2] != 3:
             raise ValueError(f"{file}: {key} must be uint8 RGB [H,W,3], got {image.shape} {image.dtype}")
     front = result["front_rgb"]
-    depth = result["front_depth_raw"]
-    if depth.ndim != 2 or depth.shape != front.shape[:2] or not np.issubdtype(depth.dtype, np.number):
-        raise ValueError(
-            f"{file}: front_depth_raw must be color-aligned [H,W]={front.shape[:2]}, got {depth.shape}"
-        )
+    native = result["front_depth_native"]
+    aligned = result["front_depth_color_aligned"]
+    if native.ndim != 2 or not np.issubdtype(native.dtype, np.number):
+        raise ValueError(f"{file}: front_depth_native must be numeric native depth [H,W]")
+    if aligned.ndim != 2 or aligned.shape != front.shape[:2] or not np.issubdtype(aligned.dtype, np.number):
+        raise ValueError(f"{file}: front_depth_color_aligned must match front RGB dimensions")
+    if not np.isfinite(native).all() or not np.isfinite(aligned).all():
+        raise ValueError(f"{file}: depth contains NaN/Inf")
+    # Never silently reinterpret a color-aligned depth map as native depth.
+    # Both arrays are raw sensor units; metric conversion belongs to calibration.
     state = result["robot_state"].astype(np.float32, copy=False)
     if state.shape != (1972,) or not np.isfinite(state).all():
         raise ValueError(f"{file}: robot_state must be finite [1972], got {state.shape}")
@@ -505,7 +509,13 @@ def main() -> int:
     parser.add_argument("--sam2-checkpoint", type=Path, default=ROOT / "checkpoints/sam2/sam2.1_hiera_small.pt")
     parser.add_argument("--sam2-source", type=Path, default=Path.home() / ".cache/openpi_deploy/sam2")
     parser.add_argument("--sam2-config", default="configs/sam2.1/sam2.1_hiera_s.yaml")
-    parser.add_argument("--prompts", type=Path, required=True)
+    parser.add_argument("--sam2-backend", choices=("video_memory", "legacy_image"), default="video_memory",
+                        help="Use the reviewed Level-1 SAM2 video-memory algorithm; legacy_image is for A/B comparison only.")
+    parser.add_argument("--prompts", type=Path)
+    parser.add_argument("--position-template-episode", type=int, choices=(0, 23, 38, 49, 58, 65),
+                        help="Explicitly select one of six reviewed position references; never auto-classifies")
+    parser.add_argument("--template-reviewed-for-current-scene", action="store_true",
+                        help="Confirm that selected reference clicks were inspected against the CURRENT first frame")
     parser.add_argument("--corrections", type=Path)
     parser.add_argument("--scale-manifest", type=Path, default=ROOT / "data/pose_eval/hand_scene_metric_mesh_scales.json")
     parser.add_argument(
@@ -522,10 +532,17 @@ def main() -> int:
     parser.add_argument("--pose-mode", choices=("depth", "no_depth", "unknown_scale"), default="depth")
     parser.add_argument("--masks-only", action="store_true", help="Run SAM2 causal masks and contract geometry without RGBTrack pose estimation.")
     parser.add_argument("--static-target-anchor-json", type=Path)
+    parser.add_argument("--register-missing-color-depth", action="store_true",
+                        help="Live WebSocket raw LeRobot packets only: use the SAME RGBTrack training "
+                             "_rgb_registered_depth to derive RGB-aligned depth from original native front depth")
+    parser.add_argument("--auto-static-flask-from-frame0", action="store_true",
+                        help="Use the selected SAM2 position prompt, observe flask once via RGBTrack at frame 0, "
+                             "freeze that measured pose from frame 1; avoids reusing an unrelated scene's anchor. "
+                             "No physical actuation authorization.")
     parser.add_argument(
         "--static-target-anchor-source",
-        choices=("human_reviewed", "reference_geometry"),
-        help="Provenance for the static flask anchor; reference_geometry is replay-only.",
+        choices=("human_reviewed",),
+        help="Only explicit human-reviewed current-scene static flask anchors are accepted.",
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--max-frames", type=int)
@@ -554,9 +571,26 @@ def main() -> int:
         sys.path.insert(0, str(sam2_source))
     if not args.sam2_checkpoint.expanduser().is_file():
         raise FileNotFoundError(f"SAM2 checkpoint is missing: {args.sam2_checkpoint}; see scripts/deploy/download_weights.py")
-    prompts = _read_json(args.prompts)
+    from scripts.deploy.position_initialization import resolve_prompts
+    first_packets = sorted(replay_dir.glob("frame_*.npz"))
+    if not first_packets:
+        raise FileNotFoundError(f"No frame packets in {replay_dir}")
+    with np.load(first_packets[0], allow_pickle=False) as initial:
+        first_rgb_shape = tuple(np.asarray(initial["front_rgb"]).shape)
+    prompts = resolve_prompts(
+        repo_root=root,
+        prompt_file=args.prompts,
+        template_episode=args.position_template_episode,
+        template_confirmed=args.template_reviewed_for_current_scene,
+        first_frame_rgb_shape=first_rgb_shape,
+    )
     corrections = _read_json(args.corrections)
-    sam2_stream = CausalSAM2Stream(
+    if args.sam2_backend == "video_memory":
+        from sam2_video_stream import CausalVideoSAM2Stream
+        stream_type = CausalVideoSAM2Stream
+    else:
+        stream_type = CausalSAM2Stream
+    sam2_stream = stream_type(
         checkpoint=args.sam2_checkpoint.expanduser().resolve(),
         config=args.sam2_config,
         config_root=sam2_source,
@@ -573,6 +607,12 @@ def main() -> int:
     from openpi.policies.hand_scene_online import OnlineObjectGeometryBuilder
 
     calibration = load_front_calibration(root, args.front_calibration_profile)
+    registration_camera = None
+    registration_fn = None
+    if args.register_missing_color_depth:
+        from rgbtrack_adapter import _load_front_camera_for_depth_registration, _rgb_registered_depth
+        registration_camera = _load_front_camera_for_depth_registration(root, args.front_calibration_profile)
+        registration_fn = _rgb_registered_depth
     scales = OnlineObjectGeometryBuilder.load_scale_manifest(args.scale_manifest)
     geometry_spec = _load_training_geometry_spec(
         args.geometry_config,
@@ -594,27 +634,46 @@ def main() -> int:
     )
     static_anchor = None
     static_anchor_metadata = None
+    static_flask_runtime = None
+    if args.auto_static_flask_from_frame0 and args.static_target_anchor_json is not None:
+        raise ValueError("Choose exactly one flask pose source: reviewed anchor OR auto frame-0")
+    if args.auto_static_flask_from_frame0 and args.static_target_anchor_source is not None:
+        raise ValueError("Auto frame-0 flask initialization cannot claim human_reviewed provenance")
+    if args.auto_static_flask_from_frame0 and args.masks_only:
+        raise ValueError("Auto frame-0 flask initialization requires RGBTrack, not --masks-only")
     if args.static_target_anchor_json is not None:
-        anchor_payload = json.loads(args.static_target_anchor_json.read_text(encoding="utf-8"))
-        static_anchor_metadata = anchor_payload if isinstance(anchor_payload, dict) else None
-        anchor_value = anchor_payload.get("T_base_link_object") if isinstance(anchor_payload, dict) else anchor_payload
-        static_anchor = np.asarray(anchor_value, dtype=np.float64)
+        from scripts.deploy.static_flask_runtime import load_reviewed_anchor
+        if args.static_target_anchor_source != "human_reviewed":
+            raise ValueError("Production static target requires human_reviewed anchor provenance")
+        static_anchor, static_anchor_metadata = load_reviewed_anchor(
+            args.static_target_anchor_json,
+            episode=(args.position_template_episode if args.position_template_episode is not None else args.episode),
+            calibration_profile=args.front_calibration_profile,
+        )
         if args.static_target_anchor_source is None:
             raise ValueError("A static target prior requires --static-target-anchor-source")
-        if args.static_target_anchor_source == "reference_geometry":
-            try:
-                replay_dir.relative_to(root / "data" / "deploy" / "replay")
-            except ValueError as exc:
-                raise ValueError("reference_geometry anchors are allowed only for saved replay data") from exc
-            if args.follow:
-                raise ValueError("reference_geometry anchors cannot be used with a live --follow stream")
+        # Static target provenance is checked against current episode and calibration above.
     elif args.static_target_anchor_source is not None:
         raise ValueError("--static-target-anchor-source requires --static-target-anchor-json")
-    if geometry_spec["target_flask_motion"] == "static" and static_anchor is None:
+    if (geometry_spec["target_flask_motion"] == "static" and static_anchor is None
+            and not args.masks_only and not args.auto_static_flask_from_frame0):
         raise ValueError(
-            "Training geometry config declares target_flask static; supply its explicit frame-0 anchor "
-            "with --static-target-anchor-json and --static-target-anchor-source"
+            "Training geometry config declares target_flask static; supply a reviewed anchor "
+            "or use --auto-static-flask-from-frame0 to estimate current scene's flask once"
         )
+    if args.auto_static_flask_from_frame0:
+        if geometry_spec["target_flask_motion"] != "static":
+            raise ValueError("Auto frame-0 static flask requires training config target_flask_motion=static")
+        if geometry_spec["static_prior_start_frame"] != 1:
+            raise ValueError("Auto frame-0 static flask requires static prior starting at frame 1")
+        from scripts.deploy.static_flask_runtime import AutoFrame0FlaskRuntime
+        static_flask_runtime = AutoFrame0FlaskRuntime()
+        static_anchor_metadata = {"source":"auto_frame0_rgbtrack_observed",
+                                  "human_reviewed":False,
+                                  "reference_template_episode":args.position_template_episode}
+    if geometry_spec["target_flask_motion"] == "static" and static_anchor is not None and not args.masks_only:
+        from scripts.deploy.static_flask_runtime import StaticFlaskRuntime
+        static_flask_runtime = StaticFlaskRuntime(static_anchor)
     builder = OnlineObjectGeometryBuilder.from_meshes(
         funnel_mesh=args.funnel_mesh,
         flask_mesh=args.target_flask_mesh,
@@ -653,6 +712,24 @@ def main() -> int:
             )
             for name in OBJECTS
         }
+    if static_flask_runtime is not None:
+        from rgbtrack_flask_pivot import install_flask_upright_register
+        target_tracker = tracker_by_name["target_flask"]
+        original_ensure = target_tracker._ensure_estimator
+        flask_decisions = []
+        def ensure_training_flask_upright():
+            original_ensure()
+            if not flask_decisions:
+                install_flask_upright_register(
+                    target_tracker._estimator,
+                    target_tracker._mesh.vertices,
+                    calibration.T_base_color[:3, :3],
+                    flask_mouth_axis="auto",
+                    flask_init_tilt_deg=float(geometry_spec["rgbtrack"].get("flask_max_tilt_deg", 20)),
+                    flask_upright_max_rank=180,
+                    decisions=flask_decisions,
+                )
+        target_tracker._ensure_estimator = ensure_training_flask_upright
     # Force the optional JAX import to CPU; vision CUDA stays with PyTorch.
     os.environ.setdefault("JAX_PLATFORMS", "cpu")
     from openpi.spatial.config import make_baseline_config
@@ -677,6 +754,16 @@ def main() -> int:
                 if args.max_frames is not None and number >= max(0, args.max_frames):
                     break
                 started = time.perf_counter()
+                if args.register_missing_color_depth and "front_depth_color_aligned" not in raw:
+                    # Identical to training's export_training_episode_packets.py
+                    # registration. Never use a fabricated/resized RGB depth.
+                    if "front_depth_native" not in raw or "front_rgb" not in raw:
+                        raise KeyError("Live native depth and front RGB are both required")
+                    native=np.asarray(raw["front_depth_native"])
+                    color=np.asarray(raw["front_rgb"])
+                    aligned_m=registration_fn(native,registration_camera,color.shape[:2])
+                    aligned=np.asarray(aligned_m,dtype=np.float32)/np.float32(registration_camera.depth_scale_m_per_unit)
+                    raw={**raw,"front_depth_color_aligned":aligned}
                 packet = _validate_packet(source_path, raw)
                 frame_index = int(packet["frame_index"])
                 timestamp_s = float(packet["timestamp_s"])
@@ -685,7 +772,14 @@ def main() -> int:
                 last_timestamp = timestamp_s
                 rgb = packet["front_rgb"]
                 sam2_started = time.perf_counter()
-                masks, overlap = sam2_stream.predict(frame_index, rgb, packet)
+                # Reviewed point clicks are the authoritative initialization.
+                # Older replay packets may carry a DIFFERENT mask seed; do not
+                # silently replace the six-position training prompt semantics.
+                sam2_packet = dict(packet)
+                if prompts["initialization_provenance"]["seed_kind"] == "positive_negative_points":
+                    sam2_packet.pop("funnel_seed_mask", None)
+                    sam2_packet.pop("target_flask_seed_mask", None)
+                masks, overlap = sam2_stream.predict(frame_index, rgb, sam2_packet)
                 sam2_latency_ms = (time.perf_counter() - sam2_started) * 1000.0
                 object_masks = {name: masks[name][0] for name in OBJECTS}
                 pose_rows: dict[str, dict[str, Any]] = {}
@@ -694,7 +788,11 @@ def main() -> int:
                     mask, score, status, valid, recovery = masks[name]
                     corrected = status == "corrected"
                     object_pose_started = time.perf_counter()
-                    if corrected and name in tracker_by_name:
+                    if corrected and name == "target_flask" and static_flask_runtime is not None:
+                        # Keep the installed training upright selector on frame 0.
+                        # After frame 0, no target observation is consumed at all.
+                        pass
+                    elif corrected and name in tracker_by_name:
                         tracker_by_name[name] = RGBTrackObject(
                             repo_root=root,
                             object_name=name,
@@ -707,8 +805,21 @@ def main() -> int:
                         )
                     if name not in tracker_by_name:
                         pose_rows[name] = _invalid_pose(frame_index)
+                    elif name == "target_flask" and static_flask_runtime is not None:
+                        depth_m = packet["front_depth_color_aligned"].astype(np.float32) * calibration.depth_scale_m_per_unit
+                        if frame_index == 0 and not valid:
+                            raise ValueError("Cannot initialize static flask from invalid frame-0 SAM2 mask")
+                        pose_rows[name] = static_flask_runtime.next(
+                            frame_index=frame_index,
+                            tracker=tracker_by_name[name] if frame_index == 0 else None,
+                            rgb=rgb if frame_index == 0 else None,
+                            depth_m=depth_m if frame_index == 0 else None,
+                            mask=mask if frame_index == 0 else None,
+                            K=calibration.K_color if frame_index == 0 else None,
+                            T_base_color=calibration.T_base_color if frame_index == 0 else None,
+                        )
                     else:
-                        depth_m = packet["front_depth_raw"].astype(np.float32) * calibration.depth_scale_m_per_unit
+                        depth_m = packet["front_depth_color_aligned"].astype(np.float32) * calibration.depth_scale_m_per_unit
                         result = tracker_by_name[name].estimate(
                             frame_index=frame_index,
                             rgb=rgb,
@@ -731,15 +842,28 @@ def main() -> int:
                     pose_rows[name]["mask_valid"] = bool(valid)
                     pose_rows[name]["mask_status"] = status
                     pose_rows[name]["recovery"] = bool(recovery)
+                    if (name == "target_flask" and frame_index == 0
+                            and args.auto_static_flask_from_frame0):
+                        if not pose_rows[name]["valid"]:
+                            raise ValueError("Auto frame-0 flask is invalid; cannot freeze unknown geometry")
+                        builder.set_auto_frame0_static_target(pose_rows[name]["T_base_link_object"])
                     object_pose_ms = (time.perf_counter() - object_pose_started) * 1000.0
-                    pose_rows[name]["rgbtrack_latency_ms"] = object_pose_ms if name in tracker_by_name else 0.0
+                    pose_rows[name]["rgbtrack_latency_ms"] = object_pose_ms if name in tracker_by_name and not (name == "target_flask" and static_flask_runtime is not None and frame_index > 0) else 0.0
                     rgbtrack_latency_ms += pose_rows[name]["rgbtrack_latency_ms"]
 
                 geometry_started = time.perf_counter()
+                # The offline SpatialPreprocessor is authoritative for the 600 taxels.
+                # A separately supplied force vector must not silently override it.
+                force_norm = spatial_preprocessor.preprocess_tactile(packet["robot_state"]).force_norm
                 if "tactile_force_norm" in packet:
-                    force_norm = packet["tactile_force_norm"]
-                else:
-                    force_norm = spatial_preprocessor.preprocess_tactile(packet["robot_state"]).force_norm
+                    external_force = np.asarray(packet["tactile_force_norm"], dtype=np.float32)
+                    if not np.isfinite(external_force).all() or not np.allclose(
+                        external_force, force_norm, rtol=1e-4, atol=1e-5
+                    ):
+                        raise ValueError(
+                            "Packet tactile_force_norm diverges from canonical SpatialPreprocessor; "
+                            "refusing to mix different 600-taxel preprocessing"
+                        )
                 funnel_offset = packet.get("funnel_mask_hand_offset_xy")
                 geometry = builder.build_spatial_object_geometry(
                     frame_index=frame_index,
@@ -778,7 +902,8 @@ def main() -> int:
                     "front_rgb": packet["front_rgb"],
                     "left_rgb": packet["left_rgb"],
                     "right_rgb": packet["right_rgb"],
-                    "front_depth_raw": packet["front_depth_raw"],
+                    "front_depth_native": packet["front_depth_native"],
+                    "front_depth_color_aligned": packet["front_depth_color_aligned"],
                     "robot_state": packet["robot_state"],
                     "funnel_mask": object_masks["funnel"],
                     "target_flask_mask": object_masks["target_flask"],
@@ -840,13 +965,20 @@ def main() -> int:
                 "future_frames_used": False,
                 "sam2_checkpoint": str(args.sam2_checkpoint.expanduser().resolve()),
                 "sam2_checkpoint_sha256": __import__("hashlib").sha256(args.sam2_checkpoint.read_bytes()).hexdigest(),
-                "sam2_min_score": args.min_sam2_score,
+                "sam2_min_score": args.min_sam2_score if args.sam2_backend == "legacy_image" else None,
+                "sam2_backend": args.sam2_backend,
+                "sam2_score_available": args.sam2_backend == "legacy_image",
                 "sam2_source": str(sam2_source),
                 "rgbtrack_enabled": not args.masks_only,
                 "rgbtrack_submodule_revision": "23e43f832b82f4813d6ab72773779bf8d2ee4d83",
                 "scale_manifest": str(args.scale_manifest.expanduser().resolve()),
                 "training_geometry": geometry_spec,
                 "static_target_anchor_source": args.static_target_anchor_source,
+                "static_flask_runtime": (
+                    "f0_rgbtrack_observed_then_auto_static_prior" if args.auto_static_flask_from_frame0
+                    else "f0_training_upright_then_reviewed_static_prior" if static_flask_runtime
+                    else None
+                ),
                 "static_target_anchor": static_anchor_metadata,
                 "rgbtrack_training_policy": rgbtrack_runtime,
                 "front_calibration": calibration.provenance,

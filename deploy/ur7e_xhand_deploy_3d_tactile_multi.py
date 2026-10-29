@@ -41,6 +41,7 @@ uv run --group dev python deploy/render_pi0_diagnostics.py \
 import argparse
 import functools
 import importlib
+import io
 import json
 import logging
 import os
@@ -51,12 +52,165 @@ import termios
 import threading
 import time
 import tty
+import urllib.error
+import urllib.request
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Mapping, Optional
 
 import numpy as np
+
+# SELF-CONTAINED DEPLOYMENT CONTRACT: this file is copied by itself to the
+# robot-side LeRobot checkout. Keep the safety guard embedded here; no project-
+# local sibling module is importable on that host. Tests in the source checkout
+# re-export these same classes from deploy/contact_safety.py.
+TACTILE_START = 52
+FINGERS = 5
+FINGER_STRIDE = 384
+TAXELS = 120
+FORCE_OFFSET = 24
+EXPECTED_STATE = TACTILE_START + FINGERS * FINGER_STRIDE
+
+
+class SafetyTrip(RuntimeError):
+    """Latched unsafe or unavailable sensor reading; stop the entire run."""
+
+
+def _positive_scalar(value, name):
+    v=float(value)
+    if not np.isfinite(v) or v<=0:
+        raise ValueError(f"{name} must be a positive finite value")
+    return v
+
+
+def load_safety_limits(path: str | Path, *, plastic_probe: bool = False) -> dict:
+    """Only explicitly reviewed hardware limits can enable robot actuation."""
+    path=Path(path).expanduser().resolve()
+    cfg=json.loads(path.read_text(encoding="utf-8"))
+    required={
+        "schema_version","reviewed_for_glass_task",
+        "tactile_peak_limits_raw","tactile_emergency_step_change_limits_raw",
+        "tactile_replan_step_change_limits_raw", "replan_enabled",
+        "replan_min_interval_s", "arm_tcp_force_norm_limit_n",
+        "arm_tcp_torque_norm_limit_nm", "max_observation_gap_s"
+    }
+    if plastic_probe:
+        required=required|{"reviewed_for_plastic_probe"}
+    if not isinstance(cfg,dict) or set(cfg)!=required or cfg["schema_version"]!=1:
+        raise ValueError(f"Safety config must contain exactly {sorted(required)}")
+    if plastic_probe:
+        if cfg["reviewed_for_plastic_probe"] is not True or type(cfg["reviewed_for_glass_task"]) is not bool:
+            raise ValueError("Plastic-prop motion needs separately confirmed reviewed_for_plastic_probe=true")
+    elif cfg["reviewed_for_glass_task"] is not True:
+        raise ValueError("Safety configuration is not explicitly reviewed for glass manipulation")
+    # Live UR7eXHand.get_observation() provides two separate vectors.
+    # Their semantics are fixed at the device interface: [Fx,Fy,Fz] in N,
+    # [Tx,Ty,Tz] in Nm. Never accept a configurable hand torque substitute.
+    for key in ("tactile_peak_limits_raw","tactile_emergency_step_change_limits_raw",
+                "tactile_replan_step_change_limits_raw"):
+        v=np.asarray(cfg[key],dtype=float)
+        if v.shape!=(FINGERS,) or not np.isfinite(v).all() or np.any(v<=0):
+            raise ValueError(f"{key} must specify five positive raw-sensor thresholds")
+    emergency=np.asarray(cfg["tactile_emergency_step_change_limits_raw"],dtype=float)
+    replan=np.asarray(cfg["tactile_replan_step_change_limits_raw"],dtype=float)
+    if np.any(replan>=emergency):
+        raise ValueError("All replan thresholds must be strictly below emergency step-change thresholds")
+    if type(cfg["replan_enabled"]) is not bool:
+        raise ValueError("replan_enabled must be a boolean")
+    interval=float(cfg["replan_min_interval_s"])
+    if not np.isfinite(interval) or interval<0:
+        raise ValueError("replan_min_interval_s must be a finite nonnegative number")
+    for key in ("arm_tcp_force_norm_limit_n","arm_tcp_torque_norm_limit_nm","max_observation_gap_s"):
+        _positive_scalar(cfg[key],key)
+    return cfg
+
+
+def raw_tactile_finger_peaks(state) -> np.ndarray:
+    x=np.asarray(state,dtype=np.float64)
+    if x.shape!=(EXPECTED_STATE,) or not np.isfinite(x).all():
+        raise SafetyTrip(f"Missing/nonfinite canonical 1972-value XHand state: {x.shape}")
+    blocks=x[TACTILE_START:].reshape(FINGERS,FINGER_STRIDE)
+    forces=blocks[:,FORCE_OFFSET:].reshape(FINGERS,TAXELS,3)
+    return np.linalg.norm(forces,axis=-1).max(axis=1)
+
+
+class ContactSafetyGuard:
+    def __init__(self, config: Mapping, *, clock=time.monotonic):
+        self.cfg=dict(config)
+        self.clock=clock
+        self.last_time=None
+        self.last_peaks=None
+        self.tripped=None
+        self.last_replan_time=None
+        self.replan_events=0
+
+    def check(self, *, observation: Mapping, state):
+        if self.tripped is not None:
+            raise SafetyTrip(f"Safety already latched: {self.tripped}")
+        try:
+            now=float(self.clock())
+            if not np.isfinite(now):
+                raise SafetyTrip("Safety monotonic clock invalid")
+            if self.last_time is not None and now-self.last_time>float(self.cfg["max_observation_gap_s"]):
+                raise SafetyTrip(f"Safety polling gap {now-self.last_time:.3f}s exceeds configured maximum")
+            peaks=raw_tactile_finger_peaks(state)
+            limits=np.asarray(self.cfg["tactile_peak_limits_raw"],dtype=float)
+            overflow=np.flatnonzero(peaks>=limits)
+            if len(overflow):
+                i=int(overflow[0])
+                raise SafetyTrip(f"tactile_peak finger={i} raw={peaks[i]:.5g} >= {limits[i]:.5g}")
+            if self.last_peaks is not None:
+                step=np.abs(peaks-self.last_peaks)
+                emergency=np.asarray(self.cfg["tactile_emergency_step_change_limits_raw"],dtype=float)
+                jumps=np.flatnonzero(step>=emergency)
+                if len(jumps):
+                    i=int(jumps[0])
+                    raise SafetyTrip(f"tactile_emergency_step_change finger={i} raw_delta={step[i]:.5g} >= {emergency[i]:.5g}")
+            else:
+                step=np.zeros(FINGERS,dtype=float)
+            for key in ("arm_tcp_force","arm_tcp_torque"):
+                if key not in observation:
+                    raise SafetyTrip(f"Required measured UR TCP sensor missing: {key}; "
+                                     "XHand hand_joint_i.torque is motor current, NOT UR torque")
+            tcp_force=np.asarray(observation["arm_tcp_force"],dtype=np.float64)
+            tcp_torque=np.asarray(observation["arm_tcp_torque"],dtype=np.float64)
+            if tcp_force.shape!=(3,) or tcp_torque.shape!=(3,):
+                raise SafetyTrip(f"Invalid UR TCP force/torque shapes: {tcp_force.shape}, {tcp_torque.shape}")
+            if not np.isfinite(tcp_force).all() or not np.isfinite(tcp_torque).all():
+                raise SafetyTrip("Invalid non-finite UR TCP force/torque")
+            force=float(np.linalg.norm(tcp_force))
+            torque=float(np.linalg.norm(tcp_torque))
+            if force>=float(self.cfg["arm_tcp_force_norm_limit_n"]):
+                raise SafetyTrip(f"arm_tcp_force_norm {force:.5g} N exceeds threshold")
+            if torque>=float(self.cfg["arm_tcp_torque_norm_limit_nm"]):
+                raise SafetyTrip(f"arm_tcp_torque_norm {torque:.5g} Nm exceeds threshold")
+            replan_fingers=[]
+            if bool(self.cfg.get("replan_enabled",False)) and self.last_peaks is not None:
+                replan_limit=np.asarray(self.cfg["tactile_replan_step_change_limits_raw"],dtype=float)
+                events=np.flatnonzero(step>=replan_limit)
+                if len(events) and (
+                    self.last_replan_time is None
+                    or now-self.last_replan_time>=float(self.cfg["replan_min_interval_s"])
+                ):
+                    replan_fingers=[int(i) for i in events]
+                    self.last_replan_time=now
+                    self.replan_events+=1
+            self.last_time=now
+            self.last_peaks=peaks.copy()
+            return {"tactile_finger_peaks_raw":peaks.tolist(),
+                    "tactile_finger_step_change_raw":step.tolist(),
+                    "arm_tcp_force_norm_n":force,"arm_tcp_torque_norm_nm":torque,
+                    "replan_recommended":bool(replan_fingers),
+                    "replan_triggered_fingers":replan_fingers,
+                    "replan_events_so_far":self.replan_events}
+        except SafetyTrip as exc:
+            self.tripped=str(exc)
+            raise
+        except (ValueError,TypeError,KeyError) as exc:
+            self.tripped=f"Safety sensor failure: {exc}"
+            raise SafetyTrip(self.tripped) from exc
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent if (SCRIPT_DIR.parent / "src").is_dir() else SCRIPT_DIR
 sys.path.insert(0, str(REPO_ROOT / "src"))
@@ -64,7 +218,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 DEFAULT_DATASET_ROOT = REPO_ROOT / "data"
 DEFAULT_DATASET_NAME = "grasp_pipette"
-DEFAULT_TASK = "press the button 4 times and put it into the box"
+DEFAULT_TASK = "Pick up the glass funnel, align its stem with the opening of the small beaker, and insert it until it is fully seated."
 DEFAULT_SERVER_PORT = 8990
 TACTILE_SENSOR_COUNT = 5
 TACTILE_BLOCK_SIZE = 384
@@ -79,6 +233,14 @@ INDEX_SPLAY_DEADZONE_MIN_RAD = -0.2
 INDEX_SPLAY_DEADZONE_MAX_RAD = 0.0
 DEBUG_INFER_PRINT_LIMIT = 3
 DIAGNOSTIC_CONTROL_BLOCK_FRAMES = 30
+# Hard-coded joint travel bounds for ONE plastic-prop motion probe only.
+PROBE_MAX_STEPS = 16
+PROBE_ARM_STEP_RAD = 0.012
+PROBE_HAND_STEP_RAD = 0.025
+PROBE_ARM_TOTAL_RAD = 0.15
+PROBE_HAND_TOTAL_RAD = 0.30
+PROBE_ARM_IDLE_DRIFT_RAD = 0.03
+PROBE_HAND_IDLE_DRIFT_RAD = 0.06
 
 FALLBACK_STATE_NAMES = [
     *[f"arm_joint_{i}.pos" for i in range(6)],
@@ -527,6 +689,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
     parser.add_argument("--dataset-name", type=str, default=DEFAULT_DATASET_NAME)
+    parser.add_argument("--scene-position", type=int, choices=(1,2,3,4,5,6), default=None,
+                        help="Choose scene 1..6 (1=E0 flask+E23 funnel, 2=E23, 3=E38, 4=E49, 5=E58, 6=E65). "
+                             "ONLY those clicks are reused; applies to CURRENT live first RGB frame. "
+                             "Select for each robot run; no server restart needed.")
     parser.add_argument("--task", type=str, default=DEFAULT_TASK)
     parser.add_argument("--prompt", type=str, default=None, help="Override prompt sent to PI0 server.")
     parser.add_argument("--fps", type=int, default=15)
@@ -607,7 +773,24 @@ def parse_args() -> argparse.Namespace:
         default=INDEX_SPLAY_DEADZONE_MAX_RAD,
         help="Upper bound for the index-splay action dead zone.",
     )
+    parser.add_argument("--contact-safety-config", type=Path,
+                        help="Mandatory reviewed XHand tactile + measured arm TCP wrench limits for any actuating run")
     parser.add_argument("--dry-run", action="store_true", help="Run inference without sending policy actions; home reset still runs unless --no-home is set")
+    parser.add_argument(
+        "--actuation-probe-steps", type=int, default=0,
+        help="Explicitly opt in to one bounded 1..16-step REAL robot motion probe. "
+             "Requires --no-home, --run-mode single, calibrated reviewed --contact-safety-config; "
+             "not authorization for glass or continuous multi-chunk control."
+    )
+    parser.add_argument("--live-packet-url", type=str,
+                        help="SENSOR-ONLY HTTP receiver /frame on inference host. "
+                             "No Pi0 websocket, no homing or policy actions.")
+    parser.add_argument("--live-packet-frames", type=int, default=48,
+                        help="Max raw LeRobot frame packets to send in sensor-only mode")
+    parser.add_argument("--capture-observation-audit", type=Path,
+                        help="Read-only robot/camera observation probe: no PI0 server, home reset or action sending")
+    parser.add_argument("--capture-audit-frames", type=int, default=5,
+                        help="How many live observations to audit without any policy control")
     parser.add_argument("--check-config", action="store_true", help="Validate dataset wiring and exit")
     parser.add_argument("--yes", action="store_true", help="Skip interactive start confirmation")
     parser.add_argument("--verbose", action="store_true")
@@ -787,6 +970,10 @@ def build_robot(args: argparse.Namespace):
             servo_time=1.0 / args.arm_control_freq,
             servo_lookahead_time=1.0 / args.arm_control_freq,
             max_relative_target=args.arm_max_relative_target,
+            # Required by the independent contact interlock; UR7eXHand
+            # exposes arm_tcp_force (3 N) and arm_tcp_torque (3 Nm).
+            # These are EXTRA observation keys; do not append to 1972-state.
+            record_tcp_force_torque=True,
             cameras={},
         ),
         hand_config=xhand_config.XHandConfig(
@@ -1020,6 +1207,37 @@ def make_hold_action_chunk(obs: dict, action_names: list[str], n_action_steps: i
     return np.repeat(current_action[None, :], repeats=n_action_steps, axis=0)
 
 
+
+def limit_probe_joint_targets(*, requested, observed, starting, action_names):
+    """Clamp per-step and total displacement of one short 18D plastic-prop probe."""
+    values=np.asarray(requested,dtype=np.float64)
+    current=np.asarray(observed,dtype=np.float64)
+    origin=np.asarray(starting,dtype=np.float64)
+    if values.shape!=(18,) or current.shape!=(18,) or origin.shape!=(18,):
+        raise SafetyTrip("Actuation probe requires exactly 18 arm/hand joint positions")
+    if list(action_names)!=FALLBACK_ACTION_NAMES or not (
+        np.isfinite(values).all() and np.isfinite(current).all() and np.isfinite(origin).all()
+    ):
+        raise SafetyTrip("Actuation probe invalid joint ordering or non-finite readings")
+    step=np.asarray([PROBE_ARM_STEP_RAD]*6+[PROBE_HAND_STEP_RAD]*12,dtype=np.float64)
+    total=np.asarray([PROBE_ARM_TOTAL_RAD]*6+[PROBE_HAND_TOTAL_RAD]*12,dtype=np.float64)
+    if np.any(np.abs(current-origin)>total+0.01):
+        raise SafetyTrip("Robot outside bounded motion-probe displacement envelope")
+    limited=np.clip(values,origin-total,origin+total)
+    limited=np.clip(limited,current-step,current+step)
+    limited=np.clip(limited,origin-total,origin+total)
+    return limited.astype(np.float32)
+
+
+def check_probe_inference_idle_drift(before_obs, after_obs, action_names):
+    """Reject external drift while Pi0 was blocking and NO commands were sent."""
+    before=get_current_action(before_obs,action_names)
+    after=get_current_action(after_obs,action_names)
+    delta=np.abs(after-before)
+    if not np.isfinite(delta).all() or np.any(delta[:6]>PROBE_ARM_IDLE_DRIFT_RAD) or np.any(delta[6:]>PROBE_HAND_IDLE_DRIFT_RAD):
+        raise SafetyTrip("Robot moved during blocked Pi0 inference; refusing probe actions")
+
+
 def request_action_chunk(
     *,
     client: WebsocketClientPolicy,
@@ -1187,6 +1405,33 @@ def prepare_robot_for_policy_run(robot, args: argparse.Namespace, run_index: int
         input(f"Press ENTER to start PI0 run {run_label}. Use Ctrl+C to stop: ")
 
 
+
+def raw_hand_scene_history_frame(obs, state, args, ordinal):
+    """Original per-control-frame inputs; NO robot-side segmentation/registration.
+
+    Runs only when the WebSocket server specifically advertises its geometry
+    service. The SAME rgb/depth/state fields go to ordinary Pi0 and the
+    causal perception history. Uncalibrated wrist stays an RGB-only image.
+    """
+    frame={
+        "frame_index":np.asarray(int(ordinal),dtype=np.int64),
+        "timestamp_s":np.asarray(time.monotonic(),dtype=np.float64),
+        "robot_state":np.asarray(state,dtype=np.float32).copy(),
+        "front_depth_native":np.asarray(get_depth(obs,"cam_front")).copy(),
+    }
+    for role in ("front","left","right"):
+        frame[f"{role}_rgb"]=get_image(
+            obs,f"cam_{role}",args.realsense_height,args.realsense_width).copy()
+    if frame["robot_state"].shape!=(1972,) or not np.isfinite(frame["robot_state"]).all():
+        raise ValueError("Hand-scene frame requires finite 1972-dimensional state")
+    if frame["front_depth_native"].shape!=(480,640) or frame["front_depth_native"].dtype!=np.uint16:
+        raise ValueError("Hand-scene frame requires original uint16 LeRobot Front depth")
+    for role in ("front","left","right"):
+        if frame[f"{role}_rgb"].shape!=(480,640,3) or frame[f"{role}_rgb"].dtype!=np.uint8:
+            raise ValueError(f"Invalid original LeRobot {role} RGB image")
+    return frame
+
+
 def run_policy_once(
     *,
     robot,
@@ -1209,7 +1454,22 @@ def run_policy_once(
     active_query_id = -1
     active_fallback = False
     end_reason = "duration"
+    safety = ContactSafetyGuard(args.contact_safety_limits) if args.contact_safety_limits is not None else None
+    probe_steps=int(args.actuation_probe_steps)
+    probe_origin=None
+    probe_commands=0
     client.reset()
+    use_server_geometry=bool(getattr(args,"server_metadata",{}).get("hand_scene_geometry_service",False))
+    history=[]
+    geometry_ordinal=0
+    geometry_session=f"{uuid.uuid4().hex}-{run_index}"
+    if use_server_geometry:
+        available=getattr(args,"server_metadata",{}).get("hand_scene_positions",[])
+        if args.scene_position is None or args.scene_position not in available:
+            raise ValueError(f"Choose --scene-position from server reviewed 2D prompt sets {available}")
+    if use_server_geometry and not args.dry_run and probe_steps==0:
+        raise ValueError("Full geometry actuation is blocked; only explicit "
+                         "--actuation-probe-steps 1..16 with reviewed contact limits is permitted")
     recorder = (
         DiagnosticRecorder(
             root_dir=args.record_dir,
@@ -1241,6 +1501,25 @@ def run_policy_once(
                 loop_start = time.perf_counter()
                 obs = robot.get_observation()
                 env_state = build_env_state(obs, state_names)
+                if use_server_geometry:
+                    # Store EVERY raw observed step, even when Pi0 is not
+                    # queried yet; SAM2 video memory cannot skip 15 control
+                    # frames and claim continuous causal tracking.
+                    if len(history)>=64:
+                        raise ValueError("Unprocessed hand-scene frame backlog exceeds 64: "
+                                         "no silent geometry-frame dropping")
+                    history.append(raw_hand_scene_history_frame(obs,env_state,args,geometry_ordinal))
+                    geometry_ordinal+=1
+                contact_event = None
+                if safety is not None:
+                    contact_event = safety.check(observation=obs, state=env_state)
+                if contact_event is not None and contact_event["replan_recommended"]:
+                    # Moderate tactile event: invalidate unexecuted actions.
+                    # This is an explicitly enabled POLICY SCHEDULER, not a safety stop.
+                    action_chunk = None
+                    print(f"[CONTACT REPLAN] frame={frame_idx} finger(s)="
+                          f"{contact_event['replan_triggered_fingers']}; "
+                          "discarded remaining chunk, querying current observation",flush=True)
 
                 should_query = (
                     action_chunk is None
@@ -1259,6 +1538,18 @@ def run_policy_once(
                         current_action_step=current_action_step,
                         frame_idx=frame_idx,
                     )
+                    if use_server_geometry:
+                        if not history:
+                            raise ValueError("Empty current hand-scene history")
+                        observation["hand_scene_session"]=geometry_session
+                        observation["hand_scene_position"]=int(args.scene_position)
+                        observation["hand_scene_history"]=list(history)
+                        # Client's current state/camera/depth must equal the
+                        # last geometry observation, even for event replanning.
+                        observation["observation.state"]=history[-1]["robot_state"]
+                        observation["observation.depths.cam_front"]=history[-1]["front_depth_native"]
+                        for role in ("front","left","right"):
+                            observation[f"observation.images.cam_{role}"]=history[-1][f"{role}_rgb"]
                     if recorder is not None:
                         recorder.record_query_input(
                             query_id=query_id,
@@ -1271,6 +1562,7 @@ def run_policy_once(
                             query_index=current_action_step,
                             mode=args.policy_input_mode,
                         )
+                    pre_inference_obs=obs if probe_steps else None
                     infer_attempt_start = time.perf_counter()
                     try:
                         action_chunk, inference_result, infer_ms = request_action_chunk(
@@ -1289,9 +1581,27 @@ def run_policy_once(
                                 client_roundtrip_ms=infer_ms,
                             )
                         n_action_steps = action_chunk.shape[0]
+                        if probe_steps:
+                            # No motion was commanded during inference; refresh
+                            # all sensors before the first actuation command.
+                            obs=robot.get_observation()
+                            check_probe_inference_idle_drift(pre_inference_obs,obs,action_names)
+                            fresh_state=build_env_state(obs,state_names)
+                            safety=ContactSafetyGuard(args.contact_safety_limits)
+                            safety.check(observation=obs,state=fresh_state)
+                            probe_origin=get_current_action(obs,action_names).copy()
+                            print(f"[PROBE] fresh sensors after {infer_ms:.0f}ms idle inference; "
+                                  f"at most {probe_steps} limited commands",flush=True)
+                        if use_server_geometry:
+                            # All pending frames were accepted and included
+                            # in the geometry of the successful inference.
+                            history.clear()
                         current_action_step += 1
                         active_fallback = False
                     except Exception as exc:
+                        if probe_steps:
+                            raise SafetyTrip(f"Motion probe inference/fresh-sensor precheck failed; "
+                                             f"no actions sent: {exc}") from exc
                         infer_ms = (time.perf_counter() - infer_attempt_start) * 1000.0
                         print(f"Inference failed; holding current pose: {exc}", flush=True)
                         if recorder is not None:
@@ -1307,6 +1617,21 @@ def run_policy_once(
                         active_fallback = True
                     chunk_idx = 0
 
+                # Inference may block for hundreds of milliseconds. Refresh sensors
+                # BEFORE the next command; never execute a stale chunk blindly.
+                if should_query and safety is not None and not probe_steps:
+                    obs = robot.get_observation()
+                    env_state = build_env_state(obs, state_names)
+                    after_infer_contact = safety.check(observation=obs, state=env_state)
+                    if after_infer_contact["replan_recommended"]:
+                        # Never execute a stale action after contact changed
+                        # during blocking inference. A safe new query happens
+                        # only on a later loop iteration, with fresh sensors.
+                        print(f"[CONTACT REPLAN] frame={frame_idx} changed during inference; "
+                              "discarding action chunk; no command sent",flush=True)
+                        action_chunk = None
+                        frame_idx += 1
+                        continue
                 query_count += 1
                 executed_chunk_step = chunk_idx
                 raw_action = action_chunk[chunk_idx].copy()
@@ -1323,6 +1648,22 @@ def run_policy_once(
                     action = apply_index_splay_deadzone(action, action_names, args)
                 previous_action = action.copy()
 
+                if probe_steps:
+                    # Fresh force/tactile/state immediately before EACH command.
+                    obs=robot.get_observation()
+                    env_state=build_env_state(obs,state_names)
+                    probe_contact=safety.check(observation=obs,state=env_state)
+                    if probe_contact["replan_recommended"]:
+                        raise SafetyTrip("Probe contact changed; stop rather than schedule new Pi0 inference")
+                    if probe_origin is None:
+                        raise SafetyTrip("No validated probe origin")
+                    action=limit_probe_joint_targets(
+                        requested=action,observed=get_current_action(obs,action_names),
+                        starting=probe_origin,action_names=action_names,
+                    )
+                    print(f"[PROBE] command={probe_commands+1}/{probe_steps} "
+                          f"max_arm_travel={np.max(np.abs(action[:6]-probe_origin[:6])):.4f} "
+                          f"max_hand_travel={np.max(np.abs(action[6:]-probe_origin[6:])):.4f} rad",flush=True)
                 action_dict = action_array_to_dict(action, action_names)
                 if args.dry_run:
                     print(
@@ -1334,6 +1675,13 @@ def run_policy_once(
                     )
                 else:
                     robot.send_action(action_dict)
+                    if probe_steps:
+                        probe_commands+=1
+                        if probe_commands>=probe_steps:
+                            end_reason="probe_command_limit"
+                            print(f"[PROBE COMPLETE] {probe_commands} bounded commands; stopping robot",flush=True)
+                            robot.stop()
+                            break
 
                 elapsed = time.perf_counter() - loop_start
                 if recorder is not None:
@@ -1357,6 +1705,14 @@ def run_policy_once(
                 if elapsed < dt:
                     time.sleep(dt - elapsed)
                 frame_idx += 1
+    except SafetyTrip as exc:
+        end_reason = "contact_safety_trip"
+        print(f"[CONTACT SAFETY] Latched failure: {exc}. No further commands in this run.",flush=True)
+        # Application-level stop: must be validated against physical UR/XHand
+        # behavior, independent hardware E-stop / protective stop still needed.
+        if not args.dry_run:
+            robot.stop()
+        raise
     except KeyboardInterrupt:
         end_reason = "keyboard_interrupt"
         raise
@@ -1370,6 +1726,189 @@ def run_policy_once(
     suffix = " by RIGHT arrow" if finished_by_key else ""
     print(f"Spatial PI0 run {run_index} finished{suffix} after {frame_idx} frames.")
     return frame_idx
+
+
+
+def _audit_shape(value):
+    """Minimal, non-sensitive schema report; do not reinterpret raw camera depth."""
+    if isinstance(value, dict):
+        return {"kind": "dict", "keys": sorted(map(str,value))}
+    try:
+        arr=np.asarray(value)
+    except (TypeError,ValueError):
+        return {"kind": type(value).__name__}
+    if arr.dtype.kind in "iufb":
+        result={"kind":"array","shape":list(arr.shape),"dtype":str(arr.dtype)}
+        if arr.size and arr.dtype.kind in "iuf":
+            finite=arr[np.isfinite(arr)]
+            result["nonfinite_count"]=int(arr.size-finite.size)
+            result["nonzero_count"]=int(np.count_nonzero(finite))
+        return result
+    return {"kind":type(value).__name__}
+
+
+def capture_observation_audit(robot, args: argparse.Namespace, state_names: list[str]) -> None:
+    """Read actual live fields only. Output is NOT a validated perception packet.
+
+    Depth comes from the existing LeRobot accessor but may be RAW, aligned,
+    rescaled, or filtered. Never assign front_depth_native or aligned keys.
+    """
+    out=args.capture_observation_audit.expanduser().resolve()
+    if out.exists():
+        raise FileExistsError(f"Refusing to overwrite live observation audit: {out}")
+    out.mkdir(parents=True,exist_ok=False)
+    records=[]
+    n=int(args.capture_audit_frames)
+    if n<1 or n>100:
+        raise ValueError("--capture-audit-frames must be 1..100")
+    print("[AUDIT-ONLY] Connecting to read sensors. No policy server, homing, tactile reset or actions.",flush=True)
+    for i in range(n):
+        start_ns=time.monotonic_ns()
+        obs=robot.get_observation()
+        end_ns=time.monotonic_ns()
+        state=build_env_state(obs,state_names)
+        raw_keys=sorted(map(str,obs))
+        arm_obs=robot.arm.get_observation()
+        arm_keys=sorted(map(str,arm_obs))
+        if state.shape!=(1972,) or not np.isfinite(state).all():
+            raise ValueError(f"Live state does not meet training contract [1972]: {state.shape}")
+        arrays={"robot_state":state,"capture_start_monotonic_ns":np.asarray(start_ns,dtype=np.int64),
+                "capture_end_monotonic_ns":np.asarray(end_ns,dtype=np.int64)}
+        diagnostics={}
+        # Only store the SDK's actual values, including separate UR TCP force
+        # and torque vectors; NEVER invent zeros when missing.
+        for key,unit in (("arm_tcp_force","N"),("arm_tcp_torque","Nm")):
+            raw=obs.get(key)
+            if raw is None:
+                diagnostics[key]={"status":"missing","expected_shape":[3],"unit":unit}
+                continue
+            sample=np.asarray(raw,dtype=np.float64)
+            if sample.shape!=(3,) or not np.isfinite(sample).all():
+                raise ValueError(f"Invalid live {key} shape or values: {sample.shape}")
+            arrays[key]=sample
+            diagnostics[key]={"status":"captured_unverified", "shape":[3],"unit":unit,
+                              "norm":float(np.linalg.norm(sample)),
+                              "sdk_provenance":"record_tcp_force_torque=True, not calibrated or freshness-verified"}
+
+        for role in ("front","left","right"):
+            camera_name="cam_"+role
+            try:
+                arrays[role+"_rgb"]=get_image(obs,camera_name,args.realsense_height,args.realsense_width)
+                diagnostics[role+"_rgb"]={"status":"captured","shape":list(arrays[role+"_rgb"].shape)}
+            except (KeyError,TypeError,ValueError) as exc:
+                diagnostics[role+"_rgb"]={"status":"missing","error":str(exc)}
+        try:
+            # The existing LeRobot getter does NOT prove camera depth is native.
+            candidate=np.asarray(get_depth(obs,"cam_front"))
+            if candidate.ndim!=2 or candidate.dtype.kind not in "iuf" or not np.isfinite(candidate).all():
+                raise ValueError(f"Unexpected front depth candidate shape/dtype {candidate.shape}/{candidate.dtype}")
+            arrays["front_depth_coordinate_system_UNVERIFIED"]=candidate
+            diagnostics["front_depth"]={"status":"captured_unverified",
+                                        "shape":list(candidate.shape),"dtype":str(candidate.dtype),
+                                        "depth_coordinate_system":"UNKNOWN",
+                                        "depth_scale_m_per_unit":"UNKNOWN"}
+        except (KeyError,TypeError,ValueError) as exc:
+            diagnostics["front_depth"]={"status":"missing_or_invalid","error":str(exc)}
+        try:
+            # Raw 120-taxel/5-finger force vectors, using the TRAINING 1972 layout.
+            peaks=raw_tactile_finger_peaks(state)
+            diagnostics["tactile"]={
+                "per_finger_max_raw":peaks.astype(float).tolist(),
+                "all_raw_taxels_zero":bool(np.all(peaks==0.)),
+                "raw_tactile_freshness_verified":False,
+                "warning":"All-zero taxels do not prove working XHand sensors; SDK may hold prior/placeholder data",
+            }
+        except (ValueError,TypeError) as exc:
+            diagnostics["tactile"]={"error":str(exc)}
+        torque_key_hints=tuple(k for k in raw_keys+arm_keys if any(
+            word in k.lower() for word in ("wrench","actual_tcp_force","tcp_force","joint_torque","joint_effort","ft_sensor")))
+        record={"audit_index":i,"start_monotonic_ns":start_ns,"end_monotonic_ns":end_ns,
+                "observation_keys":raw_keys,"arm_observation_keys":arm_keys,
+                "observation_schema":{key:_audit_shape(value) for key,value in obs.items()},
+                "arm_observation_schema":{key:_audit_shape(value) for key,value in arm_obs.items()},
+                "torque_or_wrench_key_candidates_NOT_VERIFIED":list(torque_key_hints),
+                "diagnostics":diagnostics,
+                "never_sent_robot_action":True}
+        records.append(record)
+        file=out/f"audit_{i:04d}.npz"
+        with file.open("xb") as stream:
+            np.savez_compressed(stream,**arrays)
+        print(f"[AUDIT-ONLY] {i+1}/{n}: rgb={[k for k in arrays if k.endswith('_rgb')]} "
+              f"depth={diagnostics['front_depth']['status']} "
+              f"UR_force={diagnostics['arm_tcp_force']['status']} "
+              f"UR_torque={diagnostics['arm_tcp_torque']['status']}",flush=True)
+        if i+1<n:
+            time.sleep(max(0.,1.0/max(1,args.fps)-(time.monotonic_ns()-start_ns)*1e-9))
+    report={"schema_version":1,"mode":"READ_ONLY_UNVERIFIED_SENSOR_DISCOVERY",
+            "frames":n,"no_home_reset":True,"no_actions_sent":True,"pi0_server_used":False,
+            "depth_provenance":"UNVERIFIED; do not use audit NPZ as front_depth_native in policy",
+            "tcp_wrench_provenance":"UR7eConfig.record_tcp_force_torque=True; split arm_tcp_force/arm_tcp_torque; "
+                                     "units/reference frame/timestamp/force bias require physical verification",
+            "records":records}
+    (out/"observation_schema.json").write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+    print("[AUDIT-ONLY] schema:",out/"observation_schema.json",flush=True)
+
+
+
+
+def capture_live_packet_stream(robot,args:argparse.Namespace,state_names:list[str])->None:
+    """Send EXACT LeRobot RGB/raw depth/state fields to inference computer.
+
+    This branch never touches PI0 websocket, sends an arm action, homes or
+    resets tactile. Receiver registers front depth with shared training
+    rgbtrack_adapter rather than reimplementing calibration on robot host.
+    """
+    target=args.live_packet_url
+    if not isinstance(target,str) or not target.startswith("http://") or not target.endswith("/frame"):
+        raise ValueError("--live-packet-url must be http://<trusted-inference-host>:<port>/frame")
+    token=os.environ.get("OPENPI_LIVE_PACKET_TOKEN","")
+    if len(token)<16:
+        raise ValueError("Set the same OPENPI_LIVE_PACKET_TOKEN on robot and inference host")
+    n=int(args.live_packet_frames)
+    if not 1<=n<=1000:
+        raise ValueError("--live-packet-frames must be in 1..1000")
+    dt=1.0/max(1,args.fps)
+    print(f"[LIVE SENSOR-ONLY] frames={n}, destination={target}; NO actuation",flush=True)
+    for frame in range(n):
+        started=time.monotonic()
+        observation=robot.get_observation()
+        state=build_env_state(observation,state_names)
+        if state.shape!=(1972,) or not np.isfinite(state).all():
+            raise ValueError(f"Live robot state invalid: {state.shape}")
+        rgb={}
+        for role in ("front","left","right"):
+            image=get_image(observation,f"cam_{role}",args.realsense_height,args.realsense_width)
+            if image.dtype!=np.uint8 or image.shape!=(args.realsense_height,args.realsense_width,3):
+                raise ValueError(f"Invalid {role} RGB {image.shape} {image.dtype}")
+            rgb[role+"_rgb"]=image
+        # In LeRobot training this SAME observation.depths.cam_front was
+        # persisted to parquet; do not align, normalize or resample here.
+        raw_depth=np.asarray(get_depth(observation,"cam_front"))
+        if raw_depth.dtype!=np.uint16 or raw_depth.shape!=(args.realsense_height,args.realsense_width):
+            raise ValueError(f"Live LeRobot front depth unexpected: {raw_depth.dtype} {raw_depth.shape}")
+        packet=dict(rgb,front_depth_native=raw_depth,robot_state=state,
+                    timestamp_s=np.asarray(started,dtype=np.float64),
+                    frame_index=np.asarray(frame,dtype=np.int64))
+        buffer=io.BytesIO()
+        np.savez_compressed(buffer,**packet)
+        request=urllib.request.Request(
+            target,data=buffer.getvalue(),method="POST",
+            headers={"Content-Type":"application/octet-stream",
+                     "X-Live-Packet-Token":token})
+        try:
+            with urllib.request.urlopen(request,timeout=30.) as response:
+                ack=json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            message=exc.read().decode("utf-8",errors="replace")
+            raise RuntimeError(f"Live receiver rejected frame {frame}: HTTP {exc.code} {message}") from exc
+        if ack.get("accepted_frame")!=frame or ack.get("no_robot_action") is not True:
+            raise RuntimeError(f"Invalid live receiver acknowledgement at frame={frame}: {ack}")
+        print(f"[LIVE SENSOR-ONLY] forwarded frame={frame}/{n-1}, "
+              f"elapsed_ms={(time.monotonic()-started)*1000:.1f}",flush=True)
+        remaining=dt-(time.monotonic()-started)
+        if remaining>0:
+            time.sleep(remaining)
+
 
 
 def iter_run_indices(args: argparse.Namespace):
@@ -1400,12 +1939,43 @@ def main() -> int:
         raise ValueError("--max-action-chunk-size must be positive")
     if args.record_queue_size <= 0:
         raise ValueError("--record-queue-size must be positive")
+    if not 1 <= args.capture_audit_frames <= 100:
+        raise ValueError("--capture-audit-frames must be 1..100")
+    if args.capture_observation_audit is not None and args.check_config:
+        raise ValueError("--capture-observation-audit and --check-config cannot be combined")
+    if args.capture_observation_audit is not None and args.live_packet_url is not None:
+        raise ValueError("Choose either offline observation audit or live packet forwarding")
+    if args.live_packet_url is not None and args.check_config:
+        raise ValueError("--live-packet-url and --check-config cannot be combined")
     if args.num_runs < 0:
         raise ValueError("--num-runs must be non-negative")
+    if not 0<=args.actuation_probe_steps<=PROBE_MAX_STEPS:
+        raise ValueError(f"--actuation-probe-steps must be 0..{PROBE_MAX_STEPS}")
+    if args.actuation_probe_steps:
+        if args.dry_run or not args.no_home or args.run_mode!="single":
+            raise ValueError("Motion probe needs no --dry-run, --no-home and --run-mode single")
+        if args.contact_safety_config is None:
+            raise ValueError("Motion probe requires independently reviewed --contact-safety-config")
+        if args.max_action_chunk_size<args.actuation_probe_steps:
+            raise ValueError("Motion probe steps must fit within ONE chunk; "
+                             "--max-action-chunk-size >= --actuation-probe-steps")
+        if args.query_frequency<=args.actuation_probe_steps:
+            raise ValueError("Motion probe cannot requery; --query-frequency must exceed --actuation-probe-steps")
+        if args.action_scale!=1.0 or args.smoothing_alpha!=1.0:
+            raise ValueError("Motion probe requires unchanged absolute joint angles; no action scaling/smoothing")
+        if args.arm_max_relative_target>0.02:
+            raise ValueError("Motion probe requires --arm-max-relative-target <= 0.02")
     if args.tactile_reset_verify_threshold < 0:
         raise ValueError("--tactile-reset-verify-threshold must be non-negative")
     if args.index_splay_deadzone_min > args.index_splay_deadzone_max:
         raise ValueError("--index-splay-deadzone-min must be <= --index-splay-deadzone-max")
+    if (not args.dry_run and args.contact_safety_config is None and not args.check_config
+            and args.capture_observation_audit is None and args.live_packet_url is None):
+        raise ValueError("Actuation forbidden without --contact-safety-config; this is not a hardware E-stop")
+    args.contact_safety_limits = (
+        load_safety_limits(args.contact_safety_config, plastic_probe=bool(args.actuation_probe_steps))
+        if args.contact_safety_config is not None else None
+    )
     require_ethercat_permissions(args)
 
     dataset_dir = resolve_dataset_dir(args)
@@ -1442,7 +2012,50 @@ def main() -> int:
     print(f"FPS: {args.fps}, duration: {args.duration}s")
     print(f"Run mode: {args.run_mode}, num_runs: {'until Ctrl+C' if args.num_runs == 0 else args.num_runs}")
     print(f"Dry run: {args.dry_run}")
+    if args.actuation_probe_steps:
+        print(f"[PROBE] {args.actuation_probe_steps} real commands maximum; "
+              f"per-step arm/hand <= {PROBE_ARM_STEP_RAD}/{PROBE_HAND_STEP_RAD} rad; "
+              f"total travel arm/hand <= {PROBE_ARM_TOTAL_RAD}/{PROBE_HAND_TOTAL_RAD} rad",flush=True)
     print(f"Diagnostic recording: {args.record_dir if args.record_dir is not None else 'disabled'}")
+
+    if args.capture_observation_audit is not None:
+        # Standalone sensor-only mode: no policy server, no reset-to-home,
+        # no contact controller, and never execute a model action.
+        args.spatial_cameras=("front",)
+        args.spatial_use_visual=True
+        args.spatial_use_tactile=True
+        validate_state_schema(state_names,args)
+        robot=build_robot(args)
+        try:
+            robot.connect(calibrate=False)
+            if not robot.is_connected:
+                raise RuntimeError("Sensor audit robot connection failed")
+            capture_observation_audit(robot,args,state_names)
+        finally:
+            if robot.is_connected:
+                robot.disconnect()
+        return 0
+
+    if args.live_packet_url is not None:
+        # Exactly like audit: standalone robot-side sensor-only streaming.
+        args.spatial_cameras=("front",)
+        args.spatial_use_visual=True
+        args.spatial_use_tactile=True
+        validate_state_schema(state_names,args)
+        if args.realsense_width!=640 or args.realsense_height!=480:
+            raise ValueError("Live packet receiver expects training RGB-D 640x480")
+        if not os.environ.get("OPENPI_LIVE_PACKET_TOKEN"):
+            raise ValueError("OPENPI_LIVE_PACKET_TOKEN is required for live packet forwarding")
+        robot=build_robot(args)
+        try:
+            robot.connect(calibrate=False)
+            if not robot.is_connected:
+                raise RuntimeError("Sensor-only robot connection failed")
+            capture_live_packet_stream(robot,args,state_names)
+        finally:
+            if robot.is_connected:
+                robot.disconnect()
+        return 0
 
     if args.check_config:
         configure_input_mode_from_metadata(args, metadata=None)
@@ -1472,6 +2085,22 @@ def main() -> int:
         )
     configure_input_mode_from_metadata(args, metadata)
     validate_state_schema(state_names, args)
+    if args.actuation_probe_steps and not metadata.get("hand_scene_history_required",False):
+        raise ValueError("Motion probe requires the verified hand-scene geometry server, not a legacy Pi0 policy")
+    if metadata.get("hand_scene_history_required",False):
+        if args.scene_position not in tuple(metadata.get("hand_scene_positions",())):
+            raise ValueError(f"This WebSocket geometry server requires --scene-position, "
+                             f"select from {metadata.get('hand_scene_positions')}")
+        print(f"[SCENE] using selected 2D human keypoints {args.scene_position} "
+              "on CURRENT camera frame 0; flask pose re-estimated via RGBTrack",flush=True)
+        if not args.dry_run and not args.actuation_probe_steps:
+            raise ValueError("Hand-scene full closed-loop actuation is not enabled. "
+                             "Use --actuation-probe-steps 1..16 for one bounded plastic-prop test.")
+        if args.realsense_width!=640 or args.realsense_height!=480:
+            raise ValueError("Hand-scene server expects recorded 640x480 RGB-D")
+        if "front" not in args.spatial_cameras:
+            raise ValueError("Hand-scene server requires original front RGB-D")
+
     print(f"Policy input mode: {args.policy_input_mode}")
     print(f"Spatial depth cameras: {', '.join(args.spatial_cameras) if args.spatial_cameras else 'none'}")
     print(f"Spatial visual input: {args.spatial_use_visual}")

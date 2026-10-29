@@ -347,6 +347,16 @@ class CausalHandSceneState:
         self.tactile_missing_frames = 0
         self.tactile_discontinuous_frames = 0
 
+    def reset(self) -> None:
+        """Reset all per-episode causal state."""
+        self._reference = None
+        self._previous = None
+        self._previous_frame = None
+        self.tactile_frames_total = 0
+        self.tactile_frames_valid = 0
+        self.tactile_missing_frames = 0
+        self.tactile_discontinuous_frames = 0
+
     def _tactile_path(self, episode: int, frame: int) -> Path | None:
         if self.tactile_root is None:
             return None
@@ -372,12 +382,26 @@ class CausalHandSceneState:
         return value
 
     def next(self, *, episode: int, frame: int) -> dict[str, np.ndarray]:
-        self.tactile_frames_total += 1
         if self.spatial_tactile is not None:
             force = self.spatial_tactile.get_force_norm(episode, frame)
         else:
             tactile_path = self._tactile_path(episode, frame)
             force = _load_tactile_force(tactile_path) if tactile_path else None
+        return self.next_from_arrays(
+            frame=frame,
+            force_norm=force,
+            funnel_mask=load_downsampled_mask(self.mask_root, object_name="funnel", frame_index=frame),
+            funnel_mask_hand_offset_xy=self._offset(episode, frame),
+        )
+
+    def next_from_arrays(
+        self, *, frame: int, force_norm: np.ndarray | None,
+        funnel_mask: np.ndarray | None = None,
+        funnel_mask_hand_offset_xy: np.ndarray | None = None,
+    ) -> dict[str, np.ndarray]:
+        """Run the identical causal state machine for a live or offline frame."""
+        self.tactile_frames_total += 1
+        force = force_norm
         frame_contiguous = self._previous_frame is None or int(frame) == self._previous_frame + 1
         tactile_valid = force is not None and np.asarray(force).shape == (TACTILE_POINT_COUNT,) and np.isfinite(force).all()
         if not frame_contiguous:
@@ -405,11 +429,20 @@ class CausalHandSceneState:
             self._previous = current.copy()
             self.tactile_frames_valid += 1
         self._previous_frame = int(frame)
-        mask = load_downsampled_mask(self.mask_root, object_name="funnel", frame_index=frame)
-        offset = self._offset(episode, frame)
+        mask = None if funnel_mask is None else np.asarray(funnel_mask, dtype=bool)
+        offset = None if funnel_mask_hand_offset_xy is None else np.asarray(funnel_mask_hand_offset_xy, dtype=np.float32)
+        if mask is not None and mask.ndim != 2:
+            raise ValueError("funnel_mask must be 2D")
+        if offset is not None and (offset.shape != (2,) or not np.isfinite(offset).all()):
+            raise ValueError("hand offset must be finite [2]")
         mask_valid = mask is not None and offset is not None
         if mask_valid:
-            mask_value = mask
+            if mask.shape != (FUNNEL_MASK_SIZE, FUNNEL_MASK_SIZE):
+                import cv2
+                mask_value = cv2.resize(mask.astype(np.uint8), (FUNNEL_MASK_SIZE, FUNNEL_MASK_SIZE),
+                                        interpolation=cv2.INTER_NEAREST).astype(bool)
+            else:
+                mask_value = mask
             mask_quality = np.asarray(1.0, dtype=np.float32)
             offset_value = offset
         else:

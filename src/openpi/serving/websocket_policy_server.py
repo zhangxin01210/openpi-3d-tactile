@@ -24,17 +24,23 @@ class WebsocketPolicyServer:
         host: str = "0.0.0.0",
         port: int | None = None,
         metadata: dict | None = None,
+        infer_threaded: bool = False,
     ) -> None:
         self._policy = policy
         self._host = host
         self._port = port
         self._metadata = metadata or {}
+        # Heavy RGBTrack+SAM2/JAX can block for seconds. When enabled,
+        # move inference off the event loop so WebSocket pings remain alive.
+        self._infer_threaded = bool(infer_threaded)
+        self._infer_lock = None
         logging.getLogger("websockets.server").setLevel(logging.INFO)
 
     def serve_forever(self) -> None:
         asyncio.run(self.run())
 
     async def run(self):
+        self._infer_lock = asyncio.Lock() if self._infer_threaded else None
         async with _server.serve(
             self._handler,
             self._host,
@@ -58,7 +64,14 @@ class WebsocketPolicyServer:
                 obs = msgpack_numpy.unpackb(await websocket.recv())
 
                 infer_time = time.monotonic()
-                action = self._policy.infer(obs)
+                if self._infer_threaded:
+                    # Serialize access to the single causal state machine and
+                    # JAX model: two clients must not interleave frames.
+                    assert self._infer_lock is not None
+                    async with self._infer_lock:
+                        action = await asyncio.to_thread(self._policy.infer, obs)
+                else:
+                    action = self._policy.infer(obs)
                 infer_time = time.monotonic() - infer_time
 
                 action["server_timing"] = {

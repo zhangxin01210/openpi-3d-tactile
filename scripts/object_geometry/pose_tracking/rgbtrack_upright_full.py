@@ -75,6 +75,8 @@ def main()->int:
                         help="Max angle from base_link +Z of funnel CAD +Z at initialization")
     parser.add_argument("--upright-max-rank",type=int,default=150,
                         help="Reject a candidate if ranked worse than this in RGBTrack's original scorer")
+    parser.add_argument("--install-runtime-only",action="store_true",
+                        help="Install the training pose hooks in-process without running an episode.")
     args=parser.parse_args()
     if not (0<args.upright_max_tilt_deg<90):parser.error("tilt must be (0,90) degrees")
     if args.upright_max_rank<1:parser.error("upright-max-rank must be >=1")
@@ -181,6 +183,9 @@ def main()->int:
     adapter.RGBTrackObject._ensure_estimator=ensure_with_selection
     print("[UPRIGHT INIT] Existing RGBTrack candidate set, scorer and refiner unchanged.",flush=True)
     print("[UPRIGHT INIT] Only funnel's FIRST registration is constrained; later re-registration is unrestricted.",flush=True)
+    if args.install_runtime_only:
+        print("[UPRIGHT INIT] Hooks installed for causal caller.",flush=True)
+        return 0
     rc=adapter.run(args)
     if not decisions:raise RuntimeError("Funnel initial register was never called")
     print("[UPRIGHT INIT] outputs:",out,flush=True)
