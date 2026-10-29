@@ -32,6 +32,8 @@ CAUSAL_FIELDS = (
     "current_minus_ema_force_norm", "current_minus_previous_force_norm",
     "reference_valid", "previous_valid", "sample_valid", "alpha",
 )
+DEFAULT_TASK = ("Pick up the glass funnel, align its stem with the opening of the small "
+                "beaker, and insert it until it is fully seated.")
 ARM_NAMES = ("shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
              "wrist_1_joint", "wrist_2_joint", "wrist_3_joint")
 FINGER_LINK_NAMES = (
@@ -179,8 +181,9 @@ def _vary(raw, geo, donor_raw, donor_geo, *, zero=False):
     return new_raw, new_geo
 
 
-def _observation(raw, geo):
+def _observation(raw, geo, prompt=DEFAULT_TASK):
     return {
+        "prompt": prompt,
         "observation.images.cam_front": raw["front_rgb"],
         "observation.images.cam_left": raw["left_rgb"],
         "observation.images.cam_right": raw["right_rgb"],
@@ -285,7 +288,7 @@ def run_model(args):
             for transform in getattr(pre,"transforms",()):
                 reset=getattr(transform,"reset_tactile_ema",None)
                 if callable(reset): reset()
-            result=policy.infer(_observation(obs_raw,obs_geo),noise=noise)["actions"]
+            result=policy.infer(_observation(obs_raw,obs_geo,args.prompt),noise=noise)["actions"]
             actions=np.asarray(result,dtype=np.float64)
             if actions.ndim!=2 or actions.shape[1]!=18 or not np.isfinite(actions).all():
                 raise ValueError(f"Bad predicted actions {actions.shape}")
@@ -341,6 +344,7 @@ def run_model(args):
         "source_frames":str(args.frames_dir.resolve()),"contact_frame":args.contact_frame,
         "pre_tactile_frame":args.pre_tactile_frame,"post_tactile_frame":args.post_tactile_frame,
         "noise_seed":args.noise_seed,"chunk_steps":args.chunk_steps,"frames":frames,
+        "prompt":args.prompt,
         "motion_frame":"right_hand_link (palm), URDF FK, base_link xyz",
         "z_sign":"positive = +base_link Z, negative = -base_link Z; NOT verified insertion axis",
         "disclaimer":"Open-loop predicted ABSOLUTE joint targets. FK assumes perfect following; no robot dynamics, no execution, no confirmed contact.",
@@ -355,7 +359,7 @@ def compare_runs(args):
         directory=Path(path).resolve()
         current=json.loads((directory/"analysis_meta.json").read_text())
         if meta is None: meta=current
-        for field in ("source_frames","contact_frame","pre_tactile_frame","post_tactile_frame","noise_seed","chunk_steps","frames"):
+        for field in ("source_frames","contact_frame","pre_tactile_frame","post_tactile_frame","noise_seed","chunk_steps","frames","prompt"):
             if current[field]!=meta[field]:
                 raise ValueError(f"Non-matched {field}: {name}, cannot claim same input")
         with (directory/"intent.csv").open(newline="") as f: rows=list(csv.DictReader(f))
@@ -421,6 +425,7 @@ def main():
     p.add_argument("--stride",type=int,default=8)
     p.add_argument("--chunk-steps",type=int,default=16)
     p.add_argument("--noise-seed",type=int,default=42)
+    p.add_argument("--prompt",default=DEFAULT_TASK)
     p.add_argument("--run",action="append",default=[],metavar="NAME=DIR")
     args=p.parse_args()
     if args.mode=="compare":
