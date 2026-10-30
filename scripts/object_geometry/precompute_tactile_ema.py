@@ -37,7 +37,12 @@ def precompute(
     skipped = 0
     for episode in sorted(selected):
         filter_state = CausalTactileEMA(tau_s=tau_s, taxel_count=source.tactile_points_per_frame)
-        frame_ids = sorted(frame for ep, frame in source._records if int(ep) == int(episode))  # noqa: SLF001
+        # The spatial sidecar indexes frames by episode shards (not _records).
+        frame_ids = sorted(
+            int(frame)
+            for shard in source._episode_shards[int(episode)]
+            for frame in np.load(shard.root / "frame_index.npy", mmap_mode="r")
+        )
         for frame in frame_ids:
             sample = source.get(episode_index=episode, frame_index=frame)
             state_path = output_root / f"e{episode:03d}" / f"f{frame:06d}.npz"
