@@ -569,12 +569,34 @@ def _batch(
                 _write_batch_failure_html(batch_root / f"e{episode:03d}" / "pose_failure.html", report)
                 reports.append(report)
                 continue
+            # The legacy 1018 geometry-scale manifest is *not* suitable for
+            # arbitrary new objects. Require an explicit reviewed manifest
+            # for other dataset IDs before launching the GPU tracker.
+            scale_setting = config.get("rgbtrack", {}).get("scale_manifest")
+            if not scale_setting and config.get("dataset_id") != "1018_peg_all":
+                report.update(status="pending_review", stage="pose", failure_reason="new_dataset_requires_rgbtrack_scale_manifest")
+                _write_batch_failure_html(batch_root / f"e{episode:03d}" / "pose_failure.html", report)
+                reports.append(report)
+                continue
+            scale_manifest = _path(repo_root, scale_setting or "data/pose_eval/hand_scene_metric_mesh_scales.json")
+            if not scale_manifest.is_file():
+                report.update(status="pending_review", stage="pose", failure_reason=f"scale_manifest_missing:{scale_manifest}")
+                _write_batch_failure_html(batch_root / f"e{episode:03d}" / "pose_failure.html", report)
+                reports.append(report)
+                continue
             env = os.environ.copy()
             group = report["position_group"]
             env.update({
                 "REPO": str(repo_root),
                 "HOI": str(hoi_root),
                 "MASK_ROOT": str(mask_root),
+                "FRAMES": str(frame_root),
+                "DATASET": str(paths["dataset_root"]),
+                "CAMERA": str(paths["front_calibration"]),
+                "METRIC": str(scale_manifest),
+                "FUNNEL": str(_asset_config(config, paths, "funnel")[0]),
+                "FLASK": str(_asset_config(config, paths, "target_flask")[0]),
+                "RENDER_HTML": env.get("RENDER_HTML", "0"),
                 "RUN_TAG": run_tag,
                 # The existing tracker keeps the reviewed SAM2 masks as its
                 # source of truth.  These variables make the selected
