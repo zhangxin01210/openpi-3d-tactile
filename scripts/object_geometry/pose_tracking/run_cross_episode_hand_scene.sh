@@ -47,8 +47,8 @@ RAW="$BASE/e${EP}_crosscheck_native_upright_${TAG}"
 PIVOT="$BASE/e${EP}_crosscheck_flask_pivot_${TAG}"
 FINAL="$BASE/e${EP}_crosscheck_static_target_${TAG}"
 VIZ="$REPO/output/hand_scene_qa/e${EP}_crosscheck_static_target_${TAG}"
-# Standalone review keeps the historic HTML behavior. Batch production sets RENDER_HTML=0.
-RENDER_HTML="${RENDER_HTML:-1}"
+# Production defaults to fast JSON QA. Opt in for reviewed episodes: RENDER_HTML=1 bash ...
+RENDER_HTML="${RENDER_HTML:-0}"
 [[ "$RENDER_HTML" == 0 || "$RENDER_HTML" == 1 ]] || { echo "RENDER_HTML must be 0 or 1" >&2; exit 2; }
 for f in "$RAW" "$PIVOT" "$FINAL"; do [[ ! -e "$f" ]] || { echo "Refuse overwrite: $f" >&2; exit 2; }; done
 if [[ "$RENDER_HTML" == 1 && -e "$VIZ" ]]; then echo "Refuse overwrite: $VIZ" >&2; exit 2; fi
