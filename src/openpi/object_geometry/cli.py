@@ -274,6 +274,7 @@ def _auto_pose_quality(
     failure_count = 0
     recovery_count = 0
     previous_valid = None
+    previous_valid_frame = None
     for row in funnel:
         funnel_valid.append(bool(row.valid))
         try:
@@ -285,11 +286,14 @@ def _auto_pose_quality(
             failure_count += 1
         if "recover" in row.status.lower():
             recovery_count += 1
-        if previous_valid is not None and row.valid:
+        if (previous_valid is not None and row.valid
+                and previous_valid_frame is not None
+                and row.frame_index == previous_valid_frame + 1):
             translation_jumps.append(float(np.linalg.norm(matrix[:3, 3] - previous_valid[:3, 3])))
             rotation_jumps.append(_rotation_delta_deg(previous_valid, matrix))
         if row.valid:
             previous_valid = matrix
+            previous_valid_frame = row.frame_index
     failure_count += invalid_matrices
     flask_static_valid = True
     flask_translation_drift = 0.0
@@ -930,7 +934,7 @@ def _qa(config: dict[str, Any], paths: dict[str, Path], episodes: list[int], *, 
             mask = getattr(sample, f"{name}_mask")
             if xyz.shape != (512, 3) or not np.isfinite(xyz).all():
                 raise ValueError(f"Invalid {name} cloud at e{episode} f{frame}")
-            metrics[f"{name}_points_valid"] += int(np.asarray(mask, dtype=bool).sum())
+            metrics["funnel_points_valid" if name == "manipulated" else "target_points_valid"] += int(np.asarray(mask, dtype=bool).sum())
         if sample.hand_scene is not None:
             metrics["funnel_valid"] += int(bool(sample.hand_scene.manipulated_relation_valid))
             metrics["target_valid"] += int(bool(sample.hand_scene.target_relation_valid))
