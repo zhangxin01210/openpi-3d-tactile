@@ -1,5 +1,7 @@
 # Level-1 object-geometry workflow
 
+For the new data operator, start with [the quick handoff guide](../../docs/object_geometry/new_operator_handoff.md). The RGBTrack cross-episode runner now defaults to fast JSON QA without full-episode HTML; use `RENDER_HTML=1` only for selected manual reviews.
+
 These wrappers preserve the tested prototype workflow while keeping the full
 SAM2/data dependency outside the formal package. The source-of-truth snapshot
 is in `tools/hoi_level1_snapshot/scripts/`.
