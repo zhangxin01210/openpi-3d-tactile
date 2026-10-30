@@ -47,7 +47,11 @@ RAW="$BASE/e${EP}_crosscheck_native_upright_${TAG}"
 PIVOT="$BASE/e${EP}_crosscheck_flask_pivot_${TAG}"
 FINAL="$BASE/e${EP}_crosscheck_static_target_${TAG}"
 VIZ="$REPO/output/hand_scene_qa/e${EP}_crosscheck_static_target_${TAG}"
-for f in "$RAW" "$PIVOT" "$FINAL" "$VIZ"; do [[ ! -e "$f" ]] || { echo "Refuse overwrite: $f" >&2; exit 2; };done
+# Standalone review keeps the historic HTML behavior. Batch production sets RENDER_HTML=0.
+RENDER_HTML="${RENDER_HTML:-1}"
+[[ "$RENDER_HTML" == 0 || "$RENDER_HTML" == 1 ]] || { echo "RENDER_HTML must be 0 or 1" >&2; exit 2; }
+for f in "$RAW" "$PIVOT" "$FINAL"; do [[ ! -e "$f" ]] || { echo "Refuse overwrite: $f" >&2; exit 2; }; done
+if [[ "$RENDER_HTML" == 1 && -e "$VIZ" ]]; then echo "Refuse overwrite: $VIZ" >&2; exit 2; fi
 # Same algorithm and 90px gate as the successful e23 run. No per-episode tuning.
 echo "[1/4] e${EP} RGBTrack upright native recovery: $RAW"
 "$RUNNER" -u "$D/rgbtrack_native_upright.py" \
@@ -71,16 +75,20 @@ echo "[2/4] e${EP} independent flask first-frame upright registration: $PIVOT"
 echo "[3/4] e${EP} freeze initial flask anchor: $FINAL"
 "$PY" -u "$D/freeze_target_flask_anchor.py" \
   --source-pose-run "$PIVOT" --output "$FINAL" --episode "$EP" --anchor-frame 0
-# Standard interactive full-frame QA: existing renderer, no retraining/model additions.
-echo "[4/4] e${EP} interactive 3D QA: $VIZ"
-"$PY" -u "$D/visualize_rgbtrack_full_episode.py" \
-  --repo-root "$REPO" --dataset "$DATASET" --episode "$EP" \
-  --pose-run "$FINAL" --output "$VIZ" --frames-dir "$FRAMES" --viz-stride 1
-# The existing renderer hardcodes e23 in its filename even when --episode differs.
-# Rename only this NEW output so reviewers cannot accidentally confuse episodes.
-HTML_SRC="$VIZ/hand_scene_dynamic_e23.html"
-HTML_DST="$VIZ/hand_scene_dynamic_e${EP}.html"
-[[ -s "$HTML_SRC" ]] || { echo "Missing rendered HTML: $HTML_SRC" >&2; exit 2; }
-mv -- "$HTML_SRC" "$HTML_DST"
+# This lightweight JSON summary always runs, even in production mode without HTML.
 "$PY" "$D/summarize_cross_episode_hand_scene.py" --pose-run "$FINAL" --output "$FINAL/crosscheck_summary.json"
-printf '\n[POSE FINAL] %s\n[HTML] %s\n[SUMMARY] %s\n' "$FINAL" "$HTML_DST" "$FINAL/crosscheck_summary.json"
+if [[ "$RENDER_HTML" == 1 ]]; then
+  echo "[4/4] e${EP} interactive 3D QA: $VIZ"
+  "$PY" -u "$D/visualize_rgbtrack_full_episode.py" \
+    --repo-root "$REPO" --dataset "$DATASET" --episode "$EP" \
+    --pose-run "$FINAL" --output "$VIZ" --frames-dir "$FRAMES" --viz-stride 1
+  # The existing renderer hardcodes e23 in its filename even when --episode differs.
+  HTML_SRC="$VIZ/hand_scene_dynamic_e23.html"
+  HTML_DST="$VIZ/hand_scene_dynamic_e${EP}.html"
+  [[ -s "$HTML_SRC" ]] || { echo "Missing rendered HTML: $HTML_SRC" >&2; exit 2; }
+  mv -- "$HTML_SRC" "$HTML_DST"
+  printf '\n[POSE FINAL] %s\n[HTML] %s\n[SUMMARY] %s\n' "$FINAL" "$HTML_DST" "$FINAL/crosscheck_summary.json"
+else
+  echo "[4/4] e${EP} skip expensive interactive HTML (RENDER_HTML=0)"
+  printf '\n[POSE FINAL] %s\n[HTML] skipped\n[SUMMARY] %s\n' "$FINAL" "$FINAL/crosscheck_summary.json"
+fi
