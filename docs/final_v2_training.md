@@ -46,8 +46,9 @@ From the A800 checkout root, set `OPENPI_PI0_BASE_WEIGHTS` and
 `OPENPI_1018_FRONT_PROFILE`, `OPENPI_1028_FRONT_PROFILE`, and/or
 `OPENPI_1030_FRONT_PROFILE` to each dataset's **original** profile file when
 required by its manifest. A file with equivalent JSON but a different SHA256 is
-not a replacement. Full preflight rejects missing object calibration provenance
-or a mismatching profile. Investigate provenance rather than disabling checks.
+not a replacement. For the three accepted v1 datasets, a missing object
+calibration field produces `LEGACY_UNRECORDED`: object calibration provenance
+is unknown and has not been verified. Recorded calibration is checked strictly.
 
 Each dataset shares `assets/xhand/<dataset>_unified_v1/norm_stats.json` across
 its configurations. The native π0 pipeline uses mean/std; the native π0.5
@@ -91,6 +92,10 @@ CONFIG --resume`. The default experiment name is `final_v2`; override with
 `OPENPI_FINAL_V2_EXP_NAME`. The trainer refuses an existing directory unless
 resume is requested. Check `logs/final_v2/` for commit, config, sidecars and
 weight source, and `checkpoints/CONFIG/EXPERIMENT/` for saved steps.
+
+To avoid repeating a full preflight that has already passed, append
+`--skip-preflight` to the training command. Normal DataLoader initialization
+and its existing data and Spatial calibration checks still run.
 
 Local checks: V2 module, configuration, simulated sidecar join and router
 tests passed (10 tests); the online, configuration, join and relation suite

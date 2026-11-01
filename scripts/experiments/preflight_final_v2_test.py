@@ -1,4 +1,5 @@
 import dataclasses
+import json
 from types import SimpleNamespace
 
 import preflight_final_v2 as preflight
@@ -76,3 +77,26 @@ def test_main_prints_start_and_finish_for_each_config(monkeypatch, capsys):
     assert output.index("[START] first") < output.index("[READY FOR SMOKE] first")
     assert output.index("[READY FOR SMOKE] first") < output.index("[START] second")
     assert output.index("[START] second") < output.index("[READY FOR SMOKE] second")
+
+
+def test_full_preflight_reports_unrecorded_calibration_as_warning(tmp_path, monkeypatch):
+    name = "pi0_xhand_1028_press_button_full_v2"
+    cfg = _config_with_assets(name, tmp_path)
+    root = tmp_path / "1028_press_button"
+    path = root / "object_geometry/v1/manifest.json"
+    path.parent.mkdir(parents=True)
+    manifest = {"role_to_object": {"manipulated": "button", "target": "box"},
+                "coordinate_frame": "base_link", "object_geometry_contract": {"point_count": 512}}
+    path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(config, "get_config", lambda _: cfg)
+    monkeypatch.setattr(data_loader, "resolve_local_lerobot_root", lambda _: root)
+    monkeypatch.setattr(data_loader, "_V2_LOCAL_DATASETS", frozenset({str(root)}))
+    cfg = dataclasses.replace(cfg, data=dataclasses.replace(
+        cfg.data, object_geometry=dataclasses.replace(cfg.data.object_geometry, dataset_root=str(root))))
+    result = preflight.inspect(name)
+    assert result["checks"]["CALIBRATION"] == "LEGACY_UNRECORDED"
+    assert "cannot be considered verified" in result["warnings"][0]
+    manifest["calibration"] = {"calibration_mode": "profile", "profile": {"sha256": "0" * 64}}
+    path.write_text(json.dumps(manifest))
+    result = preflight.inspect(name)
+    assert result["checks"]["CALIBRATION"] == "FAIL"

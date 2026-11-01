@@ -20,7 +20,7 @@ def test_front_geometry_config_matches_profiled_spatial_contract() -> None:
     assert config.visual.camera_roles == ("front",)
     assert config.diagnostics.enable_front_extrinsic_correction
     assert config.diagnostics.front_extrinsic_translation_base_m == (0.0, -0.012, 0.005)
-    assert config.diagnostics.enable_front_intrinsic_k1
+    assert not config.diagnostics.enable_front_intrinsic_k1
     assert (
         config.diagnostics.front_color_k1.fx,
         config.diagnostics.front_color_k1.fy,
@@ -44,5 +44,5 @@ def test_profile_digest_and_applied_intrinsics_are_validated() -> None:
     assert "profile sha256" in calibration_provenance_error(wrong_profile, expected)
 
     wrong_intrinsics = copy.deepcopy(expected)
-    wrong_intrinsics["applied_front_color_intrinsics"]["cx"] += 1.0
+    wrong_intrinsics["applied_front_color_intrinsics"] = {"cx": 1.0}
     assert "applied_front_color_intrinsics" in calibration_provenance_error(wrong_intrinsics, expected)

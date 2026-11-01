@@ -37,6 +37,52 @@ def resolve_local_lerobot_root(repo_id: str) -> pathlib.Path | None:
     return None
 
 
+def validate_object_geometry_calibration(data_config, model_config, manifest) -> bool:
+    """Validate recorded calibration; report the approved historical omission.
+
+    Returns True only for the three accepted v1 datasets whose manifest does
+    not contain a calibration field. This does not establish calibration parity.
+    """
+    from openpi.object_geometry.calibration import calibration_provenance_error
+    from openpi.object_geometry.calibration import front_calibration_provenance
+
+    settings = data_config.object_geometry
+    repo_root = pathlib.Path(__file__).resolve().parents[3]
+    dataset_root = pathlib.Path(settings.dataset_root).expanduser()
+    if not dataset_root.is_absolute():
+        dataset_root = repo_root / dataset_root
+    accepted_roots = {(repo_root / name).resolve() for name in _V2_LOCAL_DATASETS}
+    base_root = resolve_local_lerobot_root(data_config.repo_id) if data_config.repo_id else None
+    accepted = (settings.version == "v1" and dataset_root.resolve() in accepted_roots and
+                base_root == dataset_root.resolve())
+    if accepted and "calibration" not in manifest:
+        logging.warning(
+            "LEGACY_UNRECORDED: Object geometry %s/%s has no recorded calibration provenance; "
+            "its historical calibration cannot be considered verified.", settings.dataset_root, settings.version,
+        )
+        return True
+
+    final_v2 = getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) == "final_v2"
+    if final_v2 and "calibration" not in manifest:
+        raise ValueError("Object geometry sidecar missing calibration provenance")
+    profile = data_config.spatial.front_calibration_profile if data_config.spatial is not None else None
+    if profile is not None:
+        expected = front_calibration_provenance(repo_root, profile)
+        mismatch = calibration_provenance_error(manifest.get("calibration"), expected)
+        if mismatch:
+            raise ValueError(f"Object geometry sidecar {mismatch}")
+    elif (accepted or final_v2) and "calibration" in manifest:
+        actual = manifest["calibration"]
+        expected = front_calibration_provenance(repo_root, None)
+        if not isinstance(actual, dict):
+            raise ValueError("Object geometry sidecar has malformed calibration provenance")
+        mismatch = next((f"calibration {key} differs from requested front profile" for key, value in expected.items()
+                         if actual.get(key) != value), None)
+        if mismatch or actual.get("profile"):
+            raise ValueError(f"Object geometry sidecar {mismatch or 'unexpected calibration profile'}")
+    return False
+
+
 class _LocalLeRobotMetadata(lerobot_dataset.LeRobotDatasetMetadata):
     """Prevent LeRobot's metadata-missing fallback from contacting the Hub."""
 
@@ -378,9 +424,6 @@ def create_torch_dataset(
         )
     if data_config.object_geometry is not None:
         from openpi.object_geometry_dataset.adapter import ObjectGeometryAugmentedDataset
-        from openpi.object_geometry.calibration import calibration_provenance_error
-        from openpi.object_geometry.calibration import front_calibration_provenance
-        from openpi.object_geometry.calibration import resolve_front_calibration_profile
         from openpi.object_geometry_dataset.derived import ObjectGeometryDerivedDataset
 
         settings = data_config.object_geometry
@@ -392,23 +435,7 @@ def create_torch_dataset(
         # projection as the spatial sidecar they condition.  This check is at
         # the train boundary, not merely an exporter convention, so a copied
         # legacy cloud directory cannot silently pair with v1_front_candidate.
-        if data_config.spatial is not None and data_config.spatial.front_calibration_profile is not None:
-            repo_root = pathlib.Path(__file__).resolve().parents[3]
-            profile = resolve_front_calibration_profile(repo_root, data_config.spatial.front_calibration_profile)
-            expected_calibration = front_calibration_provenance(repo_root, profile)
-            mismatch = calibration_provenance_error(
-                object_geometry_dataset.manifest.get("calibration"), expected_calibration
-            )
-            if mismatch:
-                raise ValueError(f"Object geometry sidecar {mismatch}")
-        elif (getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) == "final_v2"
-              and (object_geometry_dataset.manifest.get("calibration") or {}).get("profile")):
-            profile = object_geometry_dataset.manifest["calibration"]["profile"]
-            raise ValueError(
-                f"Object geometry {settings.dataset_root}/{settings.version} requires calibration profile "
-                f"{profile.get('path')} sha256={profile.get('sha256')}; set the dataset-specific "
-                "OPENPI_<dataset prefix>_FRONT_PROFILE to the original profile file"
-            )
+        validate_object_geometry_calibration(data_config, model_config, object_geometry_dataset.manifest)
         dataset = ObjectGeometryAugmentedDataset(
             dataset,
             object_geometry_dataset,

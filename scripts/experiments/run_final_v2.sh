@@ -10,10 +10,16 @@ configs=(
   pi0_xhand_1018_peg_all_st_v2 pi0_xhand_1018_peg_all_full_v2
 )
 selection=${1:-all}
-resume=${2:-}
-if [[ -n "$resume" && "$resume" != "--resume" ]]; then
-  echo "Usage: $0 [all|CONFIG_NAME] [--resume]" >&2; exit 2
-fi
+if [[ $# -gt 0 ]]; then shift; fi
+resume=false
+skip_preflight=false
+for option in "$@"; do
+  case "$option" in
+    --resume) resume=true ;;
+    --skip-preflight) skip_preflight=true ;;
+    *) echo "Usage: $0 [all|CONFIG_NAME] [--resume] [--skip-preflight]" >&2; exit 2 ;;
+  esac
+done
 if [[ "$selection" == all ]]; then selected=("${configs[@]}"); else
   selected=()
   for item in "${configs[@]}"; do [[ "$item" == "$selection" ]] && selected+=("$item"); done
@@ -29,9 +35,13 @@ for config in "${selected[@]}"; do
     printf 'git_status:\n'; git status --short
     printf 'config: %s\nexperiment: %s\n' "$config" "$exp_name"
     PYTHONPATH=src "$python_bin" -c 'import sys; from openpi.training.config import get_config; c=get_config(sys.argv[1]); print("dataset:",c.data.repo_id,"spatial:",c.data.spatial,"object:",c.data.object_geometry,"base:",c.weight_loader)' "$config"
-    PYTHONPATH=src "$python_bin" scripts/experiments/preflight_final_v2.py --config "$config"
+    if [[ "$skip_preflight" == true ]]; then
+      printf 'Preflight skipped; normal training DataLoader checks remain enabled.\n'
+    else
+      PYTHONPATH=src "$python_bin" scripts/experiments/preflight_final_v2.py --config "$config"
+    fi
     cmd=("$python_bin" scripts/train.py "$config" --exp-name "$exp_name")
-    [[ "$resume" == "--resume" ]] && cmd+=(--resume)
+    [[ "$resume" == true ]] && cmd+=(--resume)
     PYTHONPATH=src "${cmd[@]}"
   } 2>&1 | tee -a "$log"
 done

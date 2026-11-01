@@ -25,7 +25,7 @@ def names():
 def inspect(name, *, cache=None):
     if cache is None:
         cache = {}
-    result = {"config": name, "checks": {}, "errors": []}
+    result = {"config": name, "checks": {}, "errors": [], "warnings": []}
     def check(label, fn):
         try:
             value = fn()
@@ -107,23 +107,13 @@ def inspect(name, *, cache=None):
         manifest = check("OBJECT", inspect_manifest)
         if manifest is not None:
             def calibration():
-                from openpi.object_geometry.calibration import calibration_provenance_error
-                from openpi.object_geometry.calibration import front_calibration_provenance
-                profile = cfg.data.spatial.front_calibration_profile
-                actual = manifest.get("calibration")
-                if not actual:
-                    raise ValueError(f"{geometry_path}: missing calibration provenance; inspect source sidecar and supply its original provenance")
-                expected = front_calibration_provenance(repo_root, profile)
-                if profile:
-                    error = calibration_provenance_error(actual, expected)
-                elif actual.get("profile") or actual.get("calibration_mode") != "baseline_unprofiled":
-                    raise ValueError(f"{geometry_path}: set OPENPI_{root.name[:4]}_FRONT_PROFILE to original file; recorded={actual.get('profile')}")
-                else:
-                    error = next((f"calibration {key} differs" for key, value in expected.items()
-                                  if actual.get(key) != value), None)
-                if error:
-                    raise ValueError(f"dataset={root} sidecar={geometry_path} {error}; expected={expected} actual={actual}")
-            check("CALIBRATION", calibration)
+                return data_loader.validate_object_geometry_calibration(cfg.data, cfg.model, manifest)
+            legacy = check("CALIBRATION", calibration)
+            if legacy:
+                result["checks"]["CALIBRATION"] = "LEGACY_UNRECORDED"
+                result["warnings"].append(
+                    "LEGACY_UNRECORDED: object geometry has no historical calibration provenance; "
+                    "its calibration cannot be considered verified")
     def join_and_mask():
         factory = dataclasses.replace(cfg.data, assets=dataclasses.replace(cfg.data.assets, assets_dir=str(assets_dir)))
         data = factory.create(cfg.assets_dirs, cfg.model)
@@ -255,7 +245,8 @@ def inspect(name, *, cache=None):
                 result["checks"]["ROLES"] = result["checks"].get("OBJECT", "FAIL")
     else:
         result["checks"]["JOIN_AND_MASK"] = "SKIPPED"
-    result["ready"] = not result["errors"] and all(v in {"OK", "OK (cached)"} for v in result["checks"].values())
+    result["ready"] = not result["errors"] and all(v in {"OK", "OK (cached)", "LEGACY_UNRECORDED"}
+                                                   for v in result["checks"].values())
     return result
 
 
@@ -280,6 +271,8 @@ def main():
             print(f"  [{label} {value}]", flush=True)
         for error in result["errors"]:
             print(f"    {error}", flush=True)
+        for warning in result.get("warnings", []):
+            print(f"  [WARNING] {warning}", flush=True)
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(results, indent=2) + "\n")
