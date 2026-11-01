@@ -112,3 +112,47 @@ loss/backward/update and checkpoint restoration require cloud verification.
 Do not treat configuration registration or local tests as a successful cloud
 smoke run. Object pose estimates remain subject to measurement error; HO
 distances are not verified physical contact distances.
+
+## 单卡动态训练队列
+
+以下命令在仓库根目录执行；先确认数据、归一化资产和预训练权重在本机就绪。调度器检查所选 GPU 上的计算进程；任何一张已有进程时不会启动。每个训练进程只看到一张 GPU，并在进入训练器之前检查 `jax.device_count() == 1`。队列完成 1028、1030 的八个实验后才启动 1018；任一实验失败时不会越过阶段边界。不同队列之间也会锁定所选 GPU 和实验 checkpoint，外部程序仍需自行避免在调度器运行期间抢占 GPU。
+
+```bash
+mkdir -p output/final_v2_runner
+nohup .venv/bin/python -u scripts/experiments/queue_final_v2.py run \
+  --max-parallel 4 --gpus 0,1,2,3,4,5,6,7 --threads 2 \
+  --skip-preflight > output/final_v2_runner/launcher.log 2>&1 < /dev/null &
+```
+
+只在已完成所需 Preflight 后使用 `--skip-preflight`；普通 DataLoader 初始化与校验依然执行。要测试 8 并行，在其他条件相同时把 `--max-parallel 4` 改为 `--max-parallel 8`。每进程的 OMP、MKL、OpenBLAS 线程数默认为 2，可用 `--threads` 调整。默认设置 `WANDB_MODE=offline`，如果环境中已显式设置则保留。每模型日志间隔为 100 步；模型配置的 batch size、训练步数、学习率、种子与归一化不变。
+
+```bash
+.venv/bin/python scripts/experiments/queue_final_v2.py status
+cat output/final_v2_runner/main/runner.log
+tail -f output/final_v2_runner/main/models/pi0_xhand_1028_press_button_full_v2.log
+.venv/bin/python scripts/experiments/queue_final_v2.py stop
+```
+
+`stop` 向该队列发送停止请求，只终止它启动的训练进程组，等待 10 秒后强制结束未退出的子进程。再次运行启动命令时，已完成的最终 checkpoint 自动跳过，有有效 checkpoint 的实验自动恢复；空实验目录从头开始。格式不完整的数字 checkpoint 目录会被标为失败，需人工检查，脚本不会覆盖它。失败任务最终 checkpoint 的状态不会自动视为成功；确认后可用 `--retry-failed` 明确重试。训练日志为追加写入。若修改 `--state-dir`，查询和停止时也须指定同一目录；与正式训练共享 checkpoint 时必须保留状态目录，以保留失败记录。
+
+## 隔离的 4/8 并行吞吐测试
+
+确保正式队列已停止，分别执行以下测试，且两次使用同样数据、线程数及机器负载。每次使用新的空 `--state-dir`，checkpoint 位于该目录下的 `checkpoints/`，不会写入正式 `checkpoints/`。测试只运行 400 步，训练定义其他参数不变；这不是正式训练。也可调大 `--benchmark-steps` 以获得更长的稳定窗口。以下命令假定 Preflight 已完成：
+
+```bash
+mkdir -p output/final_v2_benchmarks
+nohup .venv/bin/python -u scripts/experiments/queue_final_v2.py run \
+  --benchmark --state-dir output/final_v2_benchmarks/b4 \
+  --max-parallel 4 --gpus 0,1,2,3,4,5,6,7 --threads 2 --skip-preflight \
+  > output/final_v2_benchmarks/b4-launcher.log 2>&1 < /dev/null &
+.venv/bin/python scripts/experiments/queue_final_v2.py status --state-dir output/final_v2_benchmarks/b4
+# b4 完成后执行：
+nohup .venv/bin/python -u scripts/experiments/queue_final_v2.py run \
+  --benchmark --state-dir output/final_v2_benchmarks/b8 \
+  --max-parallel 8 --gpus 0,1,2,3,4,5,6,7 --threads 2 --skip-preflight \
+  > output/final_v2_benchmarks/b8-launcher.log 2>&1 < /dev/null &
+.venv/bin/python scripts/experiments/queue_final_v2.py status --state-dir output/final_v2_benchmarks/b8
+# 如需停止，在 stop 后指定相同的 --state-dir。
+```
+
+完成后比较两个目录的 `throughput.json`：每个模型从至少第 100 步的首条训练日志到最后一条日志计算 steps/s，排除首次 JAX 编译和热身；总 steps/s 为稳定窗口内的总步数除以这些窗口的时间并集，涵盖队列补位和阶段变化。报告也给出各模型稳定窗口内的主机整体 CPU 和对应 GPU 的平均利用率；每 5 秒采样的原始主机 CPU、各 GPU 利用率与显存记录在 `utilization.jsonl`。短任务采样不足时相应平均值为 null，应延长测试而非将其当作零。总吞吐不是 8 卡同时稳定运行时瞬时速率的简单相加，比较时需结合各模型结果与原始采样。
