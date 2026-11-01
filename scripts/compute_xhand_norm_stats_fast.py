@@ -1,5 +1,6 @@
 """Fast XHand norm stats: read only state/action from Parquet."""
 
+import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -16,10 +17,15 @@ CONFIG_NAME = "pi0_xhand_rgb_baseline"
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", type=Path, required=True)
+    parser.add_argument("--asset-id", required=True)
+    args = parser.parse_args()
+
     cfg = config_lib.get_config(CONFIG_NAME)
     dc = cfg.data.create(cfg.assets_dirs, cfg.model)
 
-    root = Path(dc.repo_id)
+    root = args.dataset.expanduser().resolve()
     info = json.loads((root / "meta/info.json").read_text())
 
     assert cfg.model.action_horizon == 50
@@ -152,7 +158,12 @@ def main():
     }
 
     assets_dir = Path(cfg.data.assets.assets_dir or cfg.assets_dirs)
-    output_dir = assets_dir / dc.asset_id
+    output_dir = assets_dir / args.asset_id
+
+    if (output_dir / "norm_stats.json").exists():
+        raise FileExistsError(
+            f"Refusing to overwrite existing stats: {output_dir}"
+        )
 
     normalize.save(output_dir, result)
 
