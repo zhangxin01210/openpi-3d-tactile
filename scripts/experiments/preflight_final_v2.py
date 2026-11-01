@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 from pathlib import Path
 import sys
@@ -21,7 +22,9 @@ def names():
     ) for prefix, mode in variants]
 
 
-def inspect(name):
+def inspect(name, *, cache=None):
+    if cache is None:
+        cache = {}
     result = {"config": name, "checks": {}, "errors": []}
     def check(label, fn):
         try:
@@ -54,15 +57,33 @@ def inspect(name):
     cfg = check("CONFIG", validate_config)
     if cfg is None:
         return result
-    root = Path(cfg.data.repo_id)
+    repo_root = Path(__file__).resolve().parents[2]
+    root = data_loader.resolve_local_lerobot_root(cfg.data.repo_id)
+    if root is None:
+        raise ValueError(f"V2 configuration must use a local dataset: {cfg.data.repo_id}")
     check("DATASET", lambda: root.is_dir() or (_ for _ in ()).throw(FileNotFoundError(root)))
+    info_path = root / "meta/info.json"
+    check("LEROBOT_META", lambda: info_path.is_file() or (_ for _ in ()).throw(FileNotFoundError(info_path)))
     weight = Path(cfg.weight_loader.params_path)
     check("WEIGHT", lambda: weight.exists() or (_ for _ in ()).throw(FileNotFoundError(weight)))
-    stats_path = Path(cfg.data.assets.assets_dir) / cfg.data.assets.asset_id / "norm_stats.json"
+    assets_dir = Path(cfg.data.assets.assets_dir)
+    if not assets_dir.is_absolute():
+        assets_dir = repo_root / assets_dir
+    stats_path = assets_dir / cfg.data.assets.asset_id / "norm_stats.json"
     norm_mode = "st" if root.name.startswith("1018") else "rgb"
     norm_config = f"pi0_xhand_{root.name}_{norm_mode}_v2"
     check("NORM", lambda: stats_path.is_file() or (_ for _ in ()).throw(
         FileNotFoundError(f"{stats_path}; run scripts/compute_norm_stats.py --config-name {norm_config}")))
+    if stats_path.is_file():
+        def check_stats():
+            from openpi.shared import normalize
+            stats = normalize.load(stats_path.parent)
+            for key in ("state", "actions"):
+                if key not in stats or np.asarray(stats[key].mean).shape != (18,):
+                    raise ValueError(f"normalization {key} must have 18 dimensions")
+                if cfg.model.pi05 and (stats[key].q01 is None or stats[key].q99 is None):
+                    raise ValueError(f"normalization {key} requires q01 and q99 for pi05")
+        check("NORM_CONTENTS", check_stats)
     if cfg.data.spatial is not None:
         spatial_path = root / "spatial" / cfg.data.spatial.version / "manifest.json"
         check("SPATIAL", lambda: spatial_path.is_file() or (_ for _ in ()).throw(FileNotFoundError(spatial_path)))
@@ -92,7 +113,7 @@ def inspect(name):
                 actual = manifest.get("calibration")
                 if not actual:
                     raise ValueError(f"{geometry_path}: missing calibration provenance; inspect source sidecar and supply its original provenance")
-                expected = front_calibration_provenance(Path.cwd(), profile)
+                expected = front_calibration_provenance(repo_root, profile)
                 if profile:
                     error = calibration_provenance_error(actual, expected)
                 elif actual.get("profile") or actual.get("calibration_mode") != "baseline_unprofiled":
@@ -104,16 +125,8 @@ def inspect(name):
                     raise ValueError(f"dataset={root} sidecar={geometry_path} {error}; expected={expected} actual={actual}")
             check("CALIBRATION", calibration)
     def join_and_mask():
-        data = cfg.data.create(cfg.assets_dirs, cfg.model)
-        def check_stats():
-            if data.norm_stats is None:
-                raise ValueError(f"normalization statistics could not be loaded from {stats_path}")
-            for key in ("state", "actions"):
-                if key not in data.norm_stats or np.asarray(data.norm_stats[key].mean).shape != (18,):
-                    raise ValueError(f"normalization {key} must have 18 dimensions")
-                if data.use_quantile_norm and (data.norm_stats[key].q01 is None or data.norm_stats[key].q99 is None):
-                    raise ValueError(f"normalization {key} requires q01 and q99 for pi05")
-        check("NORM_CONTENTS", check_stats)
+        factory = dataclasses.replace(cfg.data, assets=dataclasses.replace(cfg.data.assets, assets_dir=str(assets_dir)))
+        data = factory.create(cfg.assets_dirs, cfg.model)
         dataset = data_loader.create_torch_dataset(data, cfg.model.action_horizon, cfg.model)
         if not len(dataset):
             raise ValueError("dataset is empty")
@@ -152,26 +165,36 @@ def inspect(name):
                 hand_reader = XHandGeometryHandJoin(dataset, root, object_version=data.object_geometry.version,
                                                    spatial_version=data.spatial.version)
             count = 0
+            index_cache = cache.setdefault("indices", {})
+            spatial_key = (str(root), data.spatial.version, data.spatial.camera_roles,
+                           data.spatial.front_calibration_profile)
+            spatial_done = cache.setdefault("spatial_scans", set())
+            object_key = (spatial_key, data.object_geometry.version) if data.object_geometry else None
+            object_done = cache.setdefault("object_scans", set())
             for episode in raw_episodes:
-                raw = RawSpatialDataset(root, episode=episode)
-                frames = pq.read_table(raw.parquet_path, columns=["frame_index"])["frame_index"].to_numpy()
+                frame_key = (str(root), episode)
+                if frame_key not in index_cache:
+                    raw = RawSpatialDataset(root, episode=episode)
+                    index_cache[frame_key] = pq.read_table(raw.parquet_path, columns=["frame_index"])["frame_index"].to_numpy()
+                frames = index_cache[frame_key]
                 if not np.array_equal(frames, np.arange(len(frames))):
                     raise ValueError(f"episode {episode}: raw frame indices not contiguous")
                 if spatial_index.episode_length(episode) != len(frames):
                     raise ValueError(f"episode {episode}: spatial frame count mismatch")
-                next_frame = 0
-                for shard in spatial_index._episode_shards[episode]:  # noqa: SLF001
-                    if shard.first_frame != next_frame:
-                        raise ValueError(f"episode {episode}: spatial shard gap or overlap at frame {next_frame}")
-                    arrays = spatial_index._load_shard_arrays(shard)  # noqa: SLF001
-                    if not np.array_equal(arrays["frame_index"], frames[shard.first_frame:shard.last_frame + 1]):
-                        raise ValueError(f"episode {episode}: spatial shard {shard.name} frame indices mismatch")
-                    next_frame = shard.last_frame + 1
-                if next_frame != len(frames):
-                    raise ValueError(f"episode {episode}: spatial shard coverage incomplete")
-                if object_index and object_index.frame_ids(episode) != tuple(range(len(frames))):
+                if spatial_key not in spatial_done:
+                    next_frame = 0
+                    for shard in spatial_index._episode_shards[episode]:  # noqa: SLF001
+                        if shard.first_frame != next_frame:
+                            raise ValueError(f"episode {episode}: spatial shard gap or overlap at frame {next_frame}")
+                        arrays = spatial_index._load_shard_arrays(shard)  # noqa: SLF001
+                        if not np.array_equal(arrays["frame_index"], frames[shard.first_frame:shard.last_frame + 1]):
+                            raise ValueError(f"episode {episode}: spatial shard {shard.name} frame indices mismatch")
+                        next_frame = shard.last_frame + 1
+                    if next_frame != len(frames):
+                        raise ValueError(f"episode {episode}: spatial shard coverage incomplete")
+                if object_index and object_key not in object_done and object_index.frame_ids(episode) != tuple(range(len(frames))):
                     raise ValueError(f"episode {episode}: object frame indices mismatch")
-                if hand_reader:
+                if hand_reader and object_key not in object_done:
                     record = hand_reader.hand_records.get(episode)
                     if not record or int(record["frames"]) != len(frames):
                         raise ValueError(f"episode {episode}: hand frame count mismatch")
@@ -179,6 +202,9 @@ def inspect(name):
                 count += len(frames)
             if count != len(dataset):
                 raise ValueError(f"raw frame count {count} differs from LeRobot {len(dataset)}")
+            spatial_done.add(spatial_key)
+            if object_key is not None:
+                object_done.add(object_key)
         for index in sorted({0, len(dataset) - 1}):
             item = dataset[index]
             if data.spatial:
@@ -203,8 +229,21 @@ def inspect(name):
                         if xyz.shape != (512, 3) or mask.shape != (512,) or not np.isfinite(xyz[mask]).all():
                             raise ValueError(f"{role}: invalid xyz/mask")
         return len(dataset)
-    if root.is_dir():
-        joined = check("JOIN_AND_MASK", join_and_mask)
+    blocking = ("DATASET", "LEROBOT_META", "NORM", "NORM_CONTENTS", "SPATIAL", "OBJECT", "CALIBRATION")
+    if root.is_dir() and not any(result["checks"].get(label) == "FAIL" for label in blocking):
+        spatial = cfg.data.spatial
+        objects = cfg.data.object_geometry
+        join_key = (str(root), cfg.model.action_horizon,
+                    None if spatial is None else (spatial.version, spatial.camera_roles, spatial.front_calibration_profile),
+                    None if objects is None else objects.version)
+        joins = cache.setdefault("joins", {})
+        if join_key in joins:
+            joined = joins[join_key]
+            result["checks"]["JOIN_AND_MASK"] = "OK (cached)"
+        else:
+            joined = check("JOIN_AND_MASK", join_and_mask)
+            if joined is not None:
+                joins[join_key] = joined
         if joined is not None:
             result["checks"]["JOIN"] = "OK"
             result["checks"]["MASK"] = "OK"
@@ -216,7 +255,7 @@ def inspect(name):
                 result["checks"]["ROLES"] = result["checks"].get("OBJECT", "FAIL")
     else:
         result["checks"]["JOIN_AND_MASK"] = "SKIPPED"
-    result["ready"] = not result["errors"] and all(v == "OK" for v in result["checks"].values())
+    result["ready"] = not result["errors"] and all(v in {"OK", "OK (cached)"} for v in result["checks"].values())
     return result
 
 
@@ -227,13 +266,20 @@ def main():
     group.add_argument("--config", choices=names())
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
-    results = [inspect(name) for name in (names() if args.all_configs else [args.config])]
-    for result in results:
-        print(f"[{ 'READY FOR SMOKE' if result.get('ready') else 'FAIL' }] {result['config']}")
+    results = []
+    cache = {}
+    for name in (names() if args.all_configs else [args.config]):
+        print(f"[START] {name}", flush=True)
+        try:
+            result = inspect(name, cache=cache)
+        except Exception as exc:
+            result = {"config": name, "checks": {}, "errors": [f"{type(exc).__name__}: {exc}"], "ready": False}
+        results.append(result)
+        print(f"[{ 'READY FOR SMOKE' if result.get('ready') else 'FAIL' }] {result['config']}", flush=True)
         for label, value in result["checks"].items():
-            print(f"  [{label} {value}]")
+            print(f"  [{label} {value}]", flush=True)
         for error in result["errors"]:
-            print(f"    {error}")
+            print(f"    {error}", flush=True)
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(results, indent=2) + "\n")

@@ -60,8 +60,10 @@ def main():
     args = parser.parse_args()
     selected = names() if args.all_configs else [args.config]
     failures = []
+    preflight_cache = {}
     for name in selected:
-        report = inspect(name)
+        print(f"[PREFLIGHT START] {name}", flush=True)
+        report = inspect(name, cache=preflight_cache)
         if not report.get("ready"):
             failures.append(name)
             print(f"[PREFLIGHT FAILED] {name}: {report['errors']}", flush=True)

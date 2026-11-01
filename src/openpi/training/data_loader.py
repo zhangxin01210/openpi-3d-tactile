@@ -1,4 +1,5 @@
 from collections.abc import Iterator, Sequence
+import dataclasses
 import logging
 import multiprocessing
 import os
@@ -23,6 +24,47 @@ from openpi.training.droid_rlds_dataset import DroidRldsDataset
 import openpi.transforms as _transforms
 
 T_co = TypeVar("T_co", covariant=True)
+
+_V2_LOCAL_DATASETS = frozenset({"data/1018_peg_all", "data/1028_press_button", "data/1030_yellow_socket"})
+
+
+def resolve_local_lerobot_root(repo_id: str) -> pathlib.Path | None:
+    """Resolve V2 paths from the checkout and explicit local paths as given."""
+    if repo_id in _V2_LOCAL_DATASETS:
+        return (pathlib.Path(__file__).resolve().parents[3] / repo_id).resolve()
+    if pathlib.Path(repo_id).is_absolute() or repo_id.startswith(("./", "../", "~/")):
+        return pathlib.Path(repo_id).expanduser().resolve()
+    return None
+
+
+class _LocalLeRobotMetadata(lerobot_dataset.LeRobotDatasetMetadata):
+    """Prevent LeRobot's metadata-missing fallback from contacting the Hub."""
+
+    def load_metadata(self):
+        try:
+            return super().load_metadata()
+        except (FileNotFoundError, NotADirectoryError) as exc:
+            raise RuntimeError(f"Incomplete local LeRobot metadata under {self.root}: {exc}") from exc
+
+
+class _LocalLeRobotDataset(lerobot_dataset.LeRobotDataset):
+    """Keep local episode-loading failures out of the Hub retry path."""
+
+    def get_episodes_file_paths(self):
+        try:
+            paths = super().get_episodes_file_paths()
+        except (FileNotFoundError, NotADirectoryError, AssertionError) as exc:
+            raise RuntimeError(f"Cannot enumerate local LeRobot data under {self.root}: {exc}") from exc
+        missing = [path for path in paths if not (self.root / path).is_file()]
+        if missing:
+            raise RuntimeError(f"Incomplete local LeRobot dataset: {self.root / missing[0]}")
+        return paths
+
+    def load_hf_dataset(self):
+        try:
+            return super().load_hf_dataset()
+        except (FileNotFoundError, NotADirectoryError, AssertionError) as exc:
+            raise RuntimeError(f"Cannot load local LeRobot data under {self.root}: {exc}") from exc
 
 
 def _lerobot_tasks_to_dict(tasks) -> dict[int, str]:
@@ -197,12 +239,39 @@ def create_torch_dataset(
         raise ValueError("Repo ID is not set. Cannot create dataset.")
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
-    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+    local_root = resolve_local_lerobot_root(repo_id)
+    if local_root is not None:
+        info_path = local_root / "meta" / "info.json"
+        if not info_path.is_file():
+            raise FileNotFoundError(f"Local LeRobot dataset {repo_id} is missing {info_path}; no Hub lookup is attempted")
+
+        # This LeRobot version retries Hub downloads on missing metadata. Turn
+        # those failures into local errors before the retry path is entered.
+        dataset_meta = _LocalLeRobotMetadata(repo_id, root=local_root)
+        missing = []
+        for episode in range(dataset_meta.total_episodes):
+            paths = [dataset_meta.get_data_file_path(episode)]
+            paths.extend(dataset_meta.get_video_file_path(episode, key) for key in dataset_meta.video_keys)
+            missing.extend(str(local_root / path) for path in paths if not (local_root / path).is_file())
+            if missing:
+                break
+        if missing:
+            raise FileNotFoundError(f"Local LeRobot dataset {repo_id} is incomplete: {missing[0]}; no Hub lookup is attempted")
+        if repo_id in _V2_LOCAL_DATASETS and data_config.spatial is not None:
+            data_config = dataclasses.replace(data_config, spatial=dataclasses.replace(
+                data_config.spatial, dataset_root=str(local_root)))
+        if repo_id in _V2_LOCAL_DATASETS and data_config.object_geometry is not None:
+            data_config = dataclasses.replace(data_config, object_geometry=dataclasses.replace(
+                data_config.object_geometry, dataset_root=str(local_root)))
+    else:
+        dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
     # Some datasets can have tiny timestamp drift around frame decode boundaries.
     # Allow overriding tolerance via env to avoid hard failures in dataloader workers.
     tolerance_s = float(os.environ.get("OPENPI_LEROBOT_TOLERANCE_S", "0.0005"))
-    dataset = lerobot_dataset.LeRobotDataset(
-        data_config.repo_id,
+    dataset_class = _LocalLeRobotDataset if local_root is not None else lerobot_dataset.LeRobotDataset
+    dataset = dataset_class(
+        repo_id,
+        **({"root": local_root} if local_root is not None else {}),
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
