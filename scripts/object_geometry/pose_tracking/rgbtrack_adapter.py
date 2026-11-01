@@ -978,13 +978,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--episode", type=int, required=True)
     parser.add_argument("--mask-root", type=Path, required=True)
-    parser.add_argument("--funnel-glb", type=Path, required=True)
-    parser.add_argument("--flask-glb", type=Path, required=True)
+    parser.add_argument("--funnel-glb", type=Path, default=None, help="Legacy funnel mesh")
+    parser.add_argument("--flask-glb", type=Path, default=None, help="Legacy target flask mesh")
+    parser.add_argument("--mesh", action="append", default=[], metavar="OBJECT=GLB",
+                        help="Explicit metric GLB for any object; repeat per object")
     parser.add_argument("--scale-manifest", type=Path, required=True, help="JSON with explicit metres-per-GLB-unit values")
     parser.add_argument("--weights-root", type=Path, default=None, help="Main-repository RGBTrack checkpoint root (default: checkpoints/rgbtrack)")
     parser.add_argument("--front-calibration-profile", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--objects", nargs="+", choices=("funnel", "target_flask"), default=("funnel",))
+    parser.add_argument("--objects", nargs="+", default=("funnel",))
     parser.add_argument("--mode", choices=POSE_MODES, default="depth")
     parser.add_argument("--camera-role", default="front")
     parser.add_argument("--viz-frames", default=",".join(str(value) for value in VIZ_FRAMES))
@@ -994,9 +996,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         metavar="OBJECT=FRAME",
-        help="Per-object causal initialization frame; repeat for funnel/target_flask",
+        help="Per-object causal initialization frame; repeat for each selected object",
     )
     parser.add_argument("--prepare-only", action="store_true", help="Convert meshes and calibration only; do not import RGBTrack")
+    parser.add_argument("--skip-preview-html", action="store_true",
+                        help="Skip one HTML per episode for production batches")
     return parser
 
 
@@ -1016,38 +1020,9 @@ def _load_front_camera_for_depth_registration(repo_root, profile):
 
 
 def _rgb_registered_depth(raw_depth, cam, color_hw):
-    """Raw depth -> metric xyz -> color camera -> metric z-buffer on RGB pixels.
-
-    The returned HxW depth is in the COLOR optical frame and matches K_color.
-    0 means no observed depth. Missing pixels are not fabricated, and no pixel
-    of transparent glass is assumed to be the real glass surface.
-    """
-    from openpi.spatial.geometry import (
-        build_camera_cache, project_pinhole, transform_points,
-    )
-    depth = np.asarray(raw_depth)
-    if depth.ndim != 2:
-        raise ValueError(f'raw depth should be HxW, got {depth.shape}')
-    h, w = map(int, color_hw)
-    dh, dw = depth.shape
-    cache = build_camera_cache(cam, image_height=dh, image_width=dw)
-    depth_m = depth.reshape(-1).astype(np.float32) * np.float32(cam.depth_scale_m_per_unit)
-    observed = np.isfinite(depth_m) & (depth_m > 0)
-    if not observed.any():
-        return np.zeros((h,w), dtype=np.float32)
-    points_base = (cache.rays_base_per_meter[observed] * depth_m[observed,None]
-                   + cache.base_origin_m[None,:])
-    points_color = transform_points(points_base, np.linalg.inv(cam.T_base_color))
-    uv = project_pinhole(points_color, cam.color_intrinsics)
-    good = np.isfinite(points_color).all(axis=1) & np.isfinite(uv).all(axis=1) & (points_color[:,2] > 0)
-    safe_uv = np.nan_to_num(uv, nan=-1e9, posinf=-1e9, neginf=-1e9)
-    pixels = np.rint(safe_uv).astype(np.int64)
-    good &= ((pixels[:,0]>=0) & (pixels[:,0]<w) & (pixels[:,1]>=0) & (pixels[:,1]<h))
-    z_buffer = np.full(h*w, np.inf, dtype=np.float32)
-    ids = pixels[good,1] * w + pixels[good,0]
-    np.minimum.at(z_buffer, ids, points_color[good,2].astype(np.float32))
-    z_buffer[~np.isfinite(z_buffer)] = 0.0
-    return z_buffer.reshape(h,w)
+    """Align RAW depth to RGB pixels using the single shared geometry function."""
+    from openpi.spatial.rgbd_registration import align_raw_depth_to_color
+    return align_raw_depth_to_color(raw_depth, cam, color_hw)
 
 
 def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on computer 4
@@ -1058,6 +1033,17 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
     objects = tuple(dict.fromkeys(args.objects))
     init_frames = _parse_init_frames(args.init_frame, objects)
     mesh_sources = {"funnel": args.funnel_glb, "target_flask": args.flask_glb}
+    # New task paths are provided explicitly; the original legacy flags remain valid.
+    for spec in getattr(args, "mesh", []):
+        name, sep, path = spec.partition("=")
+        if not sep or not name or not path or name not in objects:
+            raise ValueError(f"--mesh expects a selected OBJECT=GLB, got {spec!r}")
+        if name in mesh_sources and mesh_sources[name] is not None:
+            raise ValueError(f"Duplicate or conflicting mesh for {name}")
+        mesh_sources[name] = Path(path)
+    missing_meshes = [name for name in objects if mesh_sources.get(name) is None]
+    if missing_meshes:
+        raise ValueError(f"No explicit GLB for objects: {missing_meshes}")
     scales = _load_scale_manifest(args.scale_manifest.expanduser().resolve(), objects)
     calibration = load_front_calibration(repo_root, args.front_calibration_profile)
     registration_camera = _load_front_camera_for_depth_registration(
@@ -1153,7 +1139,8 @@ def run(args: argparse.Namespace) -> int:  # pragma: no cover - exercised on com
     finally:
         for handle in per_object_lines.values():
             handle.close()
-    write_preview_html(output / "preview.html", all_records, mesh_manifests)
+    if not getattr(args, "skip_preview_html", False):
+        write_preview_html(output / "preview.html", all_records, mesh_manifests)
     timing_summary: dict[str, Any] = {}
     for name in objects:
         values = np.asarray([record.elapsed_ms for record in all_records if record.object_name == name], dtype=np.float64)

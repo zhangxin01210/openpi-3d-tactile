@@ -191,3 +191,5 @@ configs/*.zip
 # Object Geometry production scratch (masks, pose reviews, mesh samples and
 # resumable sidecar staging).  Formal source/config code remains trackable.
 /scratch/object_geometry/
+tmp
+scratch
