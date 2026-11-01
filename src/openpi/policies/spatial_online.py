@@ -128,6 +128,14 @@ def _validate_object_geometry(value: Any) -> dict[str, Any]:
     return result
 
 
+def _validate_hand_keypoints(hand: Any) -> dict[str, np.ndarray]:
+    xyz = np.asarray(hand["xyz_m"], dtype=np.float32)
+    mask = np.asarray(hand["point_mask"], dtype=np.bool_)
+    if xyz.shape != (18, 3) or mask.shape != (18,) or not np.isfinite(xyz[mask]).all():
+        raise ValueError("online hand_keypoints must contain finite base_link xyz_m (18,3) and point_mask (18,)")
+    return {"xyz_m": xyz, "point_mask": mask}
+
+
 @dataclasses.dataclass(frozen=True)
 class XHandSpatialOnlineRepack(transforms.DataTransformFn):
     """Repack the raw deployment observation for XHandInputs at inference time."""
@@ -147,6 +155,9 @@ class XHandSpatialOnlineRepack(transforms.DataTransformFn):
         }
         if "prompt" in data:
             output["prompt"] = data["prompt"]
+        for key in ("object_geometry", "hand_keypoints"):
+            if key in data:
+                output[key] = data[key]
         return output
 
 
@@ -167,6 +178,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     tactile_ema_tau_s: float = 1.0
     require_object_geometry: bool = False
     require_hand_scene: bool = False
+    require_hand_keypoints: bool = False
 
     def __post_init__(self) -> None:
         if not (self.use_visual or self.use_tactile):
@@ -191,14 +203,21 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
 
     def __call__(self, data: transforms.DataDict) -> transforms.DataDict:
         incoming_geometry = data.get("object_geometry")
+        incoming_hand = data.get("hand_keypoints")
         if "spatial" in data:
             existing = data["spatial"]
             if not isinstance(existing, dict):
                 raise TypeError("spatial must be a mapping")
             if incoming_geometry is None:
                 incoming_geometry = existing.get("object_geometry")
+            if incoming_hand is None:
+                incoming_hand = existing.get("hand_keypoints")
+            if self.require_hand_keypoints and incoming_hand is None:
+                raise ValueError("Required online hand_keypoints missing; expected the validated 18-point FK definition")
             if self.require_object_geometry and incoming_geometry is None:
                 raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
+            if incoming_hand is not None:
+                existing = {**existing, "hand_keypoints": _validate_hand_keypoints(incoming_hand)}
             if incoming_geometry is not None:
                 geom = _validate_object_geometry(incoming_geometry)
                 if self.require_hand_scene and geom.get("hand_scene") is None:
@@ -206,7 +225,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 result = dict(data)
                 result["spatial"] = {**existing, "object_geometry": geom}
                 return result
-            return data
+            return {**data, "spatial": existing}
 
         state = np.asarray(
             _get_any(
@@ -302,5 +321,9 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             if self.require_hand_scene and geometry.get("hand_scene") is None:
                 raise ValueError("Hand-scene model requires object_geometry.hand_scene")
             spatial["object_geometry"] = geometry
+        if self.require_hand_keypoints and incoming_hand is None:
+            raise ValueError("Required online hand_keypoints missing; expected the validated 18-point FK definition")
+        if incoming_hand is not None:
+            spatial["hand_keypoints"] = _validate_hand_keypoints(incoming_hand)
         output["spatial"] = spatial
         return output

@@ -53,3 +53,15 @@ def test_hand_scene_must_be_present():
     object.__setattr__(processor, "require_hand_scene", True)
     with pytest.raises(ValueError, match="hand_scene"):
         processor({"spatial": {}, "object_geometry": sample()})
+
+
+def test_v2_requires_and_forwards_hand_keypoints():
+    processor = XHandSpatialOnlinePreprocess.__new__(XHandSpatialOnlinePreprocess)
+    object.__setattr__(processor, "require_object_geometry", True)
+    object.__setattr__(processor, "require_hand_scene", False)
+    object.__setattr__(processor, "require_hand_keypoints", True)
+    packet = {"spatial": {}, "object_geometry": sample()}
+    with pytest.raises(ValueError, match="hand_keypoints missing"):
+        processor(packet)
+    packet["hand_keypoints"] = {"xyz_m": np.zeros((18, 3), np.float32), "point_mask": np.ones(18, bool)}
+    assert processor(packet)["spatial"]["hand_keypoints"]["xyz_m"].shape == (18, 3)

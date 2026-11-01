@@ -430,6 +430,8 @@ class Pi0(_model.BaseModel):
                 else None
             ),
             object_geometry=obs.spatial.object_geometry,
+            hand_keypoints_xyz_m=obs.spatial.hand_keypoints_xyz_m,
+            hand_keypoints_mask=obs.spatial.hand_keypoints_mask,
         )
 
         return self.spatial_router(

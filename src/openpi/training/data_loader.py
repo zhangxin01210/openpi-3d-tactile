@@ -332,12 +332,29 @@ def create_torch_dataset(
             )
             if mismatch:
                 raise ValueError(f"Object geometry sidecar {mismatch}")
+        elif (getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) == "final_v2"
+              and (object_geometry_dataset.manifest.get("calibration") or {}).get("profile")):
+            profile = object_geometry_dataset.manifest["calibration"]["profile"]
+            raise ValueError(
+                f"Object geometry {settings.dataset_root}/{settings.version} requires calibration profile "
+                f"{profile.get('path')} sha256={profile.get('sha256')}; set the dataset-specific "
+                "OPENPI_<dataset prefix>_FRONT_PROFILE to the original profile file"
+            )
         dataset = ObjectGeometryAugmentedDataset(
             dataset,
             object_geometry_dataset,
             copy_arrays=settings.copy_arrays,
             missing=settings.missing,
         )
+        if getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) == "final_v2":
+            from openpi.training.xhand_multimodal_dataset import XHandKeypointsSpatialJoin
+
+            if data_config.spatial is None:
+                raise ValueError("final_v2 relations require a spatial sidecar")
+            dataset = XHandKeypointsSpatialJoin(
+                dataset, settings.dataset_root, object_version=settings.version,
+                spatial_version=data_config.spatial.version,
+            )
     return dataset
 
 

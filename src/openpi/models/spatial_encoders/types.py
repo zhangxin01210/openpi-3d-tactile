@@ -457,6 +457,10 @@ class SpatialEncoderInput(
 
     object_geometry: ObjectGeometryInput[ArrayT] | None = None
 
+    # 18 FK anchors in base_link, with validity independent of object geometry.
+    hand_keypoints_xyz_m: ArrayT | None = None
+    hand_keypoints_mask: ArrayT | None = None
+
 
 # =============================================================================
 # 6. Encoder output

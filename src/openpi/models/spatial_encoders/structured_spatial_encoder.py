@@ -22,8 +22,8 @@ from flax import nnx
 import jax
 import jax.numpy as jnp
 
-from openpi.models.spatial_encoders.transforms import SpatialFeatureTransforms
 from openpi.models.spatial_encoders.object_relation_encoder import ObjectRelationEncoder
+from openpi.models.spatial_encoders.transforms import SpatialFeatureTransforms
 from openpi.models.spatial_encoders.types import SpatialEncoderInput
 from openpi.models.spatial_encoders.types import SpatialEncoderOutput
 
@@ -34,6 +34,11 @@ class StructuredSpatialEncoderConfig:
 
     visual_num_centers: int = 32
     visual_knn: int = 32
+    # Opt-in so existing checkpoints and experiments keep their original tree.
+    visual_hierarchy_v2: bool = False
+    # Canonical [finger][taxel_id - 1] regions from fixed link-local geometry.
+    # None retains the original M2 query pooling and checkpoint layout.
+    tactile_regions: tuple[tuple[int, ...], ...] | None = None
 
     num_fingers: int = 5
     tactile_knn: int = 8
@@ -70,6 +75,12 @@ class StructuredSpatialEncoderConfig:
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
 
     def __post_init__(self) -> None:
+        if self.tactile_regions is not None:
+            if (len(self.tactile_regions) != 5 or
+                any(len(row) != 120 or set(row) != {0, 1, 2, 3} for row in self.tactile_regions)):
+                raise ValueError("tactile_regions must define four nonempty regions for each of five 120-taxel fingers")
+            if self.num_fingers != 5 or self.tactile_local_tokens_per_finger != 4 or self.tactile_summary_tokens_per_finger != 1:
+                raise ValueError("region pooling requires five fingers and four local plus one global token")
         for name in (
             "token_dim",
             "visual_num_centers",
@@ -103,10 +114,11 @@ class StructuredSpatialEncoderConfig:
             "hand_scene_oo_v1",
             "dtcr_v1",
             "dtcr_independent_v1",
+            "final_v2",
         }:
             raise ValueError(f"Unsupported object_relation_mode: {self.object_relation_mode!r}")
 
-    def create(self, *, rngs: nnx.Rngs) -> "StructuredSpatialEncoder":
+    def create(self, *, rngs: nnx.Rngs) -> StructuredSpatialEncoder:
         return StructuredSpatialEncoder(config=self, rngs=rngs)
 
     @property
@@ -136,6 +148,10 @@ class StructuredSpatialEncoder(nnx.Module):
         h = config.hidden_dim
 
         self.visual_patch_layers = _make_mlp(self._VISUAL_PATCH_DIM, (h, d), rngs)
+        if config.visual_hierarchy_v2:
+            self.visual_stage1_pool = nnx.Linear(2 * d, d, rngs=rngs)
+            self.visual_stage2_layers = _make_mlp(3 + d, (h, d), rngs)
+            self.visual_stage2_pool = nnx.Linear(2 * d, d, rngs=rngs)
         self.visual_global_layers = _make_mlp(self._VISUAL_PATCH_DIM, (h, d), rngs)
         self.visual_pos_layers = _make_mlp(3, (h, d), rngs)
 
@@ -158,8 +174,11 @@ class StructuredSpatialEncoder(nnx.Module):
             self.tactile_taxel_layers = _make_mlp(tactile_input_dim, (h, d), rngs)
             self.tactile_edge_layers = _make_mlp(d * 2 + 3, (h, d), rngs)
             self.tactile_context_layers = _make_mlp(d * 3, (h, d), rngs)
-            self.tactile_key = nnx.Linear(d, d, rngs=rngs)
-            self.tactile_value = nnx.Linear(d, d, rngs=rngs)
+            if config.tactile_regions is None:
+                self.tactile_key = nnx.Linear(d, d, rngs=rngs)
+                self.tactile_value = nnx.Linear(d, d, rngs=rngs)
+            else:
+                self.tactile_region_pool = nnx.Linear(2 * d, d, rngs=rngs)
             self.tactile_pos_layers = _make_mlp(3, (h, d), rngs)
             self.tactile_modality_embedding = nnx.Param(
                 jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
@@ -168,15 +187,16 @@ class StructuredSpatialEncoder(nnx.Module):
                 jax.random.normal(rngs.params(), (config.num_fingers, d), dtype=jnp.float32) * 0.02
             )
             query_finger_count = 1 if config.share_tactile_queries_across_fingers else config.num_fingers
-            self.tactile_pool_queries = nnx.Param(
-                jax.random.normal(
-                    rngs.params(),
-                    (query_finger_count, config.tactile_local_tokens_per_finger, d),
-                    dtype=jnp.float32,
-                ) * 0.02
-            )
+            if config.tactile_regions is None:
+                self.tactile_pool_queries = nnx.Param(
+                    jax.random.normal(
+                        rngs.params(),
+                        (query_finger_count, config.tactile_local_tokens_per_finger, d),
+                        dtype=jnp.float32,
+                    ) * 0.02
+                )
             self.tactile_summary_queries = None
-            if config.tactile_summary_tokens_per_finger:
+            if config.tactile_regions is None and config.tactile_summary_tokens_per_finger:
                 self.tactile_summary_queries = nnx.Param(
                     jax.random.normal(
                         rngs.params(),
@@ -185,7 +205,12 @@ class StructuredSpatialEncoder(nnx.Module):
                     ) * 0.02
                 )
         if config.enable_object_relations:
-            self.object_relation_encoder = ObjectRelationEncoder(
+            if config.object_relation_mode == "final_v2":
+                from openpi.models.spatial_encoders.final_v2_relations import FinalV2RelationEncoder
+
+                self.object_relation_encoder = FinalV2RelationEncoder(dim=d, rngs=rngs)
+            else:
+                self.object_relation_encoder = ObjectRelationEncoder(
                 token_dim=d,
                 hidden_dim=config.relation_hidden_dim,
                 candidate_k=config.relation_candidate_k,
@@ -193,7 +218,7 @@ class StructuredSpatialEncoder(nnx.Module):
                 enable_funnel_mask_encoder=config.hand_scene_enable_funnel_mask_encoder,
                 funnel_mask_size=config.hand_scene_funnel_mask_size,
                 rngs=rngs,
-            )
+                )
 
     def __call__(self, inputs: SpatialEncoderInput) -> SpatialEncoderOutput:
         token_parts = []
@@ -232,10 +257,27 @@ class StructuredSpatialEncoder(nnx.Module):
         if self.config.enable_object_relations:
             if inputs.object_geometry is None:
                 raise ValueError("Object relations are enabled but object_geometry input is missing")
-            relation_tokens, relation_mask, relation_xyz, relation_aux = self.object_relation_encoder(
-                inputs.object_geometry,
-                inputs.tactile,
-            )
+            if self.config.object_relation_mode == "final_v2":
+                if inputs.hand_keypoints_xyz_m is None or inputs.hand_keypoints_mask is None:
+                    raise ValueError("final_v2 relations require validated hand keypoints and mask")
+                geometry = inputs.object_geometry
+                groups = jnp.array([-1, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
+                membership = jnp.arange(5)[:, None] == groups[None, :]
+                ho, ho_mask, oo, oo_mask = self.object_relation_encoder(
+                    geometry.manipulated_xyz_m, geometry.manipulated_mask,
+                    geometry.target_xyz_m, geometry.target_mask,
+                    inputs.hand_keypoints_xyz_m, inputs.hand_keypoints_mask, membership,
+                )
+                relation_tokens = jnp.concatenate([ho, oo], axis=1)
+                relation_mask = jnp.concatenate([ho_mask, oo_mask], axis=1)
+                # Anchors are diagnostic only; the existing adapter consumes tokens and masks.
+                relation_xyz = jnp.zeros((*relation_mask.shape, 3), dtype=relation_tokens.dtype)
+                relation_aux = {"object_relation_token_count": jnp.sum(relation_mask, axis=1, dtype=jnp.int32)}
+            else:
+                relation_tokens, relation_mask, relation_xyz, relation_aux = self.object_relation_encoder(
+                    inputs.object_geometry,
+                    inputs.tactile,
+                )
             token_parts.append(relation_tokens)
             mask_parts.append(relation_mask)
             xyz_parts.append(relation_xyz)
@@ -391,21 +433,29 @@ class StructuredSpatialEncoder(nnx.Module):
         rgb = self.config.transforms.rgb(visual.rgb, visual.rgb_valid)
         mask = visual.point_mask.astype(jnp.bool_)
         rgb_valid = visual.rgb_valid.astype(jnp.float32)
+        if self.config.visual_hierarchy_v2:
+            xyz_feature = jnp.where(mask[..., None], xyz_feature, 0.0)
+            xyz_raw = jnp.where(mask[..., None], xyz_raw, 0.0)
+            rgb = jnp.where(mask[..., None], rgb, 0.0)
+            rgb_valid = jnp.where(mask, rgb_valid, 0.0)
 
-        center_indices = _masked_fps_indices(
+        fps = _masked_unique_fps_indices if self.config.visual_hierarchy_v2 else _masked_fps_indices
+        center_indices = fps(
             xyz_feature,
             mask,
-            self.config.visual_num_centers,
+            256 if self.config.visual_hierarchy_v2 else self.config.visual_num_centers,
         )
         center_xyz_feature = _batched_take(xyz_feature, center_indices)
         center_xyz_raw = _batched_take(xyz_raw, center_indices)
         center_mask = _batched_take(mask, center_indices)
+        if self.config.visual_hierarchy_v2:
+            center_mask &= jnp.arange(256)[None, :] < jnp.sum(mask, axis=1)[:, None]
 
         neighbor_indices, neighbor_mask = _masked_knn_indices(
             query_xyz=center_xyz_feature,
             point_xyz=xyz_feature,
             point_mask=mask,
-            k=self.config.visual_knn,
+            k=min(24 if self.config.visual_hierarchy_v2 else self.config.visual_knn, xyz_feature.shape[1]),
             query_mask=center_mask,
         )
 
@@ -422,7 +472,32 @@ class StructuredSpatialEncoder(nnx.Module):
         )
 
         patch_hidden = _apply_mlp(self.visual_patch_layers, patch_features)
-        local_tokens = _masked_mean(patch_hidden, neighbor_mask, axis=2)
+        if self.config.visual_hierarchy_v2:
+            stage1 = self.visual_stage1_pool(jnp.concatenate([
+                _masked_mean(patch_hidden, neighbor_mask, axis=2),
+                _masked_max(patch_hidden, neighbor_mask, axis=2),
+            ], axis=-1))
+            stage2_indices = _masked_unique_fps_indices(center_xyz_feature, center_mask, self.config.visual_num_centers)
+            stage2_xyz = _batched_take(center_xyz_feature, stage2_indices)
+            stage2_raw = _batched_take(center_xyz_raw, stage2_indices)
+            stage2_mask = _batched_take(center_mask, stage2_indices)
+            stage2_mask &= jnp.arange(self.config.visual_num_centers)[None, :] < jnp.sum(center_mask, axis=1)[:, None]
+            stage2_neighbors, stage2_neighbor_mask = _masked_knn_indices(
+                query_xyz=stage2_xyz, point_xyz=center_xyz_feature, point_mask=center_mask,
+                k=16, query_mask=stage2_mask,
+            )
+            stage2_features = jnp.concatenate([
+                _batched_take(center_xyz_feature, stage2_neighbors) - stage2_xyz[:, :, None, :],
+                _batched_take(stage1, stage2_neighbors),
+            ], axis=-1)
+            stage2_hidden = _apply_mlp(self.visual_stage2_layers, stage2_features)
+            local_tokens = self.visual_stage2_pool(jnp.concatenate([
+                _masked_mean(stage2_hidden, stage2_neighbor_mask, axis=2),
+                _masked_max(stage2_hidden, stage2_neighbor_mask, axis=2),
+            ], axis=-1))
+            center_xyz_feature, center_xyz_raw, center_mask = stage2_xyz, stage2_raw, stage2_mask
+        else:
+            local_tokens = _masked_mean(patch_hidden, neighbor_mask, axis=2)
         local_tokens = (
             local_tokens
             + _apply_mlp(self.visual_pos_layers, center_xyz_feature)
@@ -482,6 +557,11 @@ class StructuredSpatialEncoder(nnx.Module):
         force_norm = jnp.asarray(force_output.force_norm, dtype=jnp.float32)
 
         point_mask = tactile.point_mask.astype(jnp.bool_)
+        if self.config.tactile_regions is not None:
+            xyz_feature = jnp.where(point_mask[..., None], xyz_feature, 0.0)
+            xyz_raw = jnp.where(point_mask[..., None], xyz_raw, 0.0)
+            force = jnp.where(point_mask[..., None], force, 0.0)
+            force_norm = jnp.where(point_mask, force_norm, 0.0)
         finger_id = tactile.finger_id.astype(jnp.int32)
         clipped_finger_id = jnp.clip(finger_id, 0, self.config.num_fingers - 1)
         per_point_finger_embedding = self.finger_embedding.value[clipped_finger_id]
@@ -509,6 +589,30 @@ class StructuredSpatialEncoder(nnx.Module):
                 xyz_feature=xyz_feature,
                 finger_mask=finger_mask,
             )
+
+            if self.config.tactile_regions is not None:
+                ids = tactile.taxel_id.astype(jnp.int32)
+                id_valid = (ids >= 1) & (ids <= 120)
+                regions = jnp.asarray(self.config.tactile_regions[finger_index], dtype=jnp.int32)[jnp.clip(ids - 1, 0, 119)]
+                pooled_tokens, pooled_masks, pooled_xyz = [], [], []
+                for region in range(5):
+                    region_mask = finger_mask & id_valid & ((regions == region) if region < 4 else True)
+                    feature = self.tactile_region_pool(jnp.concatenate([
+                        _masked_mean(contextual, region_mask, axis=1),
+                        _masked_max(contextual, region_mask, axis=1),
+                    ], axis=-1))
+                    center = _masked_mean(xyz_feature, region_mask, axis=1)
+                    raw_center = _masked_mean(xyz_raw, region_mask, axis=1)
+                    valid = jnp.any(region_mask, axis=1)
+                    token = feature + _apply_mlp(self.tactile_pos_layers, center) + self.finger_embedding.value[finger_index] + self.tactile_modality_embedding.value
+                    pooled_tokens.append(jnp.where(valid[:, None], token, 0.0))
+                    pooled_masks.append(valid)
+                    pooled_xyz.append(raw_center)
+                finger_tokens.append(jnp.stack(pooled_tokens, axis=1))
+                finger_masks.append(jnp.stack(pooled_masks, axis=1))
+                finger_xyzs.append(jnp.stack(pooled_xyz, axis=1))
+                valid_counts.append(jnp.sum(finger_mask, axis=1, dtype=jnp.int32))
+                continue
 
             query_index = 0 if self.config.share_tactile_queries_across_fingers else finger_index
             queries = self.tactile_pool_queries.value[query_index]
@@ -699,6 +803,27 @@ def _masked_fps_indices(xyz: jax.Array, mask: jax.Array, num_centers: int) -> ja
 
     indices, _ = jax.lax.fori_loop(0, num_centers, body, (indices, min_dist))
     return indices
+
+
+def _masked_unique_fps_indices(xyz: jax.Array, mask: jax.Array, num_centers: int) -> jax.Array:
+    """FPS without duplicate valid indices, including coincident points."""
+    batch_size, point_count, _ = xyz.shape
+    selected = jnp.zeros((batch_size, point_count), dtype=jnp.bool_)
+    distances = jnp.full((batch_size, point_count), jnp.inf, dtype=xyz.dtype)
+    indices = jnp.zeros((batch_size, num_centers), dtype=jnp.int32)
+
+    def body(i, state):
+        out, chosen, min_dist = state
+        available = mask & ~chosen
+        index = jnp.argmax(jnp.where(available, min_dist, -jnp.inf), axis=1)
+        has_point = jnp.any(available, axis=1)
+        out = out.at[:, i].set(index)
+        chosen |= jax.nn.one_hot(index, point_count, dtype=jnp.bool_) & has_point[:, None]
+        center = _batched_take(xyz, index[:, None])[:, 0, :]
+        min_dist = jnp.minimum(min_dist, jnp.sum((xyz - center[:, None, :]) ** 2, axis=-1))
+        return out, chosen, min_dist
+
+    return jax.lax.fori_loop(0, num_centers, body, (indices, selected, distances))[0]
 
 
 def _masked_knn_indices(

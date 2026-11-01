@@ -21,6 +21,7 @@ does not automatically turn them into tokens.
 from __future__ import annotations
 
 import json
+import hashlib
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, SupportsIndex
@@ -53,7 +54,7 @@ class XHandGeometryHandJoin:
 
     def __init__(self, base_dataset, dataset_root: str | Path, *,
                  object_version: str = "v1", hand_version: str = "v1",
-                 max_hand_episodes: int = 2):
+                 max_hand_episodes: int = 2, spatial_version: str = "v1"):
         self.base_dataset = base_dataset
         self.dataset_root = Path(dataset_root).expanduser().resolve()
         if max_hand_episodes < 1:
@@ -65,7 +66,7 @@ class XHandGeometryHandJoin:
         h = self.hand_manifest
         if (h.get("status") != "complete" or h.get("keypoint_count") != 18 or
             h.get("coordinate_frame") != "base_link" or h.get("unit") != "m" or
-            h.get("spatial_version") != "v1" or h.get("object_geometry_version") != object_version):
+            h.get("spatial_version") != spatial_version or h.get("object_geometry_version") != object_version):
             raise ValueError(f"{self.hand_root}: wrong hand FK manifest contract")
         records = h["episodes"]
         self.hand_records = {int(r["episode_index"]): r for r in records}
@@ -125,6 +126,41 @@ class XHandGeometryHandJoin:
             "xyz_m": self._hand_xyz(episode, frame),
             "point_mask": np.ones((18,), dtype=np.bool_),
         }
+        return item
+
+
+class XHandKeypointsSpatialJoin:
+    """Join the existing FK sidecar into the same spatial packet as objects."""
+
+    def __init__(self, base_dataset, dataset_root, *, object_version, spatial_version, hand_version="v1"):
+        self.base_dataset = base_dataset
+        self.reader = XHandGeometryHandJoin(base_dataset, dataset_root, object_version=object_version,
+                                            spatial_version=spatial_version, hand_version=hand_version)
+        manifest = self.reader.hand_manifest
+        from openpi.models.spatial_encoders.final_v2_relations import keypoint_membership
+        keypoint_membership(manifest["names"], manifest["groups"])
+        repo = Path(__file__).resolve().parents[3]
+        for field, path in (("urdf_sha256", repo / "configs/ur7e_xhand/ur7e_xhand_verified.urdf"),
+                            ("state_mapping_sha256", repo / "configs/ur7e_xhand/state_mapping.csv")):
+            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            if manifest.get(field) != actual:
+                raise ValueError(f"{self.reader.hand_root}: {field} mismatch: sidecar={manifest.get(field)} current={actual}")
+        if len(base_dataset) != len(self.reader.objects):
+            raise ValueError("LeRobot and object geometry frame counts differ")
+
+    def __len__(self):
+        return len(self.base_dataset)
+
+    def __getitem__(self, index):
+        item = dict(self.base_dataset[index])
+        episode = _scalar_int(item["episode_index"], name="episode_index")
+        frame = _scalar_int(item["frame_index"], name="frame_index")
+        spatial = dict(item["spatial"])
+        if "object_geometry" not in spatial or "hand_keypoints" in spatial:
+            raise ValueError("expected object_geometry and no existing hand_keypoints in spatial packet")
+        spatial["hand_keypoints"] = {"xyz_m": self.reader._hand_xyz(episode, frame),  # noqa: SLF001
+                                     "point_mask": np.ones((18,), dtype=np.bool_)}
+        item["spatial"] = spatial
         return item
 
 

@@ -2350,6 +2350,62 @@ _CONFIGS.extend(
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
+def _final_v2_configs() -> list[TrainConfig]:
+    """Ten task-bound experiments using the unified v1 sidecars."""
+    from openpi.spatial.tactile import TactileConfig
+    from openpi.spatial.tactile_geometry import load_xhand_taxel_geometry
+    from openpi.spatial.tactile_regions import partition_taxel_geometry
+
+    geom_root = _CONTACTWORLD_ROOT / "configs/ur7e_xhand/tactile"
+    geometry = load_xhand_taxel_geometry(
+        t16_transformed_path=geom_root / "points_t16_transformed.json",
+        t30_right_transformed_path=geom_root / "points_t30_right_hand_transformed.json",
+        tactile_config=TactileConfig(),
+    )
+    regions = partition_taxel_geometry(geometry.xyz_link_m)
+    pi0_weight = os.environ.get("OPENPI_PI0_BASE_WEIGHTS", "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params")
+    pi05_weight = os.environ.get("OPENPI_PI05_BASE_WEIGHTS", "/workspace/mnt/sqzhang26/hf_weight/pi05_base/params")
+    configs = []
+    for dataset, modes in (("1028_press_button", ("rgb", "pi05", "st", "full")),
+                           ("1030_yellow_socket", ("rgb", "pi05", "st", "full")),
+                           ("1018_peg_all", ("st", "full"))):
+        root = f"data/{dataset}"
+        code = dataset[:4]
+        profile = os.environ.get(f"OPENPI_{code}_FRONT_PROFILE") or None
+        spatial_version = "v1"
+        object_version = "v1"
+        for mode in modes:
+            is_spatial = mode in {"st", "full"}
+            base_name = "pi05_xhand_rgb_baseline" if mode == "pi05" else "pi0_xhand_rgb_baseline"
+            base = _structured_suffix_front_base if is_spatial else next(c for c in _CONFIGS if c.name == base_name)
+            if is_spatial:
+                encoder = dataclasses.replace(base.model.encoder, visual_hierarchy_v2=True, tactile_regions=regions,
+                                              enable_object_relations=mode == "full", object_relation_mode="final_v2")
+                model = dataclasses.replace(base.model, encoder=encoder, use_visual=True, use_tactile=True,
+                                            paligemma_variant="gemma_2b_lora", action_expert_variant="gemma_300m")
+                spatial = SpatialDataConfig(dataset_root=root, version=spatial_version, camera_roles=("front",),
+                                            front_calibration_profile=profile)
+                objects = ObjectGeometryDataConfig(dataset_root=root, version=object_version) if mode == "full" else None
+                loader = spatial_weight_loaders.SpatialCheckpointWeightLoader(pi0_weight)
+            else:
+                model, spatial, objects = base.model, None, None
+                loader = weight_loaders.CheckpointWeightLoader(pi05_weight if mode == "pi05" else pi0_weight)
+            prefix = "pi05" if mode == "pi05" else "pi0"
+            suffix = "rgb" if mode == "pi05" else mode
+            data = dataclasses.replace(base.data, repo_id=root,
+                assets=AssetsConfig(assets_dir="assets/xhand", asset_id=f"{dataset}_unified_v1"),
+                spatial=spatial, object_geometry=objects)
+            configs.append(dataclasses.replace(base, name=f"{prefix}_xhand_{dataset}_{suffix}_v2", model=model,
+                data=data, weight_loader=loader, freeze_filter=model.get_freeze_filter(), ema_decay=None,
+                seed=42, batch_size=8, num_workers=0, num_train_steps=20_000, save_interval=5_000,
+                keep_period=5_000, lr_schedule=_optimizer.CosineDecaySchedule(decay_steps=20_000),
+                policy_metadata={"dataset": dataset, "mode": mode, "spatial_version": spatial_version if is_spatial else None,
+                                 "object_geometry_version": object_version if mode == "full" else None,
+                                 "spatial_token_count": 68 if mode == "full" else 58 if is_spatial else 0}))
+    return configs
+
+
+_CONFIGS.extend(_final_v2_configs())
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}
 
 

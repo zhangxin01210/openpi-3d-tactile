@@ -1,6 +1,7 @@
 import dataclasses
 import functools
 import logging
+import os
 import platform
 from typing import Any
 
@@ -188,6 +189,18 @@ def train_step(
         "grad_norm": optax.global_norm(grads),
         "param_norm": optax.global_norm(kernel_params),
     }
+    if os.environ.get("OPENPI_FINAL_V2_SMOKE_CHECKS") == "1":
+        info["all_param_norm"] = optax.global_norm(new_params)
+        info["optimizer_state_norm"] = optax.global_norm(new_opt_state)
+        if hasattr(config.model, "encoder"):
+            spatial_grads = grads.filter(nnx_utils.PathRegex(".*spatial_router/.*"))
+            info["spatial_grad_norm"] = optax.global_norm(spatial_grads)
+            for label, pattern in (("scene_v2_grad_norm", ".*visual_stage[12]_.*"),
+                                   ("tactile_v2_grad_norm", ".*tactile_region_pool/.*")):
+                info[label] = optax.global_norm(grads.filter(nnx_utils.PathRegex(pattern)))
+            if config.model.encoder.enable_object_relations:
+                info["relation_v2_grad_norm"] = optax.global_norm(
+                    grads.filter(nnx_utils.PathRegex(".*object_relation_encoder/.*")))
     return new_state, info
 
 
@@ -240,6 +253,20 @@ def main(config: _config.TrainConfig):
     if resuming:
         train_state = _checkpoints.restore_state(checkpoint_manager, train_state, data_loader)
 
+    smoke_checks = os.environ.get("OPENPI_FINAL_V2_SMOKE_CHECKS") == "1"
+    if smoke_checks and hasattr(config.model, "encoder"):
+        model = nnx.merge(train_state.model_def, train_state.params)
+        encoded = model.spatial_router.encoder(batch[0].spatial)
+        expected = config.model.encoder.default_token_count
+        if encoded.tokens.shape[1:] != (expected, 128):
+            raise ValueError(f"Spatial encoder expected {expected}x128, got {encoded.tokens.shape}")
+        routed = model._encode_spatial_conditioning(batch[0])  # noqa: SLF001
+        if routed.suffix_tokens is None or routed.suffix_tokens.shape[1] != expected:
+            raise ValueError("Spatial suffix router did not preserve the expected token count")
+        if not bool(jnp.isfinite(encoded.tokens).all()) or not bool(jnp.isfinite(routed.suffix_tokens).all()):
+            raise ValueError("Nonfinite encoder or adapter output")
+        logging.info("[MODEL OK] encoder=%s suffix=%s", encoded.tokens.shape, routed.suffix_tokens.shape)
+
     ptrain_step = jax.jit(
         functools.partial(train_step, config),
         in_shardings=(replicated_sharding, train_state_sharding, data_sharding),
@@ -259,6 +286,17 @@ def main(config: _config.TrainConfig):
     for step in pbar:
         with sharding.set_mesh(mesh):
             train_state, info = ptrain_step(train_rng, train_state, batch)
+        if smoke_checks:
+            checked = jax.device_get(info)
+            if any(not np.isfinite(np.asarray(value)).all() for value in checked.values()):
+                raise ValueError(f"Nonfinite smoke loss/gradient/parameter norm: {checked}")
+            if "spatial_grad_norm" in checked and float(checked["spatial_grad_norm"]) == 0:
+                raise ValueError("Spatial parameters received zero total gradient")
+            for key in ("scene_v2_grad_norm", "tactile_v2_grad_norm"):
+                if key in checked and float(checked[key]) == 0:
+                    raise ValueError(f"{key} is zero; inspect masks and model/data routing")
+            if "relation_v2_grad_norm" in checked and float(checked["relation_v2_grad_norm"]) == 0:
+                raise ValueError("Relation gradient is zero; inspect hand/object validity in the selected batch")
         infos.append(info)
         if step % config.log_interval == 0:
             stacked_infos = common_utils.stack_forest(infos)

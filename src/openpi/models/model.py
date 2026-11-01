@@ -246,6 +246,8 @@ class Observation(Generic[ArrayT]):
                 contact_centered_tactile=contact_centered_tactile,
                 tactile_scene_relation=tactile_scene_relation,
                 object_geometry=object_geometry,
+                hand_keypoints_xyz_m=(spatial_data["hand_keypoints"]["xyz_m"] if "hand_keypoints" in spatial_data else None),
+                hand_keypoints_mask=(spatial_data["hand_keypoints"]["point_mask"] if "hand_keypoints" in spatial_data else None),
             )
 
         return cls(
@@ -264,6 +266,14 @@ class Observation(Generic[ArrayT]):
         result = dataclasses.asdict(self)
         result["image"] = result.pop("images")
         result["image_mask"] = result.pop("image_masks")
+        if result.get("spatial") is not None:
+            spatial = result["spatial"]
+            xyz = spatial.pop("hand_keypoints_xyz_m", None)
+            mask = spatial.pop("hand_keypoints_mask", None)
+            if (xyz is None) != (mask is None):
+                raise ValueError("hand keypoint xyz and mask must be present together")
+            if xyz is not None:
+                spatial["hand_keypoints"] = {"xyz_m": xyz, "point_mask": mask}
         return result
 
 

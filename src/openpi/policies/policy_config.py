@@ -111,7 +111,10 @@ def create_trained_policy(
                 use_tactile=getattr(train_config.model, "use_tactile", True),
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
                 require_object_geometry=data_config.object_geometry is not None,
-                require_hand_scene=data_config.object_geometry is not None,
+                require_hand_scene=(data_config.object_geometry is not None and
+                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) != "final_v2"),
+                require_hand_keypoints=(data_config.object_geometry is not None and
+                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) == "final_v2"),
             ),
             transforms.PreserveKeysTransform(
                 transform=transforms.compose([

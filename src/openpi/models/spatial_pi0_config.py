@@ -513,6 +513,12 @@ class StructuredSpatialPi0Config(
         with at.disable_typechecking():
             observation = dataclasses.replace(
                 observation,
-                spatial=dataclasses.replace(observation.spatial, object_geometry=object_geometry),
+                spatial=dataclasses.replace(
+                    observation.spatial, object_geometry=object_geometry,
+                    hand_keypoints_xyz_m=(jax.ShapeDtypeStruct((batch_size, 18, 3), jnp.float32)
+                                          if self.encoder.object_relation_mode == "final_v2" else None),
+                    hand_keypoints_mask=(jax.ShapeDtypeStruct((batch_size, 18), jnp.bool_)
+                                        if self.encoder.object_relation_mode == "final_v2" else None),
+                ),
             )
         return observation, actions
