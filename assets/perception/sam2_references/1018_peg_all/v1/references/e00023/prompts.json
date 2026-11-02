@@ -1,0 +1,125 @@
+{
+  "frame_index": 0,
+  "seed_frame": 0,
+  "init_frames": {
+    "funnel": 0,
+    "target_flask": 0
+  },
+  "objects": {
+    "funnel": {
+      "positive": [
+        [
+          296,
+          236
+        ],
+        [
+          295,
+          276
+        ],
+        [
+          305,
+          275
+        ]
+      ],
+      "negative": [
+        [
+          295,
+          198
+        ],
+        [
+          252,
+          248
+        ],
+        [
+          337,
+          248
+        ],
+        [
+          295,
+          298
+        ]
+      ]
+    },
+    "target_flask": {
+      "positive": [
+        [
+          451,
+          375
+        ],
+        [
+          452,
+          394
+        ],
+        [
+          457,
+          408
+        ],
+        [
+          430,
+          393
+        ],
+        [
+          425,
+          407
+        ],
+        [
+          434,
+          417
+        ],
+        [
+          447,
+          418
+        ],
+        [
+          442,
+          383
+        ]
+      ],
+      "negative": [
+        [
+          432,
+          429
+        ],
+        [
+          452,
+          429
+        ],
+        [
+          416,
+          416
+        ],
+        [
+          415,
+          400
+        ],
+        [
+          421,
+          380
+        ],
+        [
+          465,
+          390
+        ],
+        [
+          470,
+          402
+        ],
+        [
+          468,
+          416
+        ]
+      ]
+    }
+  },
+  "initialization_provenance": {
+    "source": "/workspace/mnt/sqzhang26/openpi-3d-tactile/tools/hoi_level1_snapshot/metadata/six_positions/episode_e23_seed_prompts.json",
+    "sha256": "778026cba9d2d8d092d2d497805dacdb0d5f77085a3ac1c49b5fd58389be7478",
+    "mode": "explicit_position_template",
+    "template_episode": 23,
+    "scene_position": 2,
+    "borrowed_funnel_keypoints_from_episode": null,
+    "reference_images_or_poses_reused": false,
+    "template_reviewed_for_current_scene": true,
+    "seed_kind": "positive_negative_points"
+  }
+}

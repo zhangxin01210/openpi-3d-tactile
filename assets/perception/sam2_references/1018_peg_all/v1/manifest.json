@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "task": "1018_peg_all",
+  "version": "v1",
+  "camera": "front",
+  "initialization_strategy": "multi_reference_points",
+  "objects": [
+    "funnel",
+    "target_flask"
+  ],
+  "references": [
+    {
+      "reference_episode": 0,
+      "path": "references/e00000",
+      "mask_pixels": {
+        "funnel": 2663,
+        "target_flask": 1794
+      }
+    },
+    {
+      "reference_episode": 23,
+      "path": "references/e00023",
+      "mask_pixels": {
+        "funnel": 1891,
+        "target_flask": 1764
+      }
+    },
+    {
+      "reference_episode": 38,
+      "path": "references/e00038",
+      "mask_pixels": {
+        "funnel": 2678,
+        "target_flask": 1913
+      }
+    },
+    {
+      "reference_episode": 49,
+      "path": "references/e00049",
+      "mask_pixels": {
+        "funnel": 2748,
+        "target_flask": 1355
+      }
+    },
+    {
+      "reference_episode": 58,
+      "path": "references/e00058",
+      "mask_pixels": {
+        "funnel": 2670,
+        "target_flask": 1528
+      }
+    },
+    {
+      "reference_episode": 65,
+      "path": "references/e00065",
+      "mask_pixels": {
+        "funnel": 2701,
+        "target_flask": 1479
+      }
+    }
+  ],
+  "sha256": {
+    "references/e00000/reference_frame.jpg": "c279c0ff3ce3dca1614096eccea614d6ab2c06cb84a5b4600a702651daf59b05",
+    "references/e00000/prompts.json": "93639105692a773cfbf75fba46fc3f3843239768e804f8dc33f628c841437c96",
+    "references/e00000/templates/funnel.png": "2f6632388ba662ca507bbc117b6d3568ee3d16c1ffe8bc1f9a09033254b3a100",
+    "references/e00000/templates/target_flask.png": "17a0e08df3c854e6571abeb57b9c85039e7872813d7dc8d9f340ff78b0acfd5f",
+    "references/e00023/reference_frame.jpg": "645171b16937132f9203e8db92c7b6e7a7237f5bd4354ec019cb8ecc3f55e513",
+    "references/e00023/prompts.json": "11fdedc997364edf394ebc696ae760e444197912647b23347025c1c804170441",
+    "references/e00023/templates/funnel.png": "116846bba78fecf372a11c24f84f3580506bb3de6ee33eaeedecec45e65cf194",
+    "references/e00023/templates/target_flask.png": "9fb372b531a72b6c974b5b4c7a1ae767161d6f28e3dee4e6e484c85b146fcdf6",
+    "references/e00038/reference_frame.jpg": "7cad9d88afdd94ee41491a96da1f803e6a8beed1cd059c3a3100b1370b9f7dbd",
+    "references/e00038/prompts.json": "8f1d1cdb0ca23bdca53e356eaeeb204c579ed27a83fb05742cf396fe47c01689",
+    "references/e00038/templates/funnel.png": "9df520c2f4ba8a30b8d7aeeb15a5ba479f1285dd144b12fbb08a9a3c25cae937",
+    "references/e00038/templates/target_flask.png": "8380f106f1b8de75762665f53145f0c295ea666371db32f20bf95585e77d6e0c",
+    "references/e00049/prompts.json": "0bed1b2370e45df93720ccd3d69eaadd49daa554cf0dbbae94d1c3db4ebc5722",
+    "references/e00049/reference_frame.jpg": "f9d890403036e67fadc68851637733ea84b9da33130509bbdac4d6ce3072a139",
+    "references/e00049/templates/funnel.png": "123a24e8cfe472de4ce1c8d7a98a65d16d5e45c7cef8e1a1d6b90c4573d9af9f",
+    "references/e00049/templates/target_flask.png": "b119ae643dcd36d875dba373b445641a8a605a52b3ba0ecedfcd95d66833edd3",
+    "references/e00058/reference_frame.jpg": "0c7bcc1905e03fe85224dee853ef49fc1b6f6fd7156f3aecf5f366a11de813da",
+    "references/e00058/prompts.json": "853f84f35d64e706ecbb367e075086d9546ce480b9b05a63366696b927a9967f",
+    "references/e00058/templates/funnel.png": "8ca3f48e40cb2ddd32bf6f7a0687f544a3de71fcea06407b4f574d5d556c92f1",
+    "references/e00058/templates/target_flask.png": "46e699e3c6565e8e912ff3717c2e37192fe433ca7826746d4ae1e613aea3ab98",
+    "references/e00065/prompts.json": "5ff0672b886bda0ebbeee918d7b60617090d4ee504649307693fd984f474f76c",
+    "references/e00065/reference_frame.jpg": "296f150d8c26af3e62e39e200bd9111f427e292008858f8ee870add25b425f90",
+    "references/e00065/templates/funnel.png": "484f98f7679a9cbe06e09005ea8121a7e47e70d4d542c37bef1374e2da671588",
+    "references/e00065/templates/target_flask.png": "08bc606e53fc2bb1c50b69d8a0862418ae458989b0e0ad237ec1c4c4971e2d54"
+  },
+  "status": "packaged_from_reviewed_sources",
+  "note": "Packaging validates file integrity and approval metadata when available. It does NOT certify online object detection/segmentation or new camera poses."
+}

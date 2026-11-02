@@ -1,0 +1,149 @@
+{
+  "frame_index": 0,
+  "seed_frame": 0,
+  "init_frames": {
+    "funnel": 0,
+    "target_flask": 0
+  },
+  "objects": {
+    "funnel": {
+      "positive": [
+        [
+          299,
+          235
+        ],
+        [
+          298,
+          275
+        ],
+        [
+          308,
+          274
+        ]
+      ],
+      "negative": [
+        [
+          298,
+          197
+        ],
+        [
+          255,
+          248
+        ],
+        [
+          340,
+          248
+        ],
+        [
+          298,
+          297
+        ]
+      ]
+    },
+    "target_flask": {
+      "positive": [
+        [
+          390,
+          350
+        ],
+        [
+          380,
+          368
+        ],
+        [
+          374,
+          379
+        ],
+        [
+          392,
+          367
+        ],
+        [
+          396,
+          380
+        ],
+        [
+          394,
+          389
+        ],
+        [
+          382,
+          391
+        ],
+        [
+          375,
+          386
+        ]
+      ],
+      "negative": [
+        [
+          369,
+          359
+        ],
+        [
+          361,
+          367
+        ],
+        [
+          357,
+          379
+        ],
+        [
+          361,
+          392
+        ],
+        [
+          370,
+          401
+        ],
+        [
+          384,
+          403
+        ],
+        [
+          399,
+          401
+        ],
+        [
+          411,
+          387
+        ],
+        [
+          412,
+          373
+        ],
+        [
+          410,
+          363
+        ],
+        [
+          410,
+          345
+        ],
+        [
+          397,
+          338
+        ],
+        [
+          374,
+          336
+        ],
+        [
+          370,
+          345
+        ]
+      ]
+    }
+  },
+  "initialization_provenance": {
+    "source": "/workspace/mnt/sqzhang26/openpi-3d-tactile/tools/hoi_level1_snapshot/metadata/six_positions/episode_e65_seed_prompts.json",
+    "sha256": "58f7d346aae0180eb14291c61132ef9238f622aa907748bca5affecf42522551",
+    "mode": "explicit_position_template",
+    "template_episode": 65,
+    "scene_position": 6,
+    "borrowed_funnel_keypoints_from_episode": null,
+    "reference_images_or_poses_reused": false,
+    "template_reviewed_for_current_scene": true,
+    "seed_kind": "positive_negative_points"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "task_sam2_two_objects.v1",
+  "status": "candidate_unreviewed",
+  "prompts_sha256": "276504ec27284799f5b65cef0e5d5326a568a45e0058fc01b6a1d8075be6eaf1",
+  "frame_sha256": "f050461feed1ebbd1bb380df6542bd1f3e07dad31e28d037cf8c8e7137b9f30e",
+  "template_hashes": {
+    "yellow": "24d7bdcfb5d75b92bf6486094c96009ce097b90f04a101fb4e6663e82ef85e9e",
+    "red": "ed02395249e129870ea7ca4ead02340eda83a3d1213d3d05b439575bedafea76"
+  },
+  "objects": {
+    "yellow": {
+      "sam2_score": 0.962340235710144,
+      "mask_pixels": 2020
+    },
+    "red": {
+      "sam2_score": 0.9690290093421936,
+      "mask_pixels": 1380
+    }
+  },
+  "overlap_pixels": 0
+}

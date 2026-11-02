@@ -1,0 +1,7 @@
+{
+  "schema": "task_sam2_two_objects.v1",
+  "status": "human_accepted",
+  "reviewer": "unknown",
+  "candidate_report_sha256": "a5aaa47a0fbad648a440338976d62408713aef3dfcf9ca3b52679e3909b05817",
+  "note": "Manual inspection of reference/preview.jpg explicitly acknowledged."
+}

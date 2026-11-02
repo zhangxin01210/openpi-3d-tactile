@@ -1,0 +1,26 @@
+{
+  "schema": "task_sam2_two_objects.v1",
+  "reference_episode": 0,
+  "image_width": 640,
+  "image_height": 480,
+  "objects": {
+    "button": {
+      "positive": [
+        [
+          245,
+          405
+        ]
+      ],
+      "negative": []
+    },
+    "box": {
+      "positive": [
+        [
+          259,
+          274
+        ]
+      ],
+      "negative": []
+    }
+  }
+}

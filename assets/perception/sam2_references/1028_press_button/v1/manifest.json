@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "task": "1028_press_button",
+  "version": "v1",
+  "camera": "front",
+  "initialization_strategy": "single_reference_mask_match",
+  "objects": [
+    "box",
+    "button"
+  ],
+  "references": [
+    {
+      "reference_episode": 0,
+      "path": "references/e00000",
+      "mask_pixels": {
+        "button": 699,
+        "box": 4376
+      }
+    }
+  ],
+  "sha256": {
+    "references/e00000/reference_frame.jpg": "0783838926e2217ea52ba044c0730c54b23ed4fc2bab71ed9ccf275c80bd9ef6",
+    "references/e00000/prompts.json": "500b8203232741ea3dcf3fec89d3f2666649676cf45a6f422197c7e8a668fe0f",
+    "references/e00000/candidate_report.json": "a5aaa47a0fbad648a440338976d62408713aef3dfcf9ca3b52679e3909b05817",
+    "references/e00000/review.json": "d4948d47b2e02adafd139924c699fa235163d359df960429065d073cd0bbf6ba",
+    "references/e00000/templates/button.png": "15917ad715f88d7696944f79247cd991b309932b3ea71cce61fd5798045a2ab3",
+    "references/e00000/templates/box.png": "071b20a163907747191f95439b42dc045c98ffda1553862bb09c0f4c7fbaa8db"
+  },
+  "status": "packaged_from_reviewed_sources",
+  "note": "Packaging validates file integrity and approval metadata when available. It does NOT certify online object detection/segmentation or new camera poses."
+}

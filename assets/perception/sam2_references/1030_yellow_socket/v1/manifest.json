@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "task": "1030_yellow_socket",
+  "version": "v1",
+  "camera": "front",
+  "initialization_strategy": "single_reference_mask_match",
+  "objects": [
+    "red",
+    "yellow"
+  ],
+  "references": [
+    {
+      "reference_episode": 0,
+      "path": "references/e00000",
+      "mask_pixels": {
+        "yellow": 2020,
+        "red": 1380
+      }
+    }
+  ],
+  "sha256": {
+    "references/e00000/candidate_report.json": "44d85e818f52aa0033835fca14a21a0be45a05d9f25daf395db4015b7f343242",
+    "references/e00000/review.json": "114fa573996c267363f4741acfacb5f9cd7617f1efb68605a06e13676cbe0874",
+    "references/e00000/reference_frame.jpg": "f050461feed1ebbd1bb380df6542bd1f3e07dad31e28d037cf8c8e7137b9f30e",
+    "references/e00000/prompts.json": "276504ec27284799f5b65cef0e5d5326a568a45e0058fc01b6a1d8075be6eaf1",
+    "references/e00000/templates/yellow.png": "24d7bdcfb5d75b92bf6486094c96009ce097b90f04a101fb4e6663e82ef85e9e",
+    "references/e00000/templates/red.png": "ed02395249e129870ea7ca4ead02340eda83a3d1213d3d05b439575bedafea76"
+  },
+  "status": "packaged_from_reviewed_sources",
+  "note": "Packaging validates file integrity and approval metadata when available. It does NOT certify online object detection/segmentation or new camera poses."
+}
