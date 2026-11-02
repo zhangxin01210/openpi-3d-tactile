@@ -13,6 +13,20 @@ from openpi.training import config as _config
 import openpi.transforms as transforms
 
 
+def _policy_metadata(train_config: _config.TrainConfig, data_config: _config.DataConfig) -> dict[str, Any]:
+    metadata = dict(train_config.policy_metadata or {})
+    if isinstance(train_config.data, _config.LeRobotXHandDataConfig):
+        spatial = data_config.spatial
+        visual = spatial is not None and bool(getattr(train_config.model, "use_visual", True))
+        tactile = spatial is not None and bool(getattr(train_config.model, "use_tactile", True))
+        metadata.update(
+            spatial_camera_roles=list(spatial.camera_roles) if visual else [],
+            spatial_use_visual=visual, spatial_use_tactile=tactile,
+            rgb_only_baseline=not visual and not tactile,
+        )
+    return metadata
+
+
 def create_trained_policy(
     train_config: _config.TrainConfig,
     checkpoint_dir: pathlib.Path | str,
@@ -156,7 +170,7 @@ def create_trained_policy(
             *repack_transforms.outputs,
         ],
         sample_kwargs=sample_kwargs,
-        metadata=train_config.policy_metadata,
+        metadata=_policy_metadata(train_config, data_config),
         is_pytorch=is_pytorch,
         pytorch_device=pytorch_device if is_pytorch else None,
     )

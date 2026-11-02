@@ -36,10 +36,15 @@ CAUSAL_FIELDS = (
 def _geometry_from_npz(source: np.lib.npyio.NpzFile) -> dict[str, object]:
     prefix = "object_geometry__"
     missing = [name for name in OBJECT_FIELDS if prefix + name not in source.files]
-    missing += ["hand_scene__" + name for name in HAND_FIELDS if prefix + "hand_scene__" + name not in source.files]
     if missing:
         raise KeyError(f"Perception packet misses training geometry fields: {missing}")
     result = {name: np.asarray(source[prefix + name]) for name in OBJECT_FIELDS}
+    scene_keys = [prefix + "hand_scene__" + name for name in HAND_FIELDS]
+    if not any(key in source.files for key in scene_keys):
+        return result
+    missing_scene = [key for key in scene_keys if key not in source.files]
+    if missing_scene:
+        raise KeyError(f"Perception packet has incomplete hand_scene: {missing_scene}")
     hand_scene = {name: np.asarray(source[prefix + "hand_scene__" + name]) for name in HAND_FIELDS}
     causal_keys = [prefix + "hand_scene__causal_tactile__" + name for name in CAUSAL_FIELDS]
     if all(key in source.files for key in causal_keys):

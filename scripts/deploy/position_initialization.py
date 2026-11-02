@@ -7,10 +7,13 @@ All clicks are applied to the CURRENT robot camera first frame.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 REFERENCE_EPISODES = (0, 23, 38, 49, 58, 65)
 # Operator-facing values, unlike internal LeRobot episode indexes.
@@ -101,3 +104,119 @@ def resolve_prompts(
             "seed_kind": "positive_negative_points",
         },
     }
+
+
+# Reference matching shares the validated preprocessing algorithms.
+@dataclass
+class MaskResult:
+    success: bool
+    masks: dict[str, np.ndarray]
+    provenance: dict[str, Any]
+    error: str | None = None
+
+
+def initialize_masks(reference_root: Path, frame_bgr: np.ndarray, predictor: Any, *,
+                     max_reference_score: float | None = None, min_reference_margin: float | None = None,
+                     manual_reference: int | None = None, min_sam_score: float = 0.0) -> MaskResult:
+    """Initialize two masks using the actual offline reference algorithms.
+
+    Multi-reference automatic selection requires explicitly calibrated score and margin
+    thresholds. Manual reference is an operator fallback, not a confidence claim.
+    """
+    from scripts.preprocess import sam2_task
+    from scripts.preprocess import qa_peg_six_reference_selection as peg
+    provenance: dict[str, Any] = {"candidates": []}
+    try:
+        if not np.isfinite(min_sam_score) or not 0 <= min_sam_score <= 1:
+            raise ValueError("min_sam_score must be finite and between 0 and 1")
+        if frame_bgr.ndim != 3 or frame_bgr.shape[2] != 3 or frame_bgr.dtype != np.uint8:
+            raise ValueError("Expected uint8 BGR image")
+        root = Path(reference_root)
+        manifest = json.loads((root / "manifest.json").read_text())
+        names = manifest.get("objects", [])
+        if len(names) != 2 or len(set(names)) != 2:
+            raise ValueError("Reference manifest requires exactly two distinct objects")
+        strategy = manifest.get("initialization_strategy")
+        if strategy not in {"multi_reference_points", "single_reference_mask_match"}:
+            raise ValueError("Reference initialization strategy mismatch")
+        provenance["task"] = manifest.get("task")
+        for rel, digest in manifest["sha256"].items():
+            path = (root / rel).resolve()
+            if not path.is_relative_to(root.resolve()) or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                raise ValueError(f"Reference asset integrity failure: {rel}")
+        refs = {int(r["reference_episode"]): r for r in manifest["references"]}
+        if strategy == "multi_reference_points":
+            if len(refs) < 2:
+                raise ValueError("Automatic selection requires at least two references")
+            features = peg.extract_features(frame_bgr)
+            for ep, ref in refs.items():
+                image = sam2_task.img(root / ref["path"] / "reference_frame.jpg")
+                score = peg.pair_score(features, peg.extract_features(image), "table_roi")
+                if not np.isfinite(score):
+                    raise ValueError("Nonfinite reference score")
+                provenance["candidates"].append({"episode": ep, "score": score})
+            provenance["candidates"].sort(key=lambda x: x["score"])
+            best, second = provenance["candidates"][:2]
+            provenance["margin"] = second["score"] - best["score"]
+            if manual_reference is None:
+                if (max_reference_score is None or min_reference_margin is None or
+                    not np.isfinite(max_reference_score) or not np.isfinite(min_reference_margin) or
+                    max_reference_score < 0 or min_reference_margin < 0):
+                    raise ValueError("Calibrated reference score and margin thresholds required")
+                if best["score"] > max_reference_score or provenance["margin"] < min_reference_margin:
+                    raise ValueError("Low-confidence Peg reference match")
+                selected = best["episode"]
+                provenance["source"] = "automatic_reference_points"
+            else:
+                if manual_reference not in refs:
+                    raise ValueError("Unknown manual Peg reference")
+                selected = manual_reference
+                provenance["source"] = "manual_reference_points"
+        else:
+            if manual_reference is not None or len(refs) != 1:
+                raise ValueError("Single-reference task requires exactly one reference")
+            selected = next(iter(refs))
+            provenance["source"] = "single_reference_template_match"
+        provenance["reference_episode"] = selected
+        refdir = root / refs[selected]["path"]
+        reference = sam2_task.img(refdir / "reference_frame.jpg")
+        if reference.shape != frame_bgr.shape:
+            raise ValueError("Current and reference image dimensions differ")
+        masks = {}
+        provenance["objects"] = {}
+        if strategy == "multi_reference_points":
+            prompts = json.loads((refdir / "prompts.json").read_text())
+            for name in names:
+                points = prompts["objects"][name]
+                pos = np.asarray(points["positive"], dtype=np.float32).reshape(-1, 2)
+                neg = np.asarray(points["negative"], dtype=np.float32).reshape(-1, 2)
+                if not len(pos) or any(not (0 <= x < frame_bgr.shape[1] and 0 <= y < frame_bgr.shape[0]) for x, y in np.concatenate((pos, neg))):
+                    raise ValueError(f"Invalid {name} prompts")
+                mask, score = sam2_task.sam_predict(predictor, frame_bgr, pos, neg)
+                masks[name] = mask
+                provenance["objects"][name] = {"sam_score": float(score)}
+        else:
+            for name in names:
+                refmask = sam2_task.read_mask(refdir / "templates" / f"{name}.png", reference.shape[:2])
+                mask, score, match = sam2_task.predict_object(predictor, frame_bgr, reference, refmask)
+                masks[name] = mask
+                provenance["objects"][name] = {"sam_score": float(score), "match": match}
+                if match.get("second_vs_best_ratio") is not None and match["second_vs_best_ratio"] < 1.05:
+                    raise ValueError(f"Ambiguous template match for {name}")
+        for name, mask in masks.items():
+            score = provenance["objects"][name]["sam_score"]
+            if mask.shape != frame_bgr.shape[:2] or not np.any(mask) or not np.isfinite(score) or score < min_sam_score:
+                raise ValueError(f"Invalid SAM2 result for {name}")
+        return MaskResult(True, masks, provenance)
+    except Exception as exc:
+        return MaskResult(False, {}, provenance, f"{type(exc).__name__}: {exc}")
+
+
+def save_initialization_report(result: MaskResult, output_path: Path) -> None:
+    """Persist success or failure and candidate scores without serializing masks."""
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("x", encoding="utf-8") as stream:
+        json.dump({"success": result.success, "error": result.error,
+                   "provenance": result.provenance}, stream, indent=2, allow_nan=False)
+        stream.write("\n")

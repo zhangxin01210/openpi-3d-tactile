@@ -191,7 +191,7 @@ def _read_frames(path: Path, *, follow: bool = False):
         time.sleep(0.02)
 
 
-def _validate_packet(file: Path, data: Mapping[str, np.ndarray]) -> dict[str, Any]:
+def _validate_packet(file: Path, data: Mapping[str, np.ndarray], *, objects=OBJECTS) -> dict[str, Any]:
     required = (
         "front_rgb", "left_rgb", "right_rgb", "front_depth_native", "front_depth_color_aligned", "robot_state", "timestamp_s", "frame_index"
     )
@@ -223,7 +223,7 @@ def _validate_packet(file: Path, data: Mapping[str, np.ndarray]) -> dict[str, An
     result["robot_state"] = state
     result["timestamp_s"] = np.asarray(timestamp, dtype=np.float64)
     result["frame_index"] = np.asarray(int(result["frame_index"]), dtype=np.int64)
-    for name in OBJECTS:
+    for name in objects:
         mask_key = f"{name}_seed_mask"
         if mask_key in data:
             mask = np.asarray(data[mask_key], dtype=bool)
@@ -501,6 +501,166 @@ def _save_packet(path: Path, values: Mapping[str, Any], geometry: Mapping[str, A
         temporary.unlink(missing_ok=True)
 
 
+def _task_geometry_inputs(geometry_path: Path, repo_root: Path) -> dict[str, Any]:
+    """Read the approved geometry and RGBTrack release used by the v1 exporter."""
+    geometry_path = geometry_path.expanduser().resolve()
+    geometry = _read_json(geometry_path)
+    if geometry.get("status") != "human_accepted":
+        raise ValueError(f"Geometry not human accepted: {geometry_path}")
+    release_path = geometry_path.parent.parent.parent / "rgbtrack" / "release_v1.json"
+    release = _read_json(release_path)
+    names = release.get("objects")
+    policy = release.get("policy", {})
+    if (not isinstance(names, list) or len(names) != 2 or len(set(names)) != 2
+            or set(names) != set(geometry.get("objects", []))):
+        raise ValueError("RGBTrack release and approved geometry object names differ")
+    if release.get("dataset") != geometry.get("dataset_id"):
+        raise ValueError("RGBTrack release and geometry dataset mismatch")
+    roles = {"manipulated": policy.get("dynamic_object"), "target": policy.get("static_object")}
+    if set(roles.values()) != set(names):
+        raise ValueError("Training release must specify distinct static and dynamic objects")
+    if policy.get("method") != "static_upright_convex_mask_v1" or policy.get("mode") != "depth":
+        raise ValueError("Unsupported or missing training RGBTrack policy")
+    required = ("init_tilt_deg", "init_rank", "min_mask_iou")
+    if any(policy.get(k) is None for k in required):
+        raise ValueError(f"Training RGBTrack release missing parameters: {required}")
+    meshes = {}
+    for name in names:
+        path = geometry_path.parent / f"{name}.glb"
+        entry = geometry.get("assets", {}).get(name, {})
+        if not path.is_file():
+            raise FileNotFoundError(f"Approved task mesh missing: {path}")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != entry.get("sha256"):
+            raise ValueError(f"Approved task mesh hash mismatch: {path}")
+        if float(entry.get("scale_m_per_unit", -1)) != 1.0:
+            raise ValueError(f"Training exporter requires metric mesh scale 1.0: {path}")
+        meshes[name] = path
+    return {"objects": names, "roles": roles, "policy": policy, "meshes": meshes,
+            "dataset": release["dataset"], "release_path": release_path}
+
+
+def _run_task_geometry(args, spec: dict[str, Any], root: Path, replay_dir: Path, output_dir: Path) -> int:
+    """Existing causal worker using the v1 training release and exporter."""
+    from scripts.deploy.position_initialization import initialize_masks, save_initialization_report
+    from scripts.deploy.sam2_video_stream import CausalVideoSAM2Stream
+    from scripts.preprocess import export_object_geometry_rgbtrack as exporter
+    from scripts.preprocess.sam2_task import image_predictor
+
+    if args.sam2_backend != "video_memory" or not args.register_missing_color_depth:
+        raise ValueError("Task v1 needs video-memory SAM2 and training RGB-D registration")
+    if args.sam2_config != "configs/sam2.1/sam2.1_hiera_s.yaml":
+        raise ValueError("Task reference initialization requires SAM2.1 small")
+    sam_source = args.sam2_source.expanduser().resolve()
+    if str(sam_source) not in sys.path:
+        sys.path.insert(0, str(sam_source))
+    if not args.sam2_checkpoint.is_file():
+        raise FileNotFoundError(args.sam2_checkpoint)
+    sys.path.insert(0, str(root / "scripts/object_geometry/pose_tracking"))
+    sys.path.insert(0, str(root / "scripts/preprocess"))
+    import rgbtrack_adapter as adapter
+    from rgbtrack_static_policy import install_static_policy
+
+    calibration = adapter.load_front_calibration(root, args.front_calibration_profile)
+    camera = adapter._load_front_camera_for_depth_registration(root, args.front_calibration_profile)
+    intrinsics = camera.color_intrinsics
+    camera_k = np.array([[intrinsics.fx, 0, intrinsics.cx], [0, intrinsics.fy, intrinsics.cy], [0, 0, 1]])
+    if not np.allclose(camera_k, calibration.K_color, atol=1e-8) or not np.allclose(
+            camera.T_base_color, calibration.T_base_color, atol=1e-8):
+        raise ValueError("RGB-D registration and RGBTrack calibration differ")
+    policy = spec["policy"]
+    policy_dir = output_dir / "rgbtrack_training_policy"
+    policy_dir.mkdir()
+    install_static_policy(adapter, policy["static_object"], calibration.T_base_color[:3, :3], policy_dir,
+                          float(policy["init_tilt_deg"]), int(policy["init_rank"]), float(policy["min_mask_iou"]))
+    if policy.get("dynamic_init_up_axis"):
+        from rgbtrack_dynamic_init import install_dynamic_first_upright
+        install_dynamic_first_upright(adapter, name=policy["dynamic_object"],
+            base_R_camera=calibration.T_base_color[:3, :3], output=policy_dir,
+            upright_axis=policy["dynamic_init_up_axis"], max_tilt_deg=policy["dynamic_init_max_tilt_deg"],
+            max_rank=policy["init_rank"], min_iou=policy["dynamic_init_min_iou"])
+    report_guard = None
+    if policy.get("guard_max_step_m") is not None or policy.get("guard_max_turn_deg") is not None:
+        if policy.get("guard_max_step_m") is None or policy.get("guard_max_turn_deg") is None:
+            raise ValueError("Training motion guard requires both limits")
+        from rgbtrack_motion_guard import install_motion_guard
+        report_guard = install_motion_guard(adapter, name=policy["dynamic_object"], output=policy_dir,
+            max_step_m=policy["guard_max_step_m"], max_turn_deg=policy["guard_max_turn_deg"],
+            max_recovery_turn_deg=policy["guard_recovery_max_turn_deg"])
+    names = spec["objects"]
+    points = {name: exporter.load_surface_points(spec["meshes"][name], exporter.SURFACE_SAMPLING_SEED + i)
+              for i, name in enumerate(names)}
+    trackers = {}
+    for name in names:
+        converted = adapter.convert_glb_to_rgbtrack_mesh(source_glb=spec["meshes"][name],
+            output_root=output_dir / "rgbtrack_meshes", object_name=name, scale_m_per_unit=1.0)
+        trackers[name] = adapter.RGBTrackObject(repo_root=root, object_name=name,
+            mesh_path=converted["output_mesh"], mode="depth", debug_dir=output_dir / "rgbtrack_debug",
+            weights_root=args.weights_root, init_frame=0, min_mask_area_px=args.min_mask_area_px)
+    reference = root / "assets/perception/sam2_references" / spec["dataset"] / "v1"
+    reference_manifest = _read_json(reference / "manifest.json")
+    if reference_manifest.get("task") != spec["dataset"] or set(reference_manifest.get("objects", [])) != set(names):
+        raise ValueError("SAM2 references do not match training task and geometry")
+    previous = Path.cwd()
+    try:
+        os.chdir(sam_source)
+        predictor = image_predictor(args.sam2_checkpoint.expanduser().resolve())
+    finally:
+        os.chdir(previous)
+    stream = None
+    last_valid = {role: None for role in spec["roles"]}
+    count = 0
+    last_timestamp = -np.inf
+    try:
+        for source, raw in _read_frames(replay_dir, follow=args.follow):
+            if args.max_frames is not None and count >= args.max_frames:
+                break
+            aligned_m = adapter._rgb_registered_depth(np.asarray(raw["front_depth_native"]), camera,
+                                                        np.asarray(raw["front_rgb"]).shape[:2])
+            raw = {**raw, "front_depth_color_aligned": np.asarray(aligned_m, np.float32) / camera.depth_scale_m_per_unit}
+            packet = _validate_packet(source, raw, objects=names)
+            frame = int(packet["frame_index"])
+            timestamp = float(packet["timestamp_s"])
+            if timestamp <= last_timestamp:
+                raise ValueError("Task perception timestamps must increase")
+            last_timestamp = timestamp
+            if frame != count:
+                raise ValueError(f"Expected consecutive frame {count}, got {frame}")
+            rgb = packet["front_rgb"]
+            seeds = {}
+            if stream is None:
+                result = initialize_masks(reference, cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), predictor,
+                                          min_sam_score=args.min_sam2_score)
+                save_initialization_report(result, output_dir / "initialization.json")
+                if not result.success:
+                    raise ValueError(f"SAM2 initialization failed: {result.error}")
+                predictor = None  # release the image predictor before loading video memory
+                seeds = {f"{name}_seed_mask": result.masks[name] for name in names}
+                stream = CausalVideoSAM2Stream(checkpoint=args.sam2_checkpoint, config=args.sam2_config,
+                    config_root=sam_source, device=args.device,
+                    seed_prompts={"seed_frame": 0, "objects": {name: {} for name in names}},
+                    corrections={}, min_area=args.min_mask_area_px, max_fraction=args.max_mask_fraction)
+            masks, _ = stream.predict(frame, rgb, seeds)
+            rows = {}
+            depth_m = packet["front_depth_color_aligned"].astype(np.float32) * camera.depth_scale_m_per_unit
+            for name in names:
+                mask, _, _, valid, _ = masks[name]
+                rec = trackers[name].estimate(frame_index=frame, rgb=rgb, depth_m=depth_m,
+                    mask=mask if valid else np.zeros_like(mask), K=calibration.K_color,
+                    T_base_color=calibration.T_base_color)
+                rows[name] = [{"valid": bool(rec.valid), "confidence": float(rec.confidence),
+                               "T_base_link_object": rec.T_base_object}]
+            arrays = exporter.geometry_arrays(frame, 0, rows, points, spec["roles"], last_valid)
+            geometry = {k: v[0] for k, v in arrays.items() if k not in {"frame_index", "episode_index"}}
+            _save_packet(output_dir / "frames" / f"frame_{frame:06d}.npz", packet, geometry)
+            count += 1
+    finally:
+        if report_guard is not None:
+            report_guard()
+    if not count:
+        raise ValueError("No replay frames selected")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
@@ -561,11 +721,15 @@ def main() -> int:
     if output_dir.exists() and any(output_dir.iterdir()):
         raise FileExistsError(f"Refusing to overwrite non-empty output directory: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "frames").mkdir(exist_ok=True)
+    geometry_payload = _read_json(args.geometry_config)
+    if geometry_payload.get("status") == "human_accepted":
+        spec = _task_geometry_inputs(args.geometry_config, root)
+        return _run_task_geometry(args, spec, root, replay_dir, output_dir)
+
     (output_dir / "overlays").mkdir(exist_ok=True)
     for name in OBJECTS:
         (output_dir / "masks" / name).mkdir(parents=True, exist_ok=True)
-    (output_dir / "frames").mkdir(exist_ok=True)
-
     sam2_source = args.sam2_source.expanduser().resolve()
     if str(sam2_source) not in sys.path:
         sys.path.insert(0, str(sam2_source))
@@ -576,14 +740,47 @@ def main() -> int:
     if not first_packets:
         raise FileNotFoundError(f"No frame packets in {replay_dir}")
     with np.load(first_packets[0], allow_pickle=False) as initial:
-        first_rgb_shape = tuple(np.asarray(initial["front_rgb"]).shape)
-    prompts = resolve_prompts(
-        repo_root=root,
-        prompt_file=args.prompts,
-        template_episode=args.position_template_episode,
-        template_confirmed=args.template_reviewed_for_current_scene,
-        first_frame_rgb_shape=first_rgb_shape,
-    )
+        first_rgb = np.asarray(initial["front_rgb"])
+    first_rgb_shape = tuple(first_rgb.shape)
+    reference_spec = _read_json(args.prompts) if args.prompts else {}
+    seed_masks = None
+    if "reference_root" in reference_spec:
+        if args.position_template_episode is not None or args.template_reviewed_for_current_scene:
+            raise ValueError("Reference configuration and legacy position selection are mutually exclusive")
+        if args.sam2_config != "configs/sam2.1/sam2.1_hiera_s.yaml":
+            raise ValueError("Reference initialization uses the preprocessing SAM2.1 small configuration")
+        from scripts.deploy.position_initialization import initialize_masks, save_initialization_report
+        from scripts.preprocess.sam2_task import image_predictor
+        reference_root = Path(reference_spec["reference_root"]).expanduser()
+        if not reference_root.is_absolute():
+            reference_root = args.prompts.resolve().parent / reference_root
+        previous_cwd = Path.cwd()
+        try:
+            os.chdir(sam2_source)
+            predictor = image_predictor(args.sam2_checkpoint.expanduser().resolve())
+        finally:
+            os.chdir(previous_cwd)
+        result = initialize_masks(reference_root, cv2.cvtColor(first_rgb, cv2.COLOR_RGB2BGR), predictor,
+            max_reference_score=reference_spec.get("max_reference_score"),
+            min_reference_margin=reference_spec.get("min_reference_margin"),
+            manual_reference=reference_spec.get("manual_reference"), min_sam_score=args.min_sam2_score)
+        save_initialization_report(result, output_dir / "initialization.json")
+        if not result.success:
+            raise ValueError(f"SAM2 reference initialization failed: {result.error}")
+        if set(result.masks) != set(OBJECTS):
+            raise ValueError("This legacy perception pipeline still requires Peg geometry; "
+                             "other task RGBTrack/geometry integration is not yet supported")
+        seed_masks = {f"{name}_seed_mask": mask for name, mask in result.masks.items()}
+        prompts = {"seed_frame": 0, "objects": {name: {} for name in result.masks},
+                   "initialization_provenance": {**result.provenance, "seed_kind": "sam2_mask"}}
+    else:
+        prompts = resolve_prompts(
+            repo_root=root,
+            prompt_file=args.prompts,
+            template_episode=args.position_template_episode,
+            template_confirmed=args.template_reviewed_for_current_scene,
+            first_frame_rgb_shape=first_rgb_shape,
+        )
     corrections = _read_json(args.corrections)
     if args.sam2_backend == "video_memory":
         from sam2_video_stream import CausalVideoSAM2Stream
@@ -776,6 +973,8 @@ def main() -> int:
                 # Older replay packets may carry a DIFFERENT mask seed; do not
                 # silently replace the six-position training prompt semantics.
                 sam2_packet = dict(packet)
+                if seed_masks is not None and frame_index == sam2_stream.seed_frame:
+                    sam2_packet.update(seed_masks)
                 if prompts["initialization_provenance"]["seed_kind"] == "positive_negative_points":
                     sam2_packet.pop("funnel_seed_mask", None)
                     sam2_packet.pop("target_flask_seed_mask", None)

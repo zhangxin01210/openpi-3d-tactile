@@ -322,7 +322,15 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 raise ValueError("Hand-scene model requires object_geometry.hand_scene")
             spatial["object_geometry"] = geometry
         if self.require_hand_keypoints and incoming_hand is None:
-            raise ValueError("Required online hand_keypoints missing; expected the validated 18-point FK definition")
+            # Identical FK, mapping and anchor ordering as export_xhand_18_keypoints.py.
+            from openpi.spatial.hand_keypoints import select_keypoints
+            from openpi.spatial.kinematics import joint_positions_from_state
+
+            kin = self._preprocessor.kinematics
+            q = joint_positions_from_state(state.astype(np.float64), mapping=self._preprocessor.state_mapping,
+                                           kinematics=kin, root="base_link")
+            _, _, _, xyz, _ = select_keypoints(kin, kin.compute(q, root="base_link"))
+            incoming_hand = {"xyz_m": xyz, "point_mask": np.ones(18, dtype=np.bool_)}
         if incoming_hand is not None:
             spatial["hand_keypoints"] = _validate_hand_keypoints(incoming_hand)
         output["spatial"] = spatial

@@ -19,6 +19,7 @@ from typing import Any
 import numpy as np
 
 POINT_COUNT = 512
+SURFACE_SAMPLING_SEED = 20261101
 FIELDS = ("xyz_m", "mask", "source", "age", "confidence")
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
@@ -95,16 +96,16 @@ def cloud_from_pose(row: dict, points_object: np.ndarray) -> np.ndarray:
     return xyz.astype(np.float32)
 
 
-def convert_chunk(
-    index_start: int,
-    episode: int,
-    rows: dict[str, list[dict]],
-    points: dict[str, np.ndarray],
-    roles: dict[str, str],
-    last_valid: dict[str, int | None],
-    shard_root: Path,
-    record_index: list[dict],
-) -> None:
+def geometry_arrays(index_start: int, episode: int, rows: dict[str, list[dict]],
+                    points: dict[str, np.ndarray], roles: dict[str, str],
+                    last_valid: dict[str, int | None]) -> dict[str, np.ndarray]:
+    """Training exporter conversion, reusable on consecutive online frames."""
+    if set(roles) != {"manipulated", "target"} or len(set(roles.values())) != 2:
+        raise ValueError("Expected distinct manipulated and target object roles")
+    if set(roles.values()) != set(rows) or set(rows) != set(points):
+        raise ValueError("Pose, point and role objects differ")
+    if not rows or len({len(value) for value in rows.values()}) != 1 or not next(iter(rows.values())):
+        raise ValueError("Pose streams must be nonempty and have equal length")
     frame_count = len(next(iter(rows.values())))
     n = frame_count
     arrays: dict[str, np.ndarray] = {
@@ -133,6 +134,21 @@ def convert_chunk(
                 age[j, :] = -1 if last_valid[role] is None else min(32767, frame - last_valid[role])
         for field, a in zip(FIELDS, (xyz, valid, source, age, confidence)):
             arrays[f"{role}_{field}"] = a
+    return arrays
+
+
+def convert_chunk(
+    index_start: int,
+    episode: int,
+    rows: dict[str, list[dict]],
+    points: dict[str, np.ndarray],
+    roles: dict[str, str],
+    last_valid: dict[str, int | None],
+    shard_root: Path,
+    record_index: list[dict],
+) -> None:
+    arrays = geometry_arrays(index_start, episode, rows, points, roles, last_valid)
+    n = len(arrays["frame_index"])
     shard_root.mkdir(parents=True, exist_ok=False)
     for field, a in arrays.items():
         np.save(shard_root / f"{field}.npy", a, allow_pickle=False)
@@ -186,7 +202,7 @@ def run(args: argparse.Namespace) -> None:
     if output.exists() or output.is_symlink():
         raise FileExistsError(f"Refuse to overwrite: {output}")
     # 512 sampled points per object, deterministic and identical for all frames/episodes.
-    points = {name: load_surface_points(prep / "geometry" / "approved" / f"{name}.glb", 20261101 + i)
+    points = {name: load_surface_points(prep / "geometry" / "approved" / f"{name}.glb", SURFACE_SAMPLING_SEED + i)
               for i, name in enumerate(objects)}
     if args.dry_run:
         print(f"[PLAN] {args.dataset} {len(selected)} episodes roles={roles} output={output}")
@@ -244,7 +260,7 @@ def run(args: argparse.Namespace) -> None:
         "validity_semantics": "invalid pose: xyz=0 mask=false confidence=0; age=time since last valid (-1 before first)",
         "coordinate_frame": "base_link",
         "length_unit": "m",
-        "surface_sampling_seed": 20261101,
+        "surface_sampling_seed": SURFACE_SAMPLING_SEED,
         "shard_size": args.shard_size,
         "records": all_records,
     }

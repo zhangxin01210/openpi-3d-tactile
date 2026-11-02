@@ -70,3 +70,27 @@ def test_tactile_only_preprocess_needs_no_depth(monkeypatch):
     assert tuple(output["spatial"]) == ("tactile", "causal_tactile")
     assert output["spatial"]["tactile"]["xyz_m"].shape == (2, 3)
     assert output["spatial"]["causal_tactile"]["sample_valid"].shape == (2,)
+
+
+def test_online_keypoints_reuse_training_fk(monkeypatch):
+    from pathlib import Path
+    from openpi.spatial.kinematics import RobotKinematics, load_state_mapping_csv, joint_positions_from_state
+    from openpi.spatial.hand_keypoints import select_keypoints
+    root = Path(__file__).resolve().parents[3]
+    kin = RobotKinematics(root / 'configs/ur7e_xhand/ur7e_xhand_verified.urdf')
+    mapping = load_state_mapping_csv(root / 'configs/ur7e_xhand/state_mapping.csv')
+    class FakePreprocessor:
+        kinematics = kin
+        state_mapping = mapping
+        def preprocess_visual(self, **kwargs):
+            return SimpleNamespace(xyz_m=np.zeros((2, 3), np.float32), rgb=np.zeros((2, 3), np.uint8), rgb_valid=np.ones(2, bool))
+    monkeypatch.setattr(spatial_online.SpatialPreprocessor, 'from_repo_root', lambda **kwargs: FakePreprocessor())
+    transform = spatial_online.XHandSpatialOnlinePreprocess(camera_roles=('front',), use_tactile=False,
+                                                             require_hand_keypoints=True)
+    state = np.zeros(1972, np.float32)
+    result = transform({'observation.state': state, 'observation.images.cam_front': np.zeros((8, 12, 3), np.uint8),
+                        'observation.depths.cam_front': np.zeros((8, 12), np.uint16)})
+    q = joint_positions_from_state(state.astype(np.float64), mapping=mapping, kinematics=kin, root='base_link')
+    expected = select_keypoints(kin, kin.compute(q, root='base_link'))[3]
+    np.testing.assert_array_equal(result['spatial']['hand_keypoints']['xyz_m'], expected)
+    assert result['spatial']['hand_keypoints']['point_mask'].all()

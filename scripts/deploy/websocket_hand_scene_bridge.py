@@ -80,7 +80,8 @@ class HandScenePerceptionBridge:
                  position_template_episode:int=23, prompt_file:Path|None=None,
                  timeout_s:float=180., sam2_checkpoint:Path|None=None,
                  rgbtrack_weights:Path|None=None, sam2_source:Path|None=None,
-                 scale_manifest:Path|None=None):
+                 scale_manifest:Path|None=None, geometry_config:Path|None=None,
+                 calibration_profile:Path|None=None):
         self.policy=policy
         self.repo_root=Path(repo_root).resolve()
         # Keep the venv's *entry-point path*, including its python symlink.
@@ -93,6 +94,12 @@ class HandScenePerceptionBridge:
         self.episode=episode
         self.position_template_episode=position_template_episode
         self.scene_position=None
+        self.geometry_config=Path(geometry_config).resolve() if geometry_config else None
+        self.calibration_profile=Path(calibration_profile).expanduser() if calibration_profile else None
+        self.generic_geometry = (self.geometry_config is not None and
+                                 json.loads(self.geometry_config.read_text()).get("status") == "human_accepted")
+        if self.geometry_config is not None and self.calibration_profile is None:
+            raise ValueError("Task geometry requires the training front calibration profile")
         self.session_counter=0
         self.session_root=None
         self.prompt_file=prompt_file
@@ -123,7 +130,7 @@ class HandScenePerceptionBridge:
             "hand_scene_geometry_service":True,
             "hand_scene_history_required":True,
             "hand_scene_history_max_frames":64,
-            "hand_scene_positions":list(SELECTABLE_SCENE_POSITIONS),
+            "hand_scene_positions":list((1,) if self.generic_geometry else SELECTABLE_SCENE_POSITIONS),
             "hand_scene_selection_source":"client_scene_position_2d_seed_points_only",
             "hand_scene_server_status":"blocking_validated_pipeline_not_safe_for_actuation",
         }
@@ -140,11 +147,15 @@ class HandScenePerceptionBridge:
             "--weights-root",str(self.rgbtrack_weights),
             "--scale-manifest",str(self.scale_manifest),
             "--front-calibration-profile",
-            str(self.repo_root/"configs/ur7e_xhand/front_calibration_candidate.json"),
+            str(self.calibration_profile or self.repo_root/"configs/ur7e_xhand/front_calibration_candidate.json"),
             "--episode",str(SCENE_POSITION_TO_EPISODE[self.scene_position]),
             "--register-missing-color-depth",
             "--follow",
         ]
+        if self.geometry_config is not None:
+            cmd += ["--geometry-config", str(self.geometry_config)]
+            if self.generic_geometry:
+                return cmd
         if self.anchor_json is not None:
             cmd+=["--static-target-anchor-json",str(self.anchor_json),
                   "--static-target-anchor-source","human_reviewed"]
@@ -220,8 +231,9 @@ class HandScenePerceptionBridge:
             item.reset_tactile_ema()
 
     def _start_session(self,session:str,position:int):
-        if position not in SELECTABLE_SCENE_POSITIONS:
-            raise ValueError(f"Unknown --scene-position {position}; allowed {SELECTABLE_SCENE_POSITIONS}")
+        allowed = (1,) if self.generic_geometry else SELECTABLE_SCENE_POSITIONS
+        if position not in allowed:
+            raise ValueError(f"Unknown --scene-position {position}; allowed {allowed}")
         if self.prompt_file is not None:
             raise ValueError("Client --scene-position cannot be combined with fixed server --prompts")
         if self.anchor_json is not None and SCENE_POSITION_TO_EPISODE[position]!=self.position_template_episode:
@@ -260,8 +272,9 @@ class HandScenePerceptionBridge:
         requested=obs.pop("hand_scene_position",None)
         if not isinstance(session,str) or not session:
             raise ValueError("hand_scene_session missing; old robot client cannot bypass object geometry")
-        if not isinstance(requested,(int,np.integer)) or int(requested) not in SELECTABLE_SCENE_POSITIONS:
-            raise ValueError(f"hand_scene_position must be one of {SELECTABLE_SCENE_POSITIONS}, got {requested}")
+        allowed = (1,) if self.generic_geometry else SELECTABLE_SCENE_POSITIONS
+        if not isinstance(requested,(int,np.integer)) or int(requested) not in allowed:
+            raise ValueError(f"hand_scene_position must be one of {allowed}, got {requested}")
         position=int(requested)
         if self.session_id != session:
             # Switching at robot-side between different runs starts a new

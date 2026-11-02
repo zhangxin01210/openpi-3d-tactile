@@ -59,11 +59,17 @@ class CausalVideoSAM2Stream:
         self.torch = torch
         self.device = device
         self.prompts = seed_prompts
+        names = tuple(seed_prompts.get("objects", {}))
+        if not names:
+            names = tuple(OBJECT_IDS)
+        if len(names) != 2 or len(set(names)) != 2:
+            raise ValueError("SAM2 video tracking requires exactly two distinct objects")
+        self.object_ids = OBJECT_IDS if set(names) == set(OBJECT_IDS) else {name: i + 1 for i, name in enumerate(names)}
         self.corrections = corrections
         self.seed_frame = int(seed_prompts.get("seed_frame", seed_prompts.get("frame_index", 0)))
         self.init_frames = {
             name: int(seed_prompts.get("init_frames", {}).get(name, self.seed_frame))
-            for name in OBJECT_IDS
+            for name in self.object_ids
         }
         self.min_area = int(min_area)
         self.max_fraction = float(max_fraction)
@@ -74,8 +80,8 @@ class CausalVideoSAM2Stream:
         self.shape: tuple[int, int] | None = None
         self.previous_frame: int | None = None
         self.seeded: set[str] = set()
-        self.last_area = {name: 0 for name in OBJECT_IDS}
-        self.last_valid = {name: False for name in OBJECT_IDS}
+        self.last_area = {name: 0 for name in self.object_ids}
+        self.last_valid = {name: False for name in self.object_ids}
 
     def _normalized_frame(self, rgb: np.ndarray):
         from PIL import Image
@@ -146,7 +152,7 @@ class CausalVideoSAM2Stream:
             if seed_mask.shape != self.shape:
                 raise ValueError(f"{name} seed mask shape {seed_mask.shape}, expected {self.shape}")
             self.predictor.add_new_mask(self.state, frame_idx=ordinal,
-                                        obj_id=OBJECT_IDS[name], mask=seed_mask)
+                                        obj_id=self.object_ids[name], mask=seed_mask)
             source = "manual_correction_mask" if corrected else "manual_seed_mask"
         else:
             # Match Level-1 reviewed positive/negative point semantics.
@@ -164,7 +170,7 @@ class CausalVideoSAM2Stream:
             labels = np.asarray([1] * len(positives) + [0] * len(negatives), dtype=np.int32)
             self.predictor.add_new_points_or_box(
                 inference_state=self.state, frame_idx=ordinal,
-                obj_id=OBJECT_IDS[name], points=points, labels=labels,
+                obj_id=self.object_ids[name], points=points, labels=labels,
             )
             source = "manual_correction_points" if corrected else "reviewed_points"
         self.seeded.add(name)
@@ -182,7 +188,7 @@ class CausalVideoSAM2Stream:
             ordinal = self._append_current_image(rgb)
             manual = {
                 name: self._register_prompt(ordinal, frame_index, name, data)
-                for name in OBJECT_IDS
+                for name in self.object_ids
             }
             if not self.seeded:
                 raise ValueError("No SAM2 objects initialized: provide reviewed points or seed masks")
@@ -197,7 +203,7 @@ class CausalVideoSAM2Stream:
         if len(ids) != len(set(ids)):
             raise RuntimeError("Duplicated SAM2 object IDs")
         masks = {}
-        for name, obj_id in OBJECT_IDS.items():
+        for name, obj_id in self.object_ids.items():
             if obj_id in ids:
                 tensor = logits[ids.index(obj_id)]
                 mask = np.asarray((tensor > 0).detach().cpu().numpy(), dtype=bool).squeeze()
@@ -209,7 +215,7 @@ class CausalVideoSAM2Stream:
             if manual[name] is not None and manual[name][1] is not None:
                 mask = np.asarray(manual[name][1], dtype=bool).copy()
             masks[name] = mask
-        overlap = int(np.logical_and(masks["funnel"], masks["target_flask"]).sum())
+        overlap = int(np.logical_and(*masks.values()).sum())
         smallest = max(1, min(int(m.sum()) for m in masks.values()))
         conflict = overlap > 0.15 * smallest
         result = {}

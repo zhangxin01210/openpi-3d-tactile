@@ -32,6 +32,7 @@ class FakeVideo:
 
 def stream(prompts=None):
     s = CausalVideoSAM2Stream.__new__(CausalVideoSAM2Stream)
+    s.object_ids = {"target_flask": 1, "funnel": 2}
     s.predictor = FakeVideo()
     s.torch = torch
     s.device = "cpu"
@@ -99,3 +100,17 @@ def test_delayed_funnel_seed():
     s.predict(1, rgb, {})
     assert s.predict(2, rgb, {})[0]["funnel"][3]
     assert ("points", 2, 2) in s.predictor.calls
+
+
+def test_video_tracks_configured_object_names():
+    s = stream({"seed_frame": 0, "objects": {"widget": {}, "fixture": {}}})
+    s.object_ids = {"widget": 1, "fixture": 2}
+    s.init_frames = {name: 0 for name in s.object_ids}
+    s.last_area = {name: 0 for name in s.object_ids}
+    s.last_valid = {name: False for name in s.object_ids}
+    rgb = np.zeros((12, 16, 3), np.uint8)
+    a = np.zeros((12, 16), bool); a[1:4, 1:4] = True
+    b = np.zeros((12, 16), bool); b[7:10, 10:13] = True
+    out, _ = s.predict(0, rgb, {"widget_seed_mask": a, "fixture_seed_mask": b})
+    assert set(out) == {"widget", "fixture"} and all(x[3] for x in out.values())
+    assert all(x[3] for x in s.predict(1, rgb, {})[0].values())

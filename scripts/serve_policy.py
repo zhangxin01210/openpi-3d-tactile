@@ -1,6 +1,11 @@
 import dataclasses
 import enum
+import json
+import hashlib
 import logging
+import os
+import pathlib
+import tempfile
 import socket
 
 import tyro
@@ -89,9 +94,70 @@ def create_policy(args: Args) -> _policy.Policy:
     """Create a policy from the given arguments."""
     match args.policy:
         case Checkpoint():
-            return _policy_config.create_trained_policy(
-                _config.get_config(args.policy.config), args.policy.dir, default_prompt=args.default_prompt
+            train_config = _config.get_config(args.policy.config)
+            policy = _policy_config.create_trained_policy(
+                train_config, args.policy.dir, default_prompt=args.default_prompt
             )
+            if (getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) == "final_v2"
+                    and getattr(train_config.data, "object_geometry", None) is not None):
+                # Reuse the existing causal perception bridge and WebSocket server.
+                from scripts.deploy.websocket_hand_scene_bridge import HandScenePerceptionBridge
+                from scripts.deploy.run_online_perception import _task_geometry_inputs
+
+                root = pathlib.Path(os.environ.get("OPENPI_REPO_ROOT", pathlib.Path(__file__).resolve().parents[1])).resolve()
+                dataset_root = pathlib.Path(train_config.data.object_geometry.dataset_root)
+                task = dataset_root.name
+                geometry = root / "output/preprocess" / task / "geometry/approved/manifest.json"
+                sidecar = dataset_root / "object_geometry" / train_config.data.object_geometry.version / "manifest.json"
+                if not sidecar.is_absolute():
+                    sidecar = root / sidecar
+                if not sidecar.is_file():
+                    raise FileNotFoundError(f"Training object geometry manifest missing: {sidecar}")
+                sidecar_manifest = json.loads(sidecar.read_text())
+                if sidecar_manifest.get("status") != "complete":
+                    raise ValueError(f"Training object geometry manifest incomplete: {sidecar}")
+                contract = sidecar_manifest.get("object_geometry_contract", {})
+                coordinate_frame = (sidecar_manifest.get("coordinate_frame") or contract.get("coordinate_frame")
+                                    or (sidecar_manifest.get("calibration") or {}).get("coordinate_frame"))
+                if contract.get("point_count") != 512 or coordinate_frame != "base_link":
+                    raise ValueError("Training geometry must be 512 points in base_link")
+                legacy = sidecar_manifest.get("source", {}).get("mode") == "geometry_only_drop_hand_scene_extras_keep_raw_q2"
+                if legacy:
+                    geometry = root / "configs/object_geometry/datasets" / task / "config.json"
+                    if not geometry.is_file():
+                        raise FileNotFoundError(f"Legacy training geometry config missing: {geometry}")
+                else:
+                    spec = _task_geometry_inputs(geometry, root)  # fail before accepting any client
+                    from scripts.preprocess.export_object_geometry_rgbtrack import SURFACE_SAMPLING_SEED
+                    def sha(path):
+                        return hashlib.sha256(path.read_bytes()).hexdigest()
+                    if (sidecar_manifest.get("source_release_sha256") != sha(spec["release_path"])
+                            or sidecar_manifest.get("approved_geometry_sha256") != sha(geometry)
+                            or sidecar_manifest.get("role_to_object") != spec["roles"]
+                            or sidecar_manifest.get("surface_sampling_seed") != SURFACE_SAMPLING_SEED
+                            or sidecar_manifest.get("approved_meshes_sha256") !=
+                               {name: sha(path) for name, path in spec["meshes"].items()}):
+                        raise ValueError("Task release, meshes, role or sampling disagree with training geometry manifest")
+                profile = train_config.data.spatial.front_calibration_profile
+                if not profile:
+                    raise ValueError("Training config requires an explicit front calibration profile for online geometry")
+                profile = pathlib.Path(profile).expanduser()
+                if not profile.is_absolute():
+                    profile = root / profile
+                if not profile.is_file():
+                    raise FileNotFoundError(f"Training calibration profile missing: {profile}")
+                from openpi.training.data_loader import validate_object_geometry_calibration
+                validate_object_geometry_calibration(train_config.data, train_config.model, sidecar_manifest)
+                python = os.environ.get("OPENPI_PERCEPTION_PYTHON")
+                if not python:
+                    raise ValueError("Set OPENPI_PERCEPTION_PYTHON to the existing SAM2/RGBTrack environment")
+                spool = pathlib.Path(tempfile.mkdtemp(prefix="openpi-perception-"))
+                scales = geometry.parent / "metric_scales_pilot.json" if legacy else None
+                if legacy and not scales.is_file():
+                    raise FileNotFoundError(f"Legacy training mesh scales missing: {scales}")
+                policy = HandScenePerceptionBridge(policy, repo_root=root, perception_python=pathlib.Path(python),
+                    workdir=spool, geometry_config=geometry, calibration_profile=profile, scale_manifest=scales)
+            return policy
         case Default():
             return create_default_policy(args.env, default_prompt=args.default_prompt)
 
@@ -113,8 +179,14 @@ def main(args: Args) -> None:
         host="0.0.0.0",
         port=args.port,
         metadata=policy_metadata,
+        infer_threaded=bool(policy_metadata.get("hand_scene_geometry_service")),
     )
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        close = getattr(policy, "close", None)
+        if close is not None:
+            close()
 
 
 if __name__ == "__main__":
