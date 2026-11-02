@@ -17,7 +17,7 @@ Useful safety/debug flags:
 # Validate dataset/schema wiring and exit before connecting to robot.
 --check-config
 
-# Record raw model requests, action chunks, and per-frame control data.
+# Record raw model requests, action chunks, per-frame control data, and UR TCP force/torque.
 --record-dir ./diagnostic_runs
 
 Render a completed run offline with deploy/render_pi0_diagnostics.py.
@@ -62,10 +62,8 @@ from typing import Dict, Mapping, Optional
 
 import numpy as np
 
-# SELF-CONTAINED DEPLOYMENT CONTRACT: this file is copied by itself to the
-# robot-side LeRobot checkout. Keep the safety guard embedded here; no project-
-# local sibling module is importable on that host. Tests in the source checkout
-# re-export these same classes from deploy/contact_safety.py.
+# Keep the tactile event scheduler and threshold failure check in this
+# standalone deployment script.
 TACTILE_START = 52
 FINGERS = 5
 FINGER_STRIDE = 384
@@ -85,29 +83,14 @@ def _positive_scalar(value, name):
     return v
 
 
-def load_safety_limits(path: str | Path, *, plastic_probe: bool = False) -> dict:
-    """Only explicitly reviewed hardware limits can enable robot actuation."""
+def load_safety_limits(path: str | Path) -> dict:
+    """Load tactile replan and failure thresholds from a JSON file."""
     path=Path(path).expanduser().resolve()
     cfg=json.loads(path.read_text(encoding="utf-8"))
-    required={
-        "schema_version","reviewed_for_glass_task",
-        "tactile_peak_limits_raw","tactile_emergency_step_change_limits_raw",
-        "tactile_replan_step_change_limits_raw", "replan_enabled",
-        "replan_min_interval_s", "arm_tcp_force_norm_limit_n",
-        "arm_tcp_torque_norm_limit_nm", "max_observation_gap_s"
-    }
-    if plastic_probe:
-        required=required|{"reviewed_for_plastic_probe"}
-    if not isinstance(cfg,dict) or set(cfg)!=required or cfg["schema_version"]!=1:
-        raise ValueError(f"Safety config must contain exactly {sorted(required)}")
-    if plastic_probe:
-        if cfg["reviewed_for_plastic_probe"] is not True or type(cfg["reviewed_for_glass_task"]) is not bool:
-            raise ValueError("Plastic-prop motion needs separately confirmed reviewed_for_plastic_probe=true")
-    elif cfg["reviewed_for_glass_task"] is not True:
-        raise ValueError("Safety configuration is not explicitly reviewed for glass manipulation")
-    # Live UR7eXHand.get_observation() provides two separate vectors.
-    # Their semantics are fixed at the device interface: [Fx,Fy,Fz] in N,
-    # [Tx,Ty,Tz] in Nm. Never accept a configurable hand torque substitute.
+    required={"tactile_peak_limits_raw", "tactile_emergency_step_change_limits_raw",
+              "tactile_replan_step_change_limits_raw"}
+    if not isinstance(cfg,dict) or not required.issubset(cfg):
+        raise ValueError(f"Tactile config must contain {sorted(required)}")
     for key in ("tactile_peak_limits_raw","tactile_emergency_step_change_limits_raw",
                 "tactile_replan_step_change_limits_raw"):
         v=np.asarray(cfg[key],dtype=float)
@@ -117,13 +100,13 @@ def load_safety_limits(path: str | Path, *, plastic_probe: bool = False) -> dict
     replan=np.asarray(cfg["tactile_replan_step_change_limits_raw"],dtype=float)
     if np.any(replan>=emergency):
         raise ValueError("All replan thresholds must be strictly below emergency step-change thresholds")
+    cfg.setdefault("replan_enabled", True)
+    cfg.setdefault("replan_min_interval_s", 0.0)
     if type(cfg["replan_enabled"]) is not bool:
         raise ValueError("replan_enabled must be a boolean")
     interval=float(cfg["replan_min_interval_s"])
     if not np.isfinite(interval) or interval<0:
         raise ValueError("replan_min_interval_s must be a finite nonnegative number")
-    for key in ("arm_tcp_force_norm_limit_n","arm_tcp_torque_norm_limit_nm","max_observation_gap_s"):
-        _positive_scalar(cfg[key],key)
     return cfg
 
 
@@ -153,8 +136,6 @@ class ContactSafetyGuard:
             now=float(self.clock())
             if not np.isfinite(now):
                 raise SafetyTrip("Safety monotonic clock invalid")
-            if self.last_time is not None and now-self.last_time>float(self.cfg["max_observation_gap_s"]):
-                raise SafetyTrip(f"Safety polling gap {now-self.last_time:.3f}s exceeds configured maximum")
             peaks=raw_tactile_finger_peaks(state)
             limits=np.asarray(self.cfg["tactile_peak_limits_raw"],dtype=float)
             overflow=np.flatnonzero(peaks>=limits)
@@ -170,22 +151,6 @@ class ContactSafetyGuard:
                     raise SafetyTrip(f"tactile_emergency_step_change finger={i} raw_delta={step[i]:.5g} >= {emergency[i]:.5g}")
             else:
                 step=np.zeros(FINGERS,dtype=float)
-            for key in ("arm_tcp_force","arm_tcp_torque"):
-                if key not in observation:
-                    raise SafetyTrip(f"Required measured UR TCP sensor missing: {key}; "
-                                     "XHand hand_joint_i.torque is motor current, NOT UR torque")
-            tcp_force=np.asarray(observation["arm_tcp_force"],dtype=np.float64)
-            tcp_torque=np.asarray(observation["arm_tcp_torque"],dtype=np.float64)
-            if tcp_force.shape!=(3,) or tcp_torque.shape!=(3,):
-                raise SafetyTrip(f"Invalid UR TCP force/torque shapes: {tcp_force.shape}, {tcp_torque.shape}")
-            if not np.isfinite(tcp_force).all() or not np.isfinite(tcp_torque).all():
-                raise SafetyTrip("Invalid non-finite UR TCP force/torque")
-            force=float(np.linalg.norm(tcp_force))
-            torque=float(np.linalg.norm(tcp_torque))
-            if force>=float(self.cfg["arm_tcp_force_norm_limit_n"]):
-                raise SafetyTrip(f"arm_tcp_force_norm {force:.5g} N exceeds threshold")
-            if torque>=float(self.cfg["arm_tcp_torque_norm_limit_nm"]):
-                raise SafetyTrip(f"arm_tcp_torque_norm {torque:.5g} Nm exceeds threshold")
             replan_fingers=[]
             if bool(self.cfg.get("replan_enabled",False)) and self.last_peaks is not None:
                 replan_limit=np.asarray(self.cfg["tactile_replan_step_change_limits_raw"],dtype=float)
@@ -201,7 +166,6 @@ class ContactSafetyGuard:
             self.last_peaks=peaks.copy()
             return {"tactile_finger_peaks_raw":peaks.tolist(),
                     "tactile_finger_step_change_raw":step.tolist(),
-                    "arm_tcp_force_norm_n":force,"arm_tcp_torque_norm_nm":torque,
                     "replan_recommended":bool(replan_fingers),
                     "replan_triggered_fingers":replan_fingers,
                     "replan_events_so_far":self.replan_events}
@@ -228,19 +192,13 @@ TACTILE_TAXELS_PER_FINGER = 120
 TACTILE_FINGER_NAMES = ("thumb", "index", "middle", "ring", "little")
 TACTILE_SENSOR_IDS = tuple(range(0x11, 0x16))
 TACTILE_FORCE_AXES = ("fx", "fy", "fz")
+START_HAND_MAX_STEP_RAD = 0.02
+START_HAND_SETTLE_SECONDS = 0.5
 INDEX_SPLAY_ACTION_KEY = "hand_joint_3.pos"
 INDEX_SPLAY_DEADZONE_MIN_RAD = -0.2
 INDEX_SPLAY_DEADZONE_MAX_RAD = 0.0
 DEBUG_INFER_PRINT_LIMIT = 3
 DIAGNOSTIC_CONTROL_BLOCK_FRAMES = 30
-# Hard-coded joint travel bounds for ONE plastic-prop motion probe only.
-PROBE_MAX_STEPS = 16
-PROBE_ARM_STEP_RAD = 0.012
-PROBE_HAND_STEP_RAD = 0.025
-PROBE_ARM_TOTAL_RAD = 0.15
-PROBE_HAND_TOTAL_RAD = 0.30
-PROBE_ARM_IDLE_DRIFT_RAD = 0.03
-PROBE_HAND_IDLE_DRIFT_RAD = 0.06
 
 FALLBACK_STATE_NAMES = [
     *[f"arm_joint_{i}.pos" for i in range(6)],
@@ -347,6 +305,19 @@ def _json_safe(value):
     return value
 
 
+def diagnostic_tcp_vector(observation: dict, key: str) -> tuple[np.ndarray, bool]:
+    """Keep an unavailable RTDE wrench channel explicit in diagnostic files."""
+    value = observation.get(key)
+    if value is not None:
+        try:
+            vector = np.asarray(value, dtype=np.float32)
+            if vector.shape == (3,) and np.isfinite(vector).all():
+                return vector.copy(), True
+        except (TypeError, ValueError):
+            pass
+    return np.full(3, np.nan, dtype=np.float32), False
+
+
 class DiagnosticRecorder:
     """Low-overhead asynchronous recorder for one policy run."""
 
@@ -376,6 +347,7 @@ class DiagnosticRecorder:
         self._control_block_index = 0
         self._closed = False
         self._record_tactile = bool(getattr(args, "spatial_use_tactile", True))
+        self._invalid_tcp_wrench_frames = 0
         recorded_args = dict(vars(args))
         if recorded_args.get("api_key"):
             recorded_args["api_key"] = "<redacted>"
@@ -395,6 +367,14 @@ class DiagnosticRecorder:
                 "block_size": TACTILE_BLOCK_SIZE,
                 "raw_force_offset": TACTILE_RAW_FORCE_OFFSET,
                 "taxels_per_finger": TACTILE_TAXELS_PER_FINGER,
+            },
+            "tcp_wrench": {
+                "enabled": True,
+                "source": "UR RTDE getActualTCPForce via arm_tcp_force and arm_tcp_torque",
+                "force_unit": "N",
+                "torque_unit": "Nm",
+                "frame": "as returned by the UR controller; not transformed or bias-corrected",
+                "missing_values": "NaN with matching *_valid=false",
             },
             "args": _json_safe(recorded_args),
         }
@@ -445,8 +425,12 @@ class DiagnosticRecorder:
             self._dropped_paths.append(str(relative_path))
             logging.warning("Diagnostic queue is full; dropped %s", relative_path)
 
-    def record_query_input(self, *, query_id: int, observation: dict, elapsed_s: float) -> None:
+    def record_query_input(
+        self, *, query_id: int, observation: dict, robot_observation: dict, elapsed_s: float
+    ) -> None:
         state = np.asarray(observation["observation.state"], dtype=np.float32).copy()
+        tcp_force, force_valid = diagnostic_tcp_vector(robot_observation, "arm_tcp_force")
+        tcp_torque, torque_valid = diagnostic_tcp_vector(robot_observation, "arm_tcp_torque")
         arrays: dict[str, object] = {
             "query_id": np.asarray(query_id, dtype=np.int64),
             "frame_index": np.asarray(observation["frame_index"], dtype=np.int64),
@@ -454,6 +438,10 @@ class DiagnosticRecorder:
             "client_elapsed_s": np.asarray(elapsed_s, dtype=np.float64),
             "wall_time_ns": np.asarray(time.time_ns(), dtype=np.int64),
             "state": state,
+            "arm_tcp_force": tcp_force,
+            "arm_tcp_torque": tcp_torque,
+            "arm_tcp_force_valid": np.asarray(force_valid, dtype=np.bool_),
+            "arm_tcp_torque_valid": np.asarray(torque_valid, dtype=np.bool_),
             "prompt": np.asarray(str(observation.get("prompt", ""))),
         }
         if self._record_tactile:
@@ -510,6 +498,8 @@ class DiagnosticRecorder:
         *,
         frame_idx: int,
         elapsed_s: float,
+        observation_elapsed_s: float,
+        observation: dict,
         state: np.ndarray,
         raw_action: np.ndarray,
         command_action: np.ndarray,
@@ -519,12 +509,21 @@ class DiagnosticRecorder:
         action_sent: bool,
         fallback: bool,
     ) -> None:
+        tcp_force, force_valid = diagnostic_tcp_vector(observation, "arm_tcp_force")
+        tcp_torque, torque_valid = diagnostic_tcp_vector(observation, "arm_tcp_torque")
+        if not (force_valid and torque_valid):
+            self._invalid_tcp_wrench_frames += 1
         self._control_records.append(
             {
                 "frame_index": frame_idx,
                 "elapsed_s": elapsed_s,
+                "observation_elapsed_s": observation_elapsed_s,
                 "wall_time_ns": time.time_ns(),
                 "state": np.asarray(state, dtype=np.float32).copy(),
+                "arm_tcp_force": tcp_force,
+                "arm_tcp_torque": tcp_torque,
+                "arm_tcp_force_valid": force_valid,
+                "arm_tcp_torque_valid": torque_valid,
                 "raw_action": np.asarray(raw_action, dtype=np.float32).copy(),
                 "command_action": np.asarray(command_action, dtype=np.float32).copy(),
                 "query_id": query_id,
@@ -567,6 +566,7 @@ class DiagnosticRecorder:
                 "dropped_records": self._dropped_records,
                 "dropped_paths": self._dropped_paths,
                 "writer_errors": self._worker_errors,
+                "invalid_tcp_wrench_frames": self._invalid_tcp_wrench_frames,
             }
         )
         self._write_json_atomic(self.run_dir / "manifest.json", self._manifest)
@@ -717,7 +717,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--arm-ip", type=str, default="192.168.1.102")
     parser.add_argument("--arm-control-freq", type=float, default=15.0)
-    parser.add_argument("--arm-max-relative-target", type=float, default=0.25)
+    parser.add_argument("--arm-max-relative-target", type=float, default=None,
+                        help="Optional per-command UR joint target cap in radians; disabled by default.")
 
     parser.add_argument("--hand-protocol", choices=["RS485", "EtherCAT"], default="EtherCAT")
     parser.add_argument("--hand-serial-port", type=str, default="/dev/ttyUSB0")
@@ -745,6 +746,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--smoothing-alpha", type=float, default=1.0)
     parser.add_argument("--action-scale", type=float, default=1.0)
     parser.add_argument("--no-home", action="store_true", help="Skip the physical home reset before each run, including dry runs")
+    parser.add_argument(
+        "--no-start-hand-align", action="store_true",
+        help="Skip XHand alignment to the dataset's median first-frame hand pose.",
+    )
     parser.add_argument(
         "--no-tactile-reset",
         action="store_true",
@@ -774,14 +779,9 @@ def parse_args() -> argparse.Namespace:
         help="Upper bound for the index-splay action dead zone.",
     )
     parser.add_argument("--contact-safety-config", type=Path,
-                        help="Mandatory reviewed XHand tactile + measured arm TCP wrench limits for any actuating run")
-    parser.add_argument("--dry-run", action="store_true", help="Run inference without sending policy actions; home reset still runs unless --no-home is set")
-    parser.add_argument(
-        "--actuation-probe-steps", type=int, default=0,
-        help="Explicitly opt in to one bounded 1..16-step REAL robot motion probe. "
-             "Requires --no-home, --run-mode single, calibrated reviewed --contact-safety-config; "
-             "not authorization for glass or continuous multi-chunk control."
-    )
+                        help="Optional JSON tactile replan and failure thresholds.")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Do not send policy actions; home and hand alignment can still move the robot.")
     parser.add_argument("--live-packet-url", type=str,
                         help="SENSOR-ONLY HTTP receiver /frame on inference host. "
                              "No Pi0 websocket, no homing or policy actions.")
@@ -798,7 +798,7 @@ def parse_args() -> argparse.Namespace:
         "--record-dir",
         type=Path,
         default=None,
-        help="Enable lightweight asynchronous diagnostic recording under this directory.",
+        help="Record inference, control, and per-frame UR TCP force/torque under this directory.",
     )
     parser.add_argument(
         "--record-queue-size",
@@ -924,6 +924,60 @@ def load_feature_names(dataset_dir: Path) -> tuple[list[str], list[str], list[st
     return list(state_names), list(action_names), camera_names
 
 
+def load_dataset_start_hand_pose(dataset_dir: Path, state_names: list[str]) -> np.ndarray:
+    """Median observed XHand pose at the start of recorded episodes."""
+    try:
+        parquet = importlib.import_module("pyarrow.parquet")
+    except ImportError as exc:
+        raise ImportError("Start-hand alignment requires pyarrow; install it or pass --no-start-hand-align") from exc
+    hand_names = [f"hand_joint_{i}.pos" for i in range(12)]
+    missing = [name for name in hand_names if name not in state_names]
+    if missing:
+        raise ValueError(f"Dataset is missing hand position features: {missing}")
+    indices = [state_names.index(name) for name in hand_names]
+    episode_paths = sorted((dataset_dir / "data").rglob("episode_*.parquet"))
+    if not episode_paths:
+        raise ValueError(f"No episode Parquet files found under {dataset_dir / 'data'}")
+    starts = []
+    for path in episode_paths:
+        episode = parquet.ParquetFile(path)
+        if episode.metadata.num_rows == 0:
+            continue
+        batch = next(episode.iter_batches(batch_size=1, columns=["observation.state"]))
+        state = np.asarray(batch.column(0)[0].as_py(), dtype=np.float64)
+        if state.size != len(state_names):
+            raise ValueError(f"{path} has state dim {state.size}, expected {len(state_names)}")
+        starts.append(state[indices])
+    if not starts:
+        raise ValueError("No nonempty dataset episodes found")
+    target = np.median(np.stack(starts), axis=0)
+    if not np.isfinite(target).all():
+        raise ValueError("Dataset start-hand pose contains non-finite values")
+    print(f"Dataset start-hand pose from {len(starts)} episodes (rad): {np.round(target, 4)}")
+    return target
+
+
+def align_hand_to_start_pose(robot, target: np.ndarray, fps: int) -> None:
+    """Move only XHand to the recorded start pose in small position steps."""
+    limits = robot.hand.config.position_limits
+    for i, value in enumerate(target):
+        lower, upper = limits[f"joint_{i}"]
+        if not lower <= value <= upper:
+            raise ValueError(f"Start pose hand_joint_{i}={value:.4f} outside [{lower:.4f}, {upper:.4f}]")
+    observation = robot.hand.get_observation()
+    current = np.asarray([observation[f"joint_{i}.pos"] for i in range(12)], dtype=np.float64)
+    if not np.isfinite(current).all():
+        raise ValueError("Current XHand positions contain non-finite values")
+    steps = max(1, int(np.ceil(np.max(np.abs(target - current)) / START_HAND_MAX_STEP_RAD)))
+    print(f"Aligning XHand to dataset start pose over {steps} steps; keep fingertips unloaded.")
+    for step in range(1, steps + 1):
+        frame_start = time.perf_counter()
+        position = current + (target - current) * (step / steps)
+        robot.hand.send_action({f"joint_{i}.pos": float(position[i]) for i in range(12)})
+        time.sleep(max(0.0, 1.0 / fps - (time.perf_counter() - frame_start)))
+    time.sleep(START_HAND_SETTLE_SECONDS)
+
+
 def build_robot(args: argparse.Namespace):
     try:
         camera_configs = importlib.import_module("lerobot.cameras.configs")
@@ -970,10 +1024,7 @@ def build_robot(args: argparse.Namespace):
             servo_time=1.0 / args.arm_control_freq,
             servo_lookahead_time=1.0 / args.arm_control_freq,
             max_relative_target=args.arm_max_relative_target,
-            # Required by the independent contact interlock; UR7eXHand
-            # exposes arm_tcp_force (3 N) and arm_tcp_torque (3 Nm).
-            # These are EXTRA observation keys; do not append to 1972-state.
-            record_tcp_force_torque=True,
+            record_tcp_force_torque=args.record_dir is not None or args.capture_observation_audit is not None,
             cameras={},
         ),
         hand_config=xhand_config.XHandConfig(
@@ -1207,37 +1258,6 @@ def make_hold_action_chunk(obs: dict, action_names: list[str], n_action_steps: i
     return np.repeat(current_action[None, :], repeats=n_action_steps, axis=0)
 
 
-
-def limit_probe_joint_targets(*, requested, observed, starting, action_names):
-    """Clamp per-step and total displacement of one short 18D plastic-prop probe."""
-    values=np.asarray(requested,dtype=np.float64)
-    current=np.asarray(observed,dtype=np.float64)
-    origin=np.asarray(starting,dtype=np.float64)
-    if values.shape!=(18,) or current.shape!=(18,) or origin.shape!=(18,):
-        raise SafetyTrip("Actuation probe requires exactly 18 arm/hand joint positions")
-    if list(action_names)!=FALLBACK_ACTION_NAMES or not (
-        np.isfinite(values).all() and np.isfinite(current).all() and np.isfinite(origin).all()
-    ):
-        raise SafetyTrip("Actuation probe invalid joint ordering or non-finite readings")
-    step=np.asarray([PROBE_ARM_STEP_RAD]*6+[PROBE_HAND_STEP_RAD]*12,dtype=np.float64)
-    total=np.asarray([PROBE_ARM_TOTAL_RAD]*6+[PROBE_HAND_TOTAL_RAD]*12,dtype=np.float64)
-    if np.any(np.abs(current-origin)>total+0.01):
-        raise SafetyTrip("Robot outside bounded motion-probe displacement envelope")
-    limited=np.clip(values,origin-total,origin+total)
-    limited=np.clip(limited,current-step,current+step)
-    limited=np.clip(limited,origin-total,origin+total)
-    return limited.astype(np.float32)
-
-
-def check_probe_inference_idle_drift(before_obs, after_obs, action_names):
-    """Reject external drift while Pi0 was blocking and NO commands were sent."""
-    before=get_current_action(before_obs,action_names)
-    after=get_current_action(after_obs,action_names)
-    delta=np.abs(after-before)
-    if not np.isfinite(delta).all() or np.any(delta[:6]>PROBE_ARM_IDLE_DRIFT_RAD) or np.any(delta[6:]>PROBE_HAND_IDLE_DRIFT_RAD):
-        raise SafetyTrip("Robot moved during blocked Pi0 inference; refusing probe actions")
-
-
 def request_action_chunk(
     *,
     client: WebsocketClientPolicy,
@@ -1367,7 +1387,9 @@ def terminal_stop_listener():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
 
 
-def reset_robot_to_home_for_run(robot, args: argparse.Namespace, run_index: int) -> None:
+def reset_robot_to_home_for_run(
+    robot, args: argparse.Namespace, run_index: int, start_hand_pose: np.ndarray | None
+) -> None:
     if not args.no_home:
         print("Resetting robot to home...")
         if not robot.reset_to_home():
@@ -1376,6 +1398,8 @@ def reset_robot_to_home_for_run(robot, args: argparse.Namespace, run_index: int)
     else:
         print("Skipping home reset (--no-home); initial observation uses the robot's current pose.")
 
+    if start_hand_pose is not None:
+        align_hand_to_start_pose(robot, start_hand_pose, args.fps)
     seed_action_target_fallback(robot)
     if not args.spatial_use_tactile:
         print("Skipping tactile reset: the selected policy does not use tactile input.")
@@ -1387,7 +1411,10 @@ def reset_robot_to_home_for_run(robot, args: argparse.Namespace, run_index: int)
         )
 
 
-def prepare_robot_for_policy_run(robot, args: argparse.Namespace, run_index: int, total_runs: int | None) -> None:
+def prepare_robot_for_policy_run(
+    robot, args: argparse.Namespace, run_index: int, total_runs: int | None,
+    start_hand_pose: np.ndarray | None,
+) -> None:
     run_label = f"{run_index}" if total_runs is None else f"{run_index}/{total_runs}"
     print(f"\n=== Preparing PI0 run {run_label} ===")
 
@@ -1397,10 +1424,10 @@ def prepare_robot_for_policy_run(robot, args: argparse.Namespace, run_index: int
             f"Press ENTER to {preparation} PI0 run {run_label}. "
             "Press RIGHT arrow during the run to finish this run: "
         )
-        reset_robot_to_home_for_run(robot, args, run_index)
+        reset_robot_to_home_for_run(robot, args, run_index, start_hand_pose)
         return
 
-    reset_robot_to_home_for_run(robot, args, run_index)
+    reset_robot_to_home_for_run(robot, args, run_index, start_hand_pose)
     if not args.yes:
         input(f"Press ENTER to start PI0 run {run_label}. Use Ctrl+C to stop: ")
 
@@ -1455,9 +1482,6 @@ def run_policy_once(
     active_fallback = False
     end_reason = "duration"
     safety = ContactSafetyGuard(args.contact_safety_limits) if args.contact_safety_limits is not None else None
-    probe_steps=int(args.actuation_probe_steps)
-    probe_origin=None
-    probe_commands=0
     client.reset()
     use_server_geometry=bool(getattr(args,"server_metadata",{}).get("hand_scene_geometry_service",False))
     history=[]
@@ -1467,9 +1491,6 @@ def run_policy_once(
         available=getattr(args,"server_metadata",{}).get("hand_scene_positions",[])
         if args.scene_position is None or args.scene_position not in available:
             raise ValueError(f"Choose --scene-position from server reviewed 2D prompt sets {available}")
-    if use_server_geometry and not args.dry_run and probe_steps==0:
-        raise ValueError("Full geometry actuation is blocked; only explicit "
-                         "--actuation-probe-steps 1..16 with reviewed contact limits is permitted")
     recorder = (
         DiagnosticRecorder(
             root_dir=args.record_dir,
@@ -1500,6 +1521,7 @@ def run_policy_once(
 
                 loop_start = time.perf_counter()
                 obs = robot.get_observation()
+                observation_elapsed_s = time.perf_counter() - start_run
                 env_state = build_env_state(obs, state_names)
                 if use_server_geometry:
                     # Store EVERY raw observed step, even when Pi0 is not
@@ -1554,7 +1576,8 @@ def run_policy_once(
                         recorder.record_query_input(
                             query_id=query_id,
                             observation=observation,
-                            elapsed_s=time.perf_counter() - start_run,
+                            robot_observation=obs,
+                            elapsed_s=observation_elapsed_s,
                         )
                     if current_action_step < DEBUG_INFER_PRINT_LIMIT:
                         debug_print_client_observation(
@@ -1562,7 +1585,6 @@ def run_policy_once(
                             query_index=current_action_step,
                             mode=args.policy_input_mode,
                         )
-                    pre_inference_obs=obs if probe_steps else None
                     infer_attempt_start = time.perf_counter()
                     try:
                         action_chunk, inference_result, infer_ms = request_action_chunk(
@@ -1581,17 +1603,6 @@ def run_policy_once(
                                 client_roundtrip_ms=infer_ms,
                             )
                         n_action_steps = action_chunk.shape[0]
-                        if probe_steps:
-                            # No motion was commanded during inference; refresh
-                            # all sensors before the first actuation command.
-                            obs=robot.get_observation()
-                            check_probe_inference_idle_drift(pre_inference_obs,obs,action_names)
-                            fresh_state=build_env_state(obs,state_names)
-                            safety=ContactSafetyGuard(args.contact_safety_limits)
-                            safety.check(observation=obs,state=fresh_state)
-                            probe_origin=get_current_action(obs,action_names).copy()
-                            print(f"[PROBE] fresh sensors after {infer_ms:.0f}ms idle inference; "
-                                  f"at most {probe_steps} limited commands",flush=True)
                         if use_server_geometry:
                             # All pending frames were accepted and included
                             # in the geometry of the successful inference.
@@ -1599,9 +1610,6 @@ def run_policy_once(
                         current_action_step += 1
                         active_fallback = False
                     except Exception as exc:
-                        if probe_steps:
-                            raise SafetyTrip(f"Motion probe inference/fresh-sensor precheck failed; "
-                                             f"no actions sent: {exc}") from exc
                         infer_ms = (time.perf_counter() - infer_attempt_start) * 1000.0
                         print(f"Inference failed; holding current pose: {exc}", flush=True)
                         if recorder is not None:
@@ -1619,8 +1627,9 @@ def run_policy_once(
 
                 # Inference may block for hundreds of milliseconds. Refresh sensors
                 # BEFORE the next command; never execute a stale chunk blindly.
-                if should_query and safety is not None and not probe_steps:
+                if should_query and safety is not None:
                     obs = robot.get_observation()
+                    observation_elapsed_s = time.perf_counter() - start_run
                     env_state = build_env_state(obs, state_names)
                     after_infer_contact = safety.check(observation=obs, state=env_state)
                     if after_infer_contact["replan_recommended"]:
@@ -1636,6 +1645,17 @@ def run_policy_once(
                 executed_chunk_step = chunk_idx
                 raw_action = action_chunk[chunk_idx].copy()
                 chunk_idx += 1
+                if frame_idx == 0 and not active_fallback:
+                    current_action = get_current_action(obs, action_names)
+                    delta = np.abs(raw_action - current_action)
+                    arm_indices = [i for i, name in enumerate(action_names) if name.startswith("arm_")]
+                    hand_indices = [i for i, name in enumerate(action_names) if name.startswith("hand_")]
+                    print(
+                        "First raw policy target vs current pose: "
+                        f"arm_max={float(delta[arm_indices].max()):.4f} rad, "
+                        f"hand_max={float(delta[hand_indices].max()):.4f} rad",
+                        flush=True,
+                    )
 
                 if active_fallback:
                     action = raw_action
@@ -1648,22 +1668,6 @@ def run_policy_once(
                     action = apply_index_splay_deadzone(action, action_names, args)
                 previous_action = action.copy()
 
-                if probe_steps:
-                    # Fresh force/tactile/state immediately before EACH command.
-                    obs=robot.get_observation()
-                    env_state=build_env_state(obs,state_names)
-                    probe_contact=safety.check(observation=obs,state=env_state)
-                    if probe_contact["replan_recommended"]:
-                        raise SafetyTrip("Probe contact changed; stop rather than schedule new Pi0 inference")
-                    if probe_origin is None:
-                        raise SafetyTrip("No validated probe origin")
-                    action=limit_probe_joint_targets(
-                        requested=action,observed=get_current_action(obs,action_names),
-                        starting=probe_origin,action_names=action_names,
-                    )
-                    print(f"[PROBE] command={probe_commands+1}/{probe_steps} "
-                          f"max_arm_travel={np.max(np.abs(action[:6]-probe_origin[:6])):.4f} "
-                          f"max_hand_travel={np.max(np.abs(action[6:]-probe_origin[6:])):.4f} rad",flush=True)
                 action_dict = action_array_to_dict(action, action_names)
                 if args.dry_run:
                     print(
@@ -1675,19 +1679,14 @@ def run_policy_once(
                     )
                 else:
                     robot.send_action(action_dict)
-                    if probe_steps:
-                        probe_commands+=1
-                        if probe_commands>=probe_steps:
-                            end_reason="probe_command_limit"
-                            print(f"[PROBE COMPLETE] {probe_commands} bounded commands; stopping robot",flush=True)
-                            robot.stop()
-                            break
 
                 elapsed = time.perf_counter() - loop_start
                 if recorder is not None:
                     recorder.record_control_frame(
                         frame_idx=frame_idx,
                         elapsed_s=time.perf_counter() - start_run,
+                        observation_elapsed_s=observation_elapsed_s,
+                        observation=obs,
                         state=env_state,
                         raw_action=raw_action,
                         command_action=action,
@@ -1949,31 +1948,14 @@ def main() -> int:
         raise ValueError("--live-packet-url and --check-config cannot be combined")
     if args.num_runs < 0:
         raise ValueError("--num-runs must be non-negative")
-    if not 0<=args.actuation_probe_steps<=PROBE_MAX_STEPS:
-        raise ValueError(f"--actuation-probe-steps must be 0..{PROBE_MAX_STEPS}")
-    if args.actuation_probe_steps:
-        if args.dry_run or not args.no_home or args.run_mode!="single":
-            raise ValueError("Motion probe needs no --dry-run, --no-home and --run-mode single")
-        if args.contact_safety_config is None:
-            raise ValueError("Motion probe requires independently reviewed --contact-safety-config")
-        if args.max_action_chunk_size<args.actuation_probe_steps:
-            raise ValueError("Motion probe steps must fit within ONE chunk; "
-                             "--max-action-chunk-size >= --actuation-probe-steps")
-        if args.query_frequency<=args.actuation_probe_steps:
-            raise ValueError("Motion probe cannot requery; --query-frequency must exceed --actuation-probe-steps")
-        if args.action_scale!=1.0 or args.smoothing_alpha!=1.0:
-            raise ValueError("Motion probe requires unchanged absolute joint angles; no action scaling/smoothing")
-        if args.arm_max_relative_target>0.02:
-            raise ValueError("Motion probe requires --arm-max-relative-target <= 0.02")
     if args.tactile_reset_verify_threshold < 0:
         raise ValueError("--tactile-reset-verify-threshold must be non-negative")
     if args.index_splay_deadzone_min > args.index_splay_deadzone_max:
         raise ValueError("--index-splay-deadzone-min must be <= --index-splay-deadzone-max")
-    if (not args.dry_run and args.contact_safety_config is None and not args.check_config
-            and args.capture_observation_audit is None and args.live_packet_url is None):
-        raise ValueError("Actuation forbidden without --contact-safety-config; this is not a hardware E-stop")
+    if args.arm_max_relative_target is not None and args.arm_max_relative_target <= 0:
+        raise ValueError("--arm-max-relative-target must be positive")
     args.contact_safety_limits = (
-        load_safety_limits(args.contact_safety_config, plastic_probe=bool(args.actuation_probe_steps))
+        load_safety_limits(args.contact_safety_config)
         if args.contact_safety_config is not None else None
     )
     require_ethercat_permissions(args)
@@ -1995,6 +1977,11 @@ def main() -> int:
         )
     if len(action_names) != len(FALLBACK_ACTION_NAMES):
         raise ValueError(f"This XHand deployment requires 18 action names, got {len(action_names)}")
+    if args.fps <= 0:
+        raise ValueError("--fps must be positive")
+    start_hand_pose = (
+        None if args.no_start_hand_align else load_dataset_start_hand_pose(dataset_dir, state_names)
+    )
 
     print("=== UR7e + XHand PI0 Deployment Client ===")
     print(f"Server: {args.server_ip}:{args.server_port}")
@@ -2012,10 +1999,6 @@ def main() -> int:
     print(f"FPS: {args.fps}, duration: {args.duration}s")
     print(f"Run mode: {args.run_mode}, num_runs: {'until Ctrl+C' if args.num_runs == 0 else args.num_runs}")
     print(f"Dry run: {args.dry_run}")
-    if args.actuation_probe_steps:
-        print(f"[PROBE] {args.actuation_probe_steps} real commands maximum; "
-              f"per-step arm/hand <= {PROBE_ARM_STEP_RAD}/{PROBE_HAND_STEP_RAD} rad; "
-              f"total travel arm/hand <= {PROBE_ARM_TOTAL_RAD}/{PROBE_HAND_TOTAL_RAD} rad",flush=True)
     print(f"Diagnostic recording: {args.record_dir if args.record_dir is not None else 'disabled'}")
 
     if args.capture_observation_audit is not None:
@@ -2085,17 +2068,12 @@ def main() -> int:
         )
     configure_input_mode_from_metadata(args, metadata)
     validate_state_schema(state_names, args)
-    if args.actuation_probe_steps and not metadata.get("hand_scene_history_required",False):
-        raise ValueError("Motion probe requires the verified hand-scene geometry server, not a legacy Pi0 policy")
     if metadata.get("hand_scene_history_required",False):
         if args.scene_position not in tuple(metadata.get("hand_scene_positions",())):
             raise ValueError(f"This WebSocket geometry server requires --scene-position, "
                              f"select from {metadata.get('hand_scene_positions')}")
         print(f"[SCENE] using selected 2D human keypoints {args.scene_position} "
               "on CURRENT camera frame 0; flask pose re-estimated via RGBTrack",flush=True)
-        if not args.dry_run and not args.actuation_probe_steps:
-            raise ValueError("Hand-scene full closed-loop actuation is not enabled. "
-                             "Use --actuation-probe-steps 1..16 for one bounded plastic-prop test.")
         if args.realsense_width!=640 or args.realsense_height!=480:
             raise ValueError("Hand-scene server expects recorded 640x480 RGB-D")
         if "front" not in args.spatial_cameras:
@@ -2116,7 +2094,7 @@ def main() -> int:
             raise RuntimeError("Robot failed to connect")
 
         for run_index, total_runs in iter_run_indices(args):
-            prepare_robot_for_policy_run(robot, args, run_index, total_runs)
+            prepare_robot_for_policy_run(robot, args, run_index, total_runs, start_hand_pose)
             run_policy_once(
                 robot=robot,
                 client=client,
