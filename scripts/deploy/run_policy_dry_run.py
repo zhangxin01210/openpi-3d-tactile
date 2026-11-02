@@ -55,6 +55,29 @@ def _geometry_from_npz(source: np.lib.npyio.NpzFile) -> dict[str, object]:
     return result
 
 
+def _observation_from_npz(source: np.lib.npyio.NpzFile, *, prompt: str) -> dict[str, object]:
+    """Adapt a perception frame to the same raw inputs used by the online policy."""
+    required = ("front_rgb", "left_rgb", "right_rgb", "front_depth_native", "front_depth_color_aligned",
+                "robot_state", "timestamp_s", "frame_index")
+    absent = [key for key in required if key not in source.files]
+    if absent:
+        raise KeyError(f"Perception packet missing policy raw inputs: {absent}")
+    observation = {
+        "observation.images.cam_front": np.asarray(source["front_rgb"]),
+        "observation.images.cam_left": np.asarray(source["left_rgb"]),
+        "observation.images.cam_right": np.asarray(source["right_rgb"]),
+        "observation.depths.cam_front": np.asarray(source["front_depth_native"]),
+        "observation.state": np.asarray(source["robot_state"], dtype=np.float32),
+        "object_geometry": _geometry_from_npz(source),
+        "frame_index": int(np.asarray(source["frame_index"]).reshape(())),
+        "timestamp_s": float(np.asarray(source["timestamp_s"]).reshape(())),
+        "prompt": prompt,
+    }
+    if "episode_index" in source.files:
+        observation["episode_index"] = int(np.asarray(source["episode_index"]).reshape(()))
+    return observation
+
+
 def _frame_stream(frames_dir: Path, *, follow: bool, idle_timeout_s: float):
     seen: set[Path] = set()
     last_frame = -1
@@ -166,7 +189,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo-root", type=Path, default=ROOT)
     parser.add_argument("--frames-dir", type=Path, required=True)
-    parser.add_argument("--config", choices=tuple(DEFAULT_CHECKPOINTS), default="pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1")
+    parser.add_argument("--config", default="pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1")
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--max-frames", type=int)
@@ -181,6 +204,8 @@ def main() -> int:
     args = parser.parse_args()
     root = args.repo_root.expanduser().resolve()
     frames_dir = args.frames_dir.expanduser().resolve()
+    if args.checkpoint is None and args.config not in DEFAULT_CHECKPOINTS:
+        raise ValueError(f"--checkpoint is required for training config {args.config}")
     checkpoint = (args.checkpoint or (root / DEFAULT_CHECKPOINTS[args.config])).expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
     if not checkpoint.exists():
@@ -220,26 +245,9 @@ def main() -> int:
             if args.max_frames is not None and len(timings) >= args.max_frames:
                 break
             with np.load(path, allow_pickle=False) as source:
-                required = ("front_rgb", "left_rgb", "right_rgb", "front_depth_native", "front_depth_color_aligned", "robot_state", "timestamp_s", "frame_index")
-                absent = [key for key in required if key not in source.files]
-                if absent:
-                    raise KeyError(f"{path}: missing policy raw inputs {absent}")
-                geometry = _geometry_from_npz(source)
-                frame_index = int(np.asarray(source["frame_index"]).reshape(()))
-                timestamp = float(np.asarray(source["timestamp_s"]).reshape(()))
-                observation = {
-                    "observation.images.cam_front": np.asarray(source["front_rgb"]),
-                    "observation.images.cam_left": np.asarray(source["left_rgb"]),
-                    "observation.images.cam_right": np.asarray(source["right_rgb"]),
-                    "observation.depths.cam_front": np.asarray(source["front_depth_native"]),
-                    "observation.state": np.asarray(source["robot_state"], dtype=np.float32),
-                    "object_geometry": geometry,
-                    "frame_index": frame_index,
-                    "timestamp_s": timestamp,
-                    "prompt": args.prompt,
-                }
-                if "episode_index" in source.files:
-                    observation["episode_index"] = int(np.asarray(source["episode_index"]).reshape(()))
+                observation = _observation_from_npz(source, prompt=args.prompt)
+                frame_index = observation["frame_index"]
+                timestamp = observation["timestamp_s"]
             start = time.perf_counter()
             prediction = policy.infer(observation)
             elapsed_ms = (time.perf_counter() - start) * 1000.0
