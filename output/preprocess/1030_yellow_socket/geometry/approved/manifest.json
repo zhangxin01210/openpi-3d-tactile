@@ -1,0 +1,47 @@
+{
+  "schema": "task_photo_geometry.v1",
+  "dataset_id": "1030_yellow_socket",
+  "status": "human_accepted",
+  "objects": [
+    "yellow",
+    "red"
+  ],
+  "assets": {
+    "red": {
+      "mesh": "/workspace/mnt/sqzhang26/openpi-3d-tactile/output/preprocess/1030_yellow_socket/geometry/approved/red.glb",
+      "version": "1030_yellow_socket_photo_geometry_v1",
+      "scale_m_per_unit": 1.0,
+      "sha256": "61e00d573b2aa3ca192429926df95e4f038ac6a9234941ba4233a83cebe172d4",
+      "sampling_seed": 1,
+      "bbox_extents_m": [
+        0.05366470664739609,
+        0.04647500067949295,
+        0.052000001072883606
+      ]
+    },
+    "yellow": {
+      "mesh": "/workspace/mnt/sqzhang26/openpi-3d-tactile/output/preprocess/1030_yellow_socket/geometry/approved/yellow.glb",
+      "version": "1030_yellow_socket_photo_geometry_v1",
+      "scale_m_per_unit": 1.0,
+      "sha256": "0e4aa5fe55830c5ee202e1c7d8cb9f60db320c1431a2c15687db41b2734b0ba7",
+      "sampling_seed": 2,
+      "bbox_extents_m": [
+        0.06499999761581421,
+        0.06499999761581421,
+        0.044199999421834946
+      ]
+    }
+  },
+  "reconstruction_report_hashes": {
+    "red": "73e79904d7f592a8a5c1ea017ce60dfb01a1a47e3d99604afb61b81a2545d184",
+    "yellow": "fc44dba780bcd3e7ba256efa2a29111772363ab73a4e90481fe62f933032a56d"
+  },
+  "calibration_report_hashes": {
+    "red": "27f4ea47187087ff9ab20248db25d2655d12beefea579683d597ae3a33088552",
+    "yellow": "dc91bacff6c5737d42ecb54e33d9fde5796249940247fafda9ae7cf0726f0e23"
+  },
+  "calibration_sha256": "79c6c7cb62f25dbda1b3f0ee250d3efc208239ddb468732fbfd48d4a67a1932d",
+  "reviewer": "unknown",
+  "utc": "2026-11-01T06:56:32.517487+00:00",
+  "important": "Mesh frame is object-local with Z-up by explicit human calibration; NOT robot/camera pose."
+}

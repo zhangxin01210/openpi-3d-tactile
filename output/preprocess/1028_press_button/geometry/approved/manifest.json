@@ -1,0 +1,47 @@
+{
+  "schema": "task_photo_geometry.v1",
+  "dataset_id": "1028_press_button",
+  "status": "human_accepted",
+  "objects": [
+    "button",
+    "box"
+  ],
+  "assets": {
+    "button": {
+      "mesh": "/workspace/mnt/sqzhang26/openpi-3d-tactile/output/preprocess/1028_press_button/geometry/approved/button.glb",
+      "version": "1028_press_button_photo_geometry_v1",
+      "scale_m_per_unit": 1.0,
+      "sha256": "4ba95817717759d293785377244850c3aab05abd9f984bd920ef429c99cbeaad",
+      "sampling_seed": 1,
+      "bbox_extents_m": [
+        0.03038176250825099,
+        0.030375048414907468,
+        0.055999999999999994
+      ]
+    },
+    "box": {
+      "mesh": "/workspace/mnt/sqzhang26/openpi-3d-tactile/output/preprocess/1028_press_button/geometry/approved/box.glb",
+      "version": "1028_press_button_photo_geometry_v1",
+      "scale_m_per_unit": 1.0,
+      "sha256": "79431f71a6b0def04a34f2f25b3dc80ee7a6e24b2c89a9e5ace428b0b2cf43de",
+      "sampling_seed": 2,
+      "bbox_extents_m": [
+        0.14400000000000002,
+        0.08719059333583262,
+        0.0512262169671316
+      ]
+    }
+  },
+  "reconstruction_report_hashes": {
+    "button": "f04c53d99b344ac9893542572a1607d3d96acaebcc9e7f228caf1d08296bbaf2",
+    "box": "8a286692af032b3dff1b47a9a8133195ac9adbc1f8622cb896dfb0cc72d4978e"
+  },
+  "calibration_report_hashes": {
+    "button": "9c02ff3de129c9e2e3036a5e5694e8e47361dd6f7d5aaa68a4aba7a856eb4b11",
+    "box": "7f53fd310c53db91cda0be4d2e38131cdc3af0569608d717a17842e09f4cb7d4"
+  },
+  "calibration_sha256": "2a815ceb0ca7627f1341ac04b7e16417afd29bd5a6b7793b48d2b856acd6027f",
+  "reviewer": "unknown",
+  "utc": "2026-10-31T07:14:27.752123+00:00",
+  "important": "Mesh frame is object-local with Z-up by explicit human calibration; NOT robot/camera pose."
+}
