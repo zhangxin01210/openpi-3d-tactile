@@ -32,6 +32,9 @@ class ObjectRelationEncoder(nnx.Module):
         relation_mode: str = "legacy_ho_oo",
         enable_funnel_mask_encoder: bool = False,
         funnel_mask_size: int = 32,
+        anchor_mode: str = "fps8",
+        relative_temperature: float = 0.25,
+        min_temperature_m: float = 0.005,
         rngs: nnx.Rngs,
     ) -> None:
         self.token_dim = int(token_dim)
@@ -39,6 +42,15 @@ class ObjectRelationEncoder(nnx.Module):
         self.relation_mode = str(relation_mode)
         self.enable_funnel_mask_encoder = bool(enable_funnel_mask_encoder)
         self.funnel_mask_size = int(funnel_mask_size)
+        self.anchor_mode = anchor_mode
+        self.relative_temperature = float(relative_temperature)
+        self.min_temperature_m = float(min_temperature_m)
+        if anchor_mode not in {"fps8", "semantic5"}:
+            raise ValueError(f"Unsupported object relation anchor mode: {anchor_mode!r}")
+        if anchor_mode == "semantic5" and relation_mode != "hand_scene_oo_v1":
+            raise ValueError("semantic5 anchors require hand_scene_oo_v1")
+        if not (0.0 < self.relative_temperature < float("inf") and 0.0 < self.min_temperature_m < float("inf")):
+            raise ValueError("object relation temperatures must be finite and positive")
         if self.token_dim <= 0 or hidden_dim <= 0 or self.candidate_k <= 0 or self.funnel_mask_size <= 0:
             raise ValueError("relation dimensions must be positive")
         if self.relation_mode not in {
@@ -278,10 +290,18 @@ class ObjectRelationEncoder(nnx.Module):
     def _funnel_target(self, funnel, target, *, relation_valid, funnel_quality, target_quality):
         """Encode five deterministic Funnel--Target relation tokens."""
 
-        funnel_anchors = _local_anchors(funnel, self.NUM_LOCAL_OBJECT_ANCHORS)
-        target_anchors = _local_anchors(target, self.NUM_LOCAL_OBJECT_ANCHORS)
+        if self.anchor_mode == "semantic5":
+            funnel_anchors = _semantic_anchors(funnel, target, self.relative_temperature, self.min_temperature_m)
+            target_anchors = _semantic_anchors(target, funnel, self.relative_temperature, self.min_temperature_m)
+        else:
+            funnel_anchors = _local_anchors(funnel, self.NUM_LOCAL_OBJECT_ANCHORS)
+            target_anchors = _local_anchors(target, self.NUM_LOCAL_OBJECT_ANCHORS)
         funnel_xyz, funnel_mask, funnel_source, funnel_age, funnel_conf = funnel_anchors
         target_xyz, target_mask, target_source, target_age, target_conf = target_anchors
+        # Historical M2 orders relative-XYZ axes as (target, manipulated),
+        # while the metadata and pair mask below use (manipulated, target).
+        # Preserve this ordering for both anchor modes: SOO changes anchors
+        # only, so fixing the historical mismatch requires a separate study.
         delta = target_xyz[:, :, None, :] - funnel_xyz[:, None, :, :]
         distance = jnp.linalg.norm(delta, axis=-1, keepdims=True)
         features = jnp.concatenate(
@@ -649,6 +669,43 @@ def _local_anchors(geometry, count):
         jnp.sum(weights * values[:, :, None], axis=1) / denom
         for values in (source, age, confidence)
     )
+    return centers, valid, *summaries
+
+
+def _semantic_anchors(geometry, other, relative_temperature, min_temperature_m):
+    """Center, soft near/far and base-z top/bottom with weighted metadata."""
+    xyz, mask, source, age, confidence = geometry
+    other_xyz, other_mask, *_ = other
+    xyz = jnp.where(mask[..., None], xyz, 0.0)
+    other_xyz = jnp.where(other_mask[..., None], other_xyz, 0.0)
+    count = jnp.sum(mask, axis=-1, keepdims=True)
+    other_count = jnp.sum(other_mask, axis=-1, keepdims=True)
+    center_weights = mask.astype(xyz.dtype) / jnp.maximum(count, 1)
+    center = jnp.einsum("bn,bnd->bd", center_weights, xyz)
+    other_center = jnp.sum(other_xyz, axis=1) / jnp.maximum(other_count, 1)
+    radius_sq = jnp.max(jnp.where(mask, jnp.sum(jnp.square(xyz - center[:, None, :]), axis=-1), 0.0), axis=-1)
+    radius = jnp.where(radius_sq > 0, jnp.sqrt(jnp.where(radius_sq > 0, radius_sq, 1.0)), 0.0)
+    tau = jnp.maximum(relative_temperature * radius, min_temperature_m)
+    distance_sq = jnp.sum(jnp.square(xyz - other_center[:, None, :]), axis=-1)
+    distance = jnp.where(distance_sq > 0, jnp.sqrt(jnp.where(distance_sq > 0, distance_sq, 1.0)), 0.0)
+
+    def soft_weights(logits, valid):
+        masked_logits = jnp.where(valid, logits, -jnp.inf)
+        max_logit = jnp.max(masked_logits, axis=-1, keepdims=True)
+        max_logit = jnp.where(jnp.any(valid, axis=-1, keepdims=True), max_logit, 0.0)
+        weights = jnp.exp(jnp.where(valid, logits - max_logit, -jnp.inf))
+        return weights / jnp.maximum(jnp.sum(weights, axis=-1, keepdims=True), 1e-12)
+
+    near_far_mask = mask & (other_count > 0)
+    weights = jnp.stack((center_weights,
+                         soft_weights(-distance / tau[:, None], near_far_mask),
+                         soft_weights(distance / tau[:, None], near_far_mask),
+                         soft_weights(xyz[..., 2] / tau[:, None], mask),
+                         soft_weights(-xyz[..., 2] / tau[:, None], mask)), axis=1)
+    valid = jnp.any(weights > 0.0, axis=-1)
+    centers = jnp.einsum("bkn,bnd->bkd", weights, xyz)
+    summaries = tuple(jnp.einsum("bkn,bn->bk", weights, jnp.where(mask, value, 0.0))
+                      for value in (source, age, confidence))
     return centers, valid, *summaries
 
 

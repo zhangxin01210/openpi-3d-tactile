@@ -431,6 +431,19 @@ def create_torch_dataset(
             settings.dataset_root,
             version=settings.version,
         )
+        if settings.m2_state_from_rgbtrack_v1:
+            encoder = getattr(model_config, "encoder", None)
+            if (getattr(encoder, "object_relation_mode", None) != "hand_scene_oo_v1"
+                    or not getattr(encoder, "enable_object_relations", False)
+                    or getattr(encoder, "hand_scene_enable_funnel_mask_encoder", False)
+                    or not getattr(model_config, "use_tactile", False)
+                    or settings.version != "v1" or settings.missing != "error"):
+                raise ValueError("RGBTrack v1 gate derivation is only supported for tactile M2 without a mask encoder")
+        if (settings.require_hand_scene and not object_geometry_dataset.has_hand_scene
+                and not settings.m2_state_from_rgbtrack_v1):
+            raise ValueError(
+                f"Object geometry {settings.dataset_root}/{settings.version} must include HandScene state"
+            )
         # Object clouds are in base_link and must use the same profiled front
         # projection as the spatial sidecar they condition.  This check is at
         # the train boundary, not merely an exporter convention, so a copied
@@ -441,6 +454,7 @@ def create_torch_dataset(
             object_geometry_dataset,
             copy_arrays=settings.copy_arrays,
             missing=settings.missing,
+            m2_state_from_rgbtrack_v1=settings.m2_state_from_rgbtrack_v1,
         )
         if getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) == "final_v2":
             from openpi.training.xhand_multimodal_dataset import XHandKeypointsSpatialJoin

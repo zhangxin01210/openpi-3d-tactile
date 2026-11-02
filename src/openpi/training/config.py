@@ -134,6 +134,11 @@ class ObjectGeometryDataConfig:
     version: str = "v1"
     copy_arrays: bool = True
     missing: str = "error"
+    # M2 must not silently mask all relation tokens when a plain geometry
+    # sidecar, which has no HandScene state, is supplied.
+    require_hand_scene: bool = False
+    # Recover the four M2 gate inputs from the accepted RGBTrack v1 masks.
+    m2_state_from_rgbtrack_v1: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2406,6 +2411,86 @@ def _final_v2_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_final_v2_configs())
+
+
+def _legacy_task_spatial_configs() -> list[TrainConfig]:
+    """Reuse the original ST/M2 models with each task's v2 training schedule."""
+    m2 = next(c for c in _CONFIGS if c.name == "pi0_xhand_spatial_structured_suffix_hand_scene_oo_v1")
+    pi0_weight = os.environ.get("OPENPI_PI0_BASE_WEIGHTS", "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params")
+    configs = []
+    for dataset in ("1028_press_button", "1030_yellow_socket"):
+        root = f"data/{dataset}"
+        for mode, original in (("st", _structured_suffix_front_base), ("full", m2)):
+            task = next(c for c in _CONFIGS if c.name == f"pi0_xhand_{dataset}_{mode}_v2")
+            # Keep the historical spatial architecture while matching the
+            # corresponding v2 VLM/Action Expert fine-tuning strategy.
+            model = dataclasses.replace(
+                original.model,
+                paligemma_variant=task.model.paligemma_variant,
+                action_expert_variant=task.model.action_expert_variant,
+            )
+            spatial = dataclasses.replace(task.data.spatial, front_calibration_profile=FRONT_CALIBRATION_PROFILE)
+            objects = (
+                ObjectGeometryDataConfig(
+                    dataset_root=root, version="v1", require_hand_scene=True, m2_state_from_rgbtrack_v1=True
+                )
+                if mode == "full" else None
+            )
+            metadata = dict(original.policy_metadata)
+            metadata.update({
+                "dataset": dataset,
+                "mode": mode,
+                "spatial_version": "v1",
+                "object_geometry_version": "v1" if objects else None,
+                "m2_relation_state_source": "rgbtrack_v1_pose_validity" if objects else None,
+                "spatial_token_count": model.encoder.default_token_count,
+                "front_calibration_profile": FRONT_CALIBRATION_PROFILE,
+            })
+            configs.append(dataclasses.replace(
+                task,
+                name=f"pi0_xhand_{dataset}_{mode}_v1",
+                model=model,
+                data=dataclasses.replace(task.data, spatial=spatial, object_geometry=objects),
+                weight_loader=spatial_weight_loaders.SpatialCheckpointWeightLoader(pi0_weight),
+                freeze_filter=model.get_freeze_filter(),
+                policy_metadata=metadata,
+            ))
+    return configs
+
+
+_CONFIGS.extend(_legacy_task_spatial_configs())
+
+
+def _button_v1_ablation_configs() -> list[TrainConfig]:
+    """Derive the five ablations from the unchanged Button v1 baselines."""
+    configs = []
+    for mode, variant in (("st", "t1a"), ("full", "t1a"), ("st", "t1b"), ("full", "t1b"), ("full", "soo")):
+        base = next(c for c in _CONFIGS if c.name == f"pi0_xhand_1028_press_button_{mode}_v1")
+        if variant == "soo":
+            encoder = dataclasses.replace(base.model.encoder, object_relation_anchor_mode="semantic5")
+        else:
+            encoder = dataclasses.replace(
+                base.model.encoder,
+                tactile_local_tokens_per_finger=1,
+                tactile_summary_tokens_per_finger=0,
+                tactile_physics_descriptor_enabled=variant == "t1b",
+            )
+        model = dataclasses.replace(base.model, encoder=encoder)
+        metadata = dict(base.policy_metadata)
+        metadata.update({"spatial_token_count": encoder.default_token_count, "ablation": variant})
+        configs.append(dataclasses.replace(
+            base,
+            name=f"pi0_xhand_1028_press_button_{mode}_{variant}_v1",
+            model=model,
+            freeze_filter=model.get_freeze_filter(),
+            policy_metadata=metadata,
+        ))
+    return configs
+
+
+_CONFIGS.extend(_button_v1_ablation_configs())
+if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
+    raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}
 
 

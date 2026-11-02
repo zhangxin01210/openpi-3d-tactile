@@ -21,6 +21,7 @@ import dataclasses
 from flax import nnx
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from openpi.models.spatial_encoders.object_relation_encoder import ObjectRelationEncoder
 from openpi.models.spatial_encoders.transforms import SpatialFeatureTransforms
@@ -44,6 +45,7 @@ class StructuredSpatialEncoderConfig:
     tactile_knn: int = 8
     tactile_local_tokens_per_finger: int = 4
     tactile_summary_tokens_per_finger: int = 1
+    tactile_physics_descriptor_enabled: bool = False
     # Some experiments use the same learned query bank for every finger and
     # distinguish fingers only through the per-finger embedding.  This keeps
     # the parameter sharing of the simulator's matched-map branch without
@@ -58,6 +60,9 @@ class StructuredSpatialEncoderConfig:
     # experiment.  ``hand_scene_v0`` keeps the base 58 tokens and appends
     # five Hand-Funnel plus five Hand-Target tokens instead.
     object_relation_mode: str = "legacy_ho_oo"
+    object_relation_anchor_mode: str = "fps8"
+    object_relation_relative_temperature: float = 0.25
+    object_relation_min_temperature_m: float = 0.005
     # ``scene_rgbd`` is the reviewed visual branch.  ``object_centric``
     # replaces only its 33 visual tokens with Hand/Funnel/Flask geometry;
     # RGB images still flow through Pi0's ordinary PaliGemma prefix.
@@ -75,6 +80,22 @@ class StructuredSpatialEncoderConfig:
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
 
     def __post_init__(self) -> None:
+        if self.tactile_physics_descriptor_enabled and (
+            not self.enable_tactile or self.tactile_regions is not None
+            or self.tactile_local_tokens_per_finger != 1 or self.tactile_summary_tokens_per_finger != 0
+            or self.token_dim != 128
+        ):
+            raise ValueError("tactile physics descriptor requires one attention token per finger")
+        if self.object_relation_anchor_mode not in {"fps8", "semantic5"}:
+            raise ValueError(f"Unsupported object relation anchor mode: {self.object_relation_anchor_mode!r}")
+        if self.object_relation_anchor_mode == "semantic5" and (
+            not self.enable_object_relations or self.object_relation_mode != "hand_scene_oo_v1"
+        ):
+            raise ValueError("semantic5 anchors require hand_scene_oo_v1 relations")
+        if (not np.isfinite(self.object_relation_relative_temperature)
+                or not np.isfinite(self.object_relation_min_temperature_m)
+                or self.object_relation_relative_temperature <= 0 or self.object_relation_min_temperature_m <= 0):
+            raise ValueError("object relation temperatures must be finite and positive")
         if self.tactile_regions is not None:
             if (len(self.tactile_regions) != 5 or
                 any(len(row) != 120 or set(row) != {0, 1, 2, 3} for row in self.tactile_regions)):
@@ -217,14 +238,40 @@ class StructuredSpatialEncoder(nnx.Module):
                 relation_mode=config.object_relation_mode,
                 enable_funnel_mask_encoder=config.hand_scene_enable_funnel_mask_encoder,
                 funnel_mask_size=config.hand_scene_funnel_mask_size,
+                anchor_mode=config.object_relation_anchor_mode,
+                relative_temperature=config.object_relation_relative_temperature,
+                min_temperature_m=config.object_relation_min_temperature_m,
                 rngs=rngs,
                 )
+        # Allocate after the existing branches, so enabling this optional MLP
+        # does not change their random initialization for the same seed. Use
+        # an independent stream so downstream Pi0 layers do not shift either.
+        if config.tactile_physics_descriptor_enabled:
+            physics_key = jax.random.fold_in(rngs.params.key.value, rngs.params.count.value)
+            physics_key = jax.random.fold_in(physics_key, 0x543142)
+            self.tactile_physics_layers = _make_mlp(10, (128, config.token_dim), nnx.Rngs(params=physics_key))
 
     def __call__(self, inputs: SpatialEncoderInput) -> SpatialEncoderOutput:
         token_parts = []
         mask_parts = []
         xyz_parts = []
         aux = {}
+
+        # The single-query experiments preserve the original computations on
+        # valid inputs. Mask non-finite taxels before either branch so masked
+        # NaNs cannot contaminate attention or the uncompressed HO anchors.
+        if (inputs.tactile is not None and self.config.tactile_regions is None
+                and self.config.tactile_local_tokens_per_finger == 1
+                and self.config.tactile_summary_tokens_per_finger == 0):
+            tactile = inputs.tactile
+            valid = (tactile.point_mask.astype(jnp.bool_) & jnp.isfinite(tactile.xyz_m).all(axis=-1)
+                     & jnp.isfinite(tactile.force).all(axis=-1) & jnp.isfinite(tactile.force_norm))
+            inputs = inputs.replace(tactile=tactile.replace(
+                xyz_m=jnp.where(jnp.isfinite(tactile.xyz_m), tactile.xyz_m, 0.0),
+                force=jnp.where(jnp.isfinite(tactile.force), tactile.force, 0.0),
+                force_norm=jnp.where(jnp.isfinite(tactile.force_norm), tactile.force_norm, 0.0),
+                point_mask=valid,
+            ))
 
         batch_size = _batch_size(inputs)
 
@@ -649,6 +696,13 @@ class StructuredSpatialEncoder(nnx.Module):
         token_mask = jnp.concatenate(finger_masks, axis=1)
         token_xyz = jnp.concatenate(finger_xyzs, axis=1)
 
+        if self.config.tactile_physics_descriptor_enabled:
+            descriptor, has_force = _tactile_physics_descriptor(
+                xyz_feature, force, force_norm, point_mask, finger_id, self.config.num_fingers
+            )
+            physics = _apply_mlp(self.tactile_physics_layers, descriptor)
+            tokens = tokens + jnp.where(has_force[..., None], physics, 0.0)
+
         return (
             tokens,
             token_mask,
@@ -727,6 +781,38 @@ class StructuredSpatialEncoder(nnx.Module):
 def _make_mlp(input_dim: int, hidden_dims: tuple[int, ...], rngs: nnx.Rngs) -> list[nnx.Linear]:
     dims = (input_dim, *hidden_dims)
     return [nnx.Linear(dims[i], dims[i + 1], rngs=rngs) for i in range(len(dims) - 1)]
+
+
+def _tactile_physics_descriptor(xyz, force, force_norm, point_mask, finger_id, num_fingers):
+    """Return per-finger 10D force-distribution descriptors and force masks."""
+    valid = (point_mask.astype(jnp.bool_) & jnp.isfinite(xyz).all(axis=-1)
+             & jnp.isfinite(force).all(axis=-1) & jnp.isfinite(force_norm))
+    membership = (finger_id[:, None, :] == jnp.arange(num_fingers)[None, :, None]) & valid[:, None, :]
+    xyz = jnp.where(valid[..., None], xyz, 0.0)
+    force = jnp.where(valid[..., None], force, 0.0)
+    force_norm = jnp.where(valid, force_norm, 0.0)
+    mask = membership.astype(xyz.dtype)
+    count = jnp.sum(mask, axis=-1)
+    count_denom = jnp.maximum(count, 1.0)
+    weight = mask * jnp.maximum(force_norm[:, None, :], 0.0)
+    weight_sum = jnp.sum(weight, axis=-1)
+    has_force = weight_sum > 0.0
+    weights = weight / jnp.where(has_force, weight_sum, 1.0)[..., None]
+    center = jnp.einsum("bfn,bnd->bfd", mask, xyz) / count_denom[..., None]
+    force_center = jnp.einsum("bfn,bnd->bfd", weights, xyz)
+    delta = jnp.where(has_force[..., None], force_center - center, 0.0)
+    mean_force = jnp.sum(mask * force_norm[:, None, :], axis=-1) / count_denom
+    max_force = jnp.max(jnp.where(membership, force_norm[:, None, :], -jnp.inf), axis=-1)
+    max_force = jnp.where(count > 0, max_force, 0.0)
+    concentration = jnp.sum(jnp.square(weights), axis=-1)
+    participation = jnp.where(has_force, 1.0 / jnp.maximum(count * concentration, 1e-12), 0.0)
+    mean_xyz = jnp.einsum("bfn,bnd->bfd", mask, force) / count_denom[..., None]
+    squared_distance = jnp.sum(jnp.square(xyz[:, None, :, :] - force_center[:, :, None, :]), axis=-1)
+    variance = jnp.sum(weights * squared_distance, axis=-1)
+    spread = jnp.where(variance > 0.0, jnp.sqrt(jnp.where(variance > 0.0, variance, 1.0)), 0.0)
+    descriptor = jnp.concatenate((delta, mean_force[..., None], max_force[..., None], participation[..., None],
+                                  mean_xyz, spread[..., None]), axis=-1)
+    return descriptor, has_force
 
 
 def _safe_geometry_points(
