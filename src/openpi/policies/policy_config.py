@@ -24,6 +24,8 @@ def _policy_metadata(train_config: _config.TrainConfig, data_config: _config.Dat
             spatial_camera_roles=list(spatial.camera_roles) if visual else [],
             spatial_use_visual=visual, spatial_use_tactile=tactile,
             rgb_only_baseline=not visual and not tactile,
+            training_config=train_config.name,
+            object_geometry_required=data_config.object_geometry is not None,
         )
         if spatial is not None:
             metadata["front_calibration_profile"] = spatial.front_calibration_profile
@@ -75,6 +77,9 @@ def create_trained_policy(
 
     # Support ordinary OpenPI layouts and explicitly identified Orbax manager exports.
     data_config = train_config.data.create(train_config.assets_dirs, train_config.model)
+    if (isinstance(train_config.data, _config.LeRobotXHandDataConfig)
+            and data_config.object_geometry is not None and data_config.spatial is None):
+        raise ValueError("XHand online object geometry requires a spatial preprocessing configuration")
     metadata = _policy_metadata(train_config, data_config)
     if default_prompt is None:
         default_prompt = metadata.get("training_prompt")
@@ -106,7 +111,19 @@ def create_trained_policy(
         model = train_config.model.load_pytorch(train_config, weight_path)
         model.paligemma_with_expert.to_bfloat16_for_selected_params("bfloat16")
     else:
-        model = train_config.model.load(_model.restore_params(params_dir, dtype=jnp.bfloat16))
+        # XHand deployment must not silently discard trained spatial/relation
+        # parameters when a checkpoint is paired with a different config.
+        strict_xhand = isinstance(train_config.data, _config.LeRobotXHandDataConfig)
+        params = _model.restore_params(params_dir, dtype=jnp.bfloat16)
+        try:
+            model = train_config.model.load(params, remove_extra_params=not strict_xhand)
+        except ValueError as exc:
+            if not strict_xhand:
+                raise
+            raise ValueError(
+                f"Checkpoint parameters do not match training config {train_config.name!r}; "
+                "use the config and code matching this checkpoint"
+            ) from exc
     if norm_stats is None:
         # We are loading the norm stats from the checkpoint instead of the config assets dir to make sure
         # that the policy is using the same normalization stats as the original training process.
@@ -137,6 +154,12 @@ def create_trained_policy(
     if data_config.spatial is not None:
         import openpi.policies.spatial_online as spatial_online
 
+        object_settings = data_config.object_geometry
+        relation_mode = getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None)
+        scene_modes = {"hand_scene_v0", "hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"}
+        if object_settings is not None and relation_mode not in scene_modes | {"final_v2", "legacy_ho_oo"}:
+            raise ValueError(f"Unsupported online object relation mode: {relation_mode!r}; "
+                             "implement and validate its input contract before deployment")
         input_transforms = [
             spatial_online.XHandSpatialOnlinePreprocess(
                 camera_roles=data_config.spatial.camera_roles,
@@ -144,10 +167,10 @@ def create_trained_policy(
                 use_tactile=getattr(train_config.model, "use_tactile", True),
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
                 require_object_geometry=data_config.object_geometry is not None,
-                require_hand_scene=(data_config.object_geometry is not None and
-                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) != "final_v2"),
-                require_hand_keypoints=(data_config.object_geometry is not None and
-                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) == "final_v2"),
+                require_hand_scene=(object_settings is not None and
+                    (object_settings.require_hand_scene or relation_mode in scene_modes)),
+                require_hand_keypoints=(object_settings is not None and relation_mode == "final_v2"),
+                m2_state_from_rgbtrack_v1=(object_settings is not None and object_settings.m2_state_from_rgbtrack_v1),
             ),
             transforms.PreserveKeysTransform(
                 transform=transforms.compose([

@@ -65,3 +65,24 @@ def test_v2_requires_and_forwards_hand_keypoints():
         processor(packet)
     packet["hand_keypoints"] = {"xyz_m": np.zeros((18, 3), np.float32), "point_mask": np.ones(18, bool)}
     assert processor(packet)["spatial"]["hand_keypoints"]["xyz_m"].shape == (18, 3)
+
+
+def test_m2_online_geometry_uses_training_gate_derivation():
+    from openpi.object_geometry_dataset.adapter import _m2_state_from_rgbtrack_v1
+
+    processor = XHandSpatialOnlinePreprocess.__new__(XHandSpatialOnlinePreprocess)
+    object.__setattr__(processor, "require_object_geometry", True)
+    object.__setattr__(processor, "require_hand_scene", True)
+    object.__setattr__(processor, "m2_state_from_rgbtrack_v1", True)
+    geometry = sample()
+    geometry["manipulated_mask"][:] = True
+    expected = _m2_state_from_rgbtrack_v1(geometry)
+    actual = processor({"spatial": {}, "object_geometry": geometry})["spatial"]["object_geometry"]["hand_scene"]
+    for key, value in expected.items():
+        np.testing.assert_array_equal(actual[key], value)
+    assert bool(actual["manipulated_relation_valid"])
+    assert not bool(actual["target_relation_valid"])
+
+    geometry["manipulated_mask"][0] = False
+    with pytest.raises(ValueError, match="uniformly valid or invalid"):
+        processor({"spatial": {}, "object_geometry": geometry})

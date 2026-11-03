@@ -179,6 +179,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     require_object_geometry: bool = False
     require_hand_scene: bool = False
     require_hand_keypoints: bool = False
+    m2_state_from_rgbtrack_v1: bool = False
 
     def __post_init__(self) -> None:
         if not (self.use_visual or self.use_tactile):
@@ -201,6 +202,19 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             self._tactile_ema.reset()
         object.__setattr__(self, "_ema_episode", None)
 
+    def _geometry_for_model(self, value: Any) -> dict[str, Any]:
+        geometry = _validate_object_geometry(value)
+        if self.m2_state_from_rgbtrack_v1:
+            # The training join derives M2 gates from the RGBTrack v1 mask,
+            # including its checks on source and age. Do exactly the same for
+            # live geometry instead of fabricating a different HandScene.
+            from openpi.object_geometry_dataset.adapter import _m2_state_from_rgbtrack_v1
+
+            geometry["hand_scene"] = _m2_state_from_rgbtrack_v1(geometry)
+        if self.require_hand_scene and geometry.get("hand_scene") is None:
+            raise ValueError("Hand-scene model requires object_geometry.hand_scene")
+        return geometry
+
     def __call__(self, data: transforms.DataDict) -> transforms.DataDict:
         incoming_geometry = data.get("object_geometry")
         incoming_hand = data.get("hand_keypoints")
@@ -219,9 +233,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             if incoming_hand is not None:
                 existing = {**existing, "hand_keypoints": _validate_hand_keypoints(incoming_hand)}
             if incoming_geometry is not None:
-                geom = _validate_object_geometry(incoming_geometry)
-                if self.require_hand_scene and geom.get("hand_scene") is None:
-                    raise ValueError("Hand-scene model requires object_geometry.hand_scene")
+                geom = self._geometry_for_model(incoming_geometry)
                 result = dict(data)
                 result["spatial"] = {**existing, "object_geometry": geom}
                 return result
@@ -317,10 +329,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
         if self.require_object_geometry and incoming_geometry is None:
             raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
         if incoming_geometry is not None:
-            geometry = _validate_object_geometry(incoming_geometry)
-            if self.require_hand_scene and geometry.get("hand_scene") is None:
-                raise ValueError("Hand-scene model requires object_geometry.hand_scene")
-            spatial["object_geometry"] = geometry
+            spatial["object_geometry"] = self._geometry_for_model(incoming_geometry)
         if self.require_hand_keypoints and incoming_hand is None:
             # Identical FK, mapping and anchor ordering as export_xhand_18_keypoints.py.
             from openpi.spatial.hand_keypoints import select_keypoints
