@@ -1,32 +1,130 @@
-# π₀ 在线部署交接（离线开发结果）
+# 统一部署交接：d662da0 后的最小集成修复
 
-GPU 服务端仍用原生命令：
+继续使用 `scripts/serve_policy.py → HandScenePerceptionBridge → run_online_perception.py`
+和机器人端 `deploy/ur7e_xhand_deploy_3d_tactile_multi.py`。未增加部署入口，未修改
+模型结构、checkpoint、Norm Stats、SAM2/RGBTrack 算法或底层机器人控制。
+
+## Front 标定与输入模式
+
+Peg、Button、Socket 共用现有文件
+`configs/ur7e_xhand/front_calibration_candidate.json`，现在也是三个 Final-v2 任务的
+默认值。无需寻找/生成其他任务专用标定。保留原有 `OPENPI_1018_FRONT_PROFILE`、
+`OPENPI_1028_FRONT_PROFILE`、`OPENPI_1030_FRONT_PROFILE` 显式覆盖；如 shell 留有旧值，
+应清除或确认它仍指向该共享文件。文件存在性、几何/release/mesh 哈希、role、512 点、
+采样种子及已有标定 provenance 检查均保留。历史 manifest 缺少 provenance 时仍显示
+`LEGACY_UNRECORDED`，不伪造或重写训练记录；这不表示需要重新标定。
+
+`d662da0` 的 `policy_config._policy_metadata` 已经从 **created data config** 及模型的
+`use_visual/use_tactile` 生成 metadata，而不是直接发布训练配置的原始字典。
+此前认为 Final-v2 必须手工指定相机的结论混淆了这两层。客户端应使用
+`--spatial-cameras auto`（默认值）：
+
+| 模型 | 实际训练 `camera_roles` / 采集空间深度 | 空间视觉 | 空间触觉 |
+|---|---|---|---|
+| Pi0/Pi0.5 RGB | 无 spatial / 无 | false | false |
+| Final-v2 ST | `('front',)` / Front | true | true |
+| Final-v2 Full | `('front',)` / Front | true | true |
+
+三路普通 RGB 图像槽始终保留。其他旧配置若实际训练角色为 front+left，继续按其
+配置发布，不能为了统一命令把它们硬改为 Front。
+
+任务文本优先级为：客户端显式 `--prompt/--task` > 服务端 `--default-prompt`（如有）
+或模型对应数据集真实训练文本 > 机器人本地数据集 `meta/tasks.jsonl` 单任务文本。
+多任务或缺失文本而无法唯一确定时要求显式覆盖，不再静默使用 Peg 文本。
+
+## 初始化状态：Button/Socket 自动，Peg 当前仍需人工选择
+
+Button/Socket 的任务由模型训练配置确定，几何配置必须与模型任务一致。现有 worker
+读取各自 `assets/perception/sam2_references/<dataset>/v1` 的 e00000 单参考资产，
+执行原有 SAM2 初始化和 RGBTrack。机器人端不再需要 `--scene-position 1`；
+桥接内部兼容历史 session key，不把占位号当作场景分类。旧客户端传 1 仍兼容，
+其他六场景编号对这两个任务无效。
+
+Peg 的六参考及人工覆盖路径保留：`--scene-position 1..6` 对应 E0/E23/E38/E49/E58/E65。
+已有 `qa_peg_six_reference_selection.extract_features/pair_score` 和
+`position_initialization.initialize_masks` 的自动选择实现没有被重写。
+用户提供的既有离线验证为 70/70、排除参考样本后 64/64；本轮不重新运行。
+**真实桥接仍发送人工 `--position-template-episode`，没有完成自动接线。**
+缺少的是：把在线首帧交给现有六参考选择路径，并传递经确认的
+`max_reference_score/min_reference_margin` 阈值配置与选择结果。
+70/70 分类正确率不等于这些线上拒绝阈值已给定。本轮不猜阈值、不重建资产，
+因此 Peg 仍要求人工场景号，不宣称已自动化。
+
+## Button Full：云端现有路径启动命令
+
+在现有仓库根目录执行。以下资源路径由云端部署事实提供，使用原有环境和权重：
 
 ```bash
-OPENPI_REPO_ROOT="$PWD" OPENPI_PERCEPTION_PYTHON=/path/to/perception-venv/bin/python \
-  OPENPI_1028_FRONT_PROFILE=/path/to/training-front-profile.json \
-  python scripts/serve_policy.py --port 8990 policy:checkpoint \
-  --policy.config pi0_xhand_1028_press_button_full_v2 --policy.dir /path/to/checkpoint/step
+cd /workspace/mnt/sqzhang26/openpi-3d-tactile
+
+PYTHONPATH=src:. \
+OPENPI_REPO_ROOT="$PWD" \
+OPENPI_PERCEPTION_PYTHON=/workspace/mnt/sqzhang26/hoi/envs/sam3d/bin/python \
+OPENPI_SAM2_SOURCE=/workspace/mnt/sqzhang26/hoi/repos/sam2 \
+OPENPI_SAM2_CHECKPOINT=/workspace/mnt/sqzhang26/hoi/weights/sam2/sam2.1_hiera_small.pt \
+OPENPI_RGBTRACK_WEIGHTS="$PWD/checkpoints/rgbtrack" \
+XLA_PYTHON_CLIENT_PREALLOCATE=false \
+.venv/bin/python scripts/serve_policy.py \
+  --port 8990 \
+  policy:checkpoint \
+  --policy.config pi0_xhand_1028_press_button_full_v2 \
+  --policy.dir checkpoints/pi0_xhand_1028_press_button_full_v2/final_v2/19999
 ```
 
-这只是训练配置的示例，不能证明对应权重存在。`OPENPI_PERCEPTION_PYTHON` 指向已有 SAM2/RGBTrack 环境；训练配置用已有的 `OPENPI_1028_FRONT_PROFILE` 等变量确定前相机配置。RGB/ST 模型仍走原服务流程，无需感知 worker。机器人端使用原脚本：Button/Socket 的 full 模型沿现有 history 协议使用已有 `--scene-position 1`；Peg 旧路径继续使用已有六位置选择。客户端 `--dry-run` 仍可能回零和手部对齐，测试不能运行机器人客户端主程序。
+共享 Front profile 已有默认值，无需在命令中另设标定路径。SAM2 source 也兼容原有
+`OPENPI_SAM2_ROOT`；若两个变量同时设置，以 `OPENPI_SAM2_SOURCE` 为准。
+服务端将这些实际路径传给桥接，再原样传入 worker 的 `--sam2-source`、
+`--sam2-checkpoint`、`--weights-root`。保留 perception Python 的虚拟环境入口路径，
+不 resolve 到环境外的基础 Python。子进程固定 JAX CPU，Torch 仍使用 GPU。
 
-## 代码路径与训练契约
+机器人端的真实服务器 IP 和本机数据目录仍需操作员提供。在机器人已有 LeRobot 环境中：
 
-对于 final-v2 full 模型，`serve_policy.py` 通过训练配置的 dataset root 查找训练 Object Geometry v1 manifest 和 `output/preprocess/<dataset>/geometry/approved/manifest.json`、`output/preprocess/<dataset>/rgbtrack/release_v1.json`；校验 mesh、release 和几何 manifest 哈希、role、采样种子、512 点及 base_link，复用训练端 calibration 检查。历史记录未包含标定时沿训练端记录为 LEGACY_UNRECORDED，**不代表标定一致**。缺少资产或不一致时服务拒绝启动。根据几何 manifest 标记的旧 q2 迁移来源，Peg 使用原有 Peg 感知及六位置路径。
+```bash
+# SERVER_IP 和 ROBOT_DATASET_DIR 分别设置为现场推理机 IP、机器人端 Button 数据目录。
+sudo -E "$(which python)" deploy/ur7e_xhand_deploy_3d_tactile_multi.py \
+  --server-ip "$SERVER_IP" --server-port 8990 \
+  --dataset-dir "$ROBOT_DATASET_DIR" \
+  --spatial-cameras auto \
+  --dry-run --no-home --no-start-hand-align --no-tactile-reset \
+  --run-mode single --duration 30 \
+  --query-frequency 16 --max-action-chunk-size 16 \
+  --record-dir ./diagnostic_runs
+```
 
-已有 `HandScenePerceptionBridge` 在客户端每次推理请求前发布因果帧、等待现有 `run_online_perception.py` 的同帧几何并调用原策略。新任务 v1 路径读取已审核 geometry 与训练 RGBTrack release；复用 SAM2 单参考、SAM2 video-memory、`rgbtrack_adapter`、训练静态、动态初始化与运动保护；按 release 的 dynamic/static 角色映射至 manipulated/target，复用训练 exporter 的 metric mesh 采样与数组转换（512 点、invalid mask/age/source）。RGB-D 使用训练 adapter 的注册函数并检查 K 和 base 外参；在线 spatial、触觉和 18 点 FK 使用项目公共实现。该路径只支持训练 exporter 当前的 depth/static_upright_convex_mask_v1 策略，其他策略明确拒绝。
+无需手工 task 文本或 scene-position。机器人电脑的机械臂 IP、相机序列号、
+EtherCAT 网卡等已有设备参数若与脚本默认值不同，仍需沿用现场已确认的覆盖值。
 
-训练仓库仅定义十个候选配置，未能确认其中八个 checkpoint 的实际对应关系。原生 loader 按选择的配置从 checkpoint 读取其 asset ID 的 Norm Stats；仍须核实每个 checkpoint 和配置确属同一次训练。
+## worker、实时性与运动限制
 
-## 缺少的实际文件与验证
+worker 是 **首次收到有效 history 请求时才启动**。WebSocket 开始监听只代表模型与
+服务配置可建立，不能作为 SAM2/RGBTrack 已运行的证据。启动实际 worker 时校验
+源码/权重路径，打印真实 Python、SAM2 和 RGBTrack 路径；出现
+`[PERCEPTION] ... completed geometry frame=...` 且获得同帧策略响应，才说明该帧
+真正走过感知链。失败/超时继续上抛，并保留 session `perception.log`。
 
-此开发机只有 `assets/perception/sam2_references/<task>/v1` 和 Peg metric GLB。Button/Socket 缺少以下训练产物：
+现有阻塞式 backlog→感知→策略链保留，**尚未证明满足 15Hz 闭环**。
+`--fps 15` 只是目标调度频率，`--query-frequency` 也不是实时性保证。
 
-- `output/preprocess/1028_press_button/geometry/approved/{manifest.json,button.glb,box.glb}` 和 `output/preprocess/1028_press_button/rgbtrack/release_v1.json`；
-- `output/preprocess/1030_yellow_socket/geometry/approved/{manifest.json,red.glb,yellow.glb}` 和 `output/preprocess/1030_yellow_socket/rgbtrack/release_v1.json`；
-- 三个任务对应的 `data/<task>/object_geometry/v1/manifest.json`、真实训练相机 profile、checkpoint 及其 norm stats，以及 SAM2 和 RGBTrack 权重/环境。若 Peg sidecar 声明 q2 迁移来源，需保留旧配置、metric scale 文件和匹配的旧运行环境。
+Full 使用现有同步阻塞链：等待感知和策略响应，再按原有控制循环执行动作。
+不以 15Hz 或实时性验证作为动作门禁；所有模型均可通过去掉 `--dry-run` 发送动作。
+`hand_scene_actuation_allowed=true` 表示协议允许执行，不代表已完成现场验证。
+保留原有 `robot.send_action`、关节限制、触觉阈值/重规划、推理后接触复查、
+`SafetyTrip` 停止、键盘退出及底层 UR7e/XHand 控制。
 
-新增 CPU 测试以真实 worker 函数、训练几何转换、已有桥接、实际 WebSocket 服务器及机器人客户端类、真实 spatial/tactile/FK 组装完成 Button/Socket 观测到模拟 action 的往返。Mock 为 SAM2 图像预测与 video stream、RGBTrack 与静态 hook、RGB-D 注册、mesh 采样及模型推理；没有启动机器人。旧 Peg 桥接与单元测试继续运行。
+`--dry-run` 本身仍可能执行默认回零和起始手姿对齐；无策略动作检查同时使用
+`--no-home --no-start-hand-align`。是否归零触觉由已有 `--no-tactile-reset` 控制。
+现场仍需确认相机/标定应用、Peg 人工场景、感知首帧效果、实际延迟/积压、
+已有接触阈值、硬件急停和停止行为。软件触觉检查不能替代硬件保护。
 
-**尚未达到可以实机运行的状态。**可在部署电脑准备以上资产并进行离线验收：先确认八个 checkpoint 配置及 Norm Stats，验证依赖和训练资产哈希；用真实 episode 比对 mask、RGB-D 注册、base_link 的 512 点和有效性/age、600 点触觉、18 点 FK、模型输入与 action；再做不发送动作的相机和服务检查。真实权重加载、SAM2、RGBTrack、数据逐帧一致性、实际帧率和硬件均为 NOT TESTED。旧 Peg 路径和新任务路径都须现场验证，尤其是透明物体、低置信度拒绝和静态目标冻结；现场人员完成急停、限速限力、工作空间与回零检查后才可考虑动作。
+## 本轮验证范围
+
+一次有效的无动作接口检查已通过：轻量配置/metadata/客户端输入核对，加一个 Button Full
+录制首帧通过现有 WebSocket 客户端、真实 worker 与 Full 策略的往返，返回有限的 `[50,18]`。
+不连接机器人，不重跑八模型，不重处理训练数据，不扩展 Mock 测试框架。
+具体结果记录于 `output/deploy/final_integration_20261102/interface_check.json`。
+临时 loopback listener 的第一次搭建遗漏原 `run()` 初始化锁，在进入策略/worker 前中止；
+修正检查夹具后才执行上述唯一真实帧，前次记录单独保留，没有掩盖为 worker 成功。
+本机使用已有本地 perception 资源进行检查；云端绝对路径的实际 worker 运行仍以
+云端首个 history 请求及其感知日志为准，不能把路径传递核对称为远程运行成功。
+
+后续修正：移除了新增的 Full 强制 dry-run 门禁；仅核对输入校验与代码语法，未重跑模型或连接机器人。

@@ -1,5 +1,12 @@
 # Six scene configurations selected on robot (one persistent Pi0 WebSocket)
 
+This document describes the legacy **Peg manual-reference** path only.
+Button/Socket use their own e00000 reference automatically and do not require
+`--scene-position`. See [unified_deployment_handoff.md](unified_deployment_handoff.md)
+for the shared Front profile, current resource paths, auto modality metadata,
+and optional dry-run operation. Peg automatic classification is not
+wired into this bridge; its prior offline accuracy is not an online automation claim.
+
 Robot host continues to run ONE standalone script. Inference host runs the
 original WebsocketPolicyServer port 8990. The robot sets
 --scene-position [1..6]; no server restart when switching runs.
@@ -77,7 +84,7 @@ sudo -E "$(which python)" \
  --dataset-dir data/1018_peg_all \
  --server-ip SAI_LAN_IP --server-port 8990 \
  --scene-position 1 \
- --dry-run --no-home --no-tactile-reset \
+ --dry-run --no-home --no-start-hand-align --no-tactile-reset \
  --run-mode single --duration 60 --max-action-chunk-size 16
 ~~~
 

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import pathlib
@@ -24,6 +25,19 @@ def _policy_metadata(train_config: _config.TrainConfig, data_config: _config.Dat
             spatial_use_visual=visual, spatial_use_tactile=tactile,
             rgb_only_baseline=not visual and not tactile,
         )
+        if spatial is not None:
+            metadata["front_calibration_profile"] = spatial.front_calibration_profile
+        # Use the dataset's actual language conditioning, not the robot
+        # client's historical Peg default. Do not guess for multi-task data.
+        dataset_root = pathlib.Path(data_config.repo_id or "").expanduser()
+        if not dataset_root.is_absolute():
+            dataset_root = pathlib.Path(os.environ.get("OPENPI_REPO_ROOT", pathlib.Path(__file__).resolve().parents[3])) / dataset_root
+        tasks_path = dataset_root / "meta/tasks.jsonl"
+        if tasks_path.is_file():
+            prompts = {json.loads(line)["task"] for line in tasks_path.read_text().splitlines() if line.strip()}
+            if len(prompts) == 1:
+                metadata["training_prompt"] = next(iter(prompts))
+                metadata["training_prompt_source"] = str(tasks_path)
     return metadata
 
 
@@ -61,6 +75,11 @@ def create_trained_policy(
 
     # Support ordinary OpenPI layouts and explicitly identified Orbax manager exports.
     data_config = train_config.data.create(train_config.assets_dirs, train_config.model)
+    metadata = _policy_metadata(train_config, data_config)
+    if default_prompt is None:
+        default_prompt = metadata.get("training_prompt")
+    if default_prompt is not None:
+        metadata["default_prompt"] = default_prompt
     params_dir = checkpoint_dir / "params"
     assets_dir = checkpoint_dir / "assets"
     if not params_dir.is_dir() and (checkpoint_dir / "_METADATA").is_file():
@@ -170,7 +189,7 @@ def create_trained_policy(
             *repack_transforms.outputs,
         ],
         sample_kwargs=sample_kwargs,
-        metadata=_policy_metadata(train_config, data_config),
+        metadata=metadata,
         is_pytorch=is_pytorch,
         pytorch_device=pytorch_device if is_pytorch else None,
     )

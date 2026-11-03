@@ -2376,7 +2376,9 @@ def _final_v2_configs() -> list[TrainConfig]:
                            ("1018_peg_all", ("st", "full"))):
         root = f"data/{dataset}"
         code = dataset[:4]
-        profile = os.environ.get(f"OPENPI_{code}_FRONT_PROFILE") or None
+        # Peg/Button/Socket share the reviewed Front calibration. Keep explicit
+        # task overrides for existing launchers, without requiring new assets.
+        profile = os.environ.get(f"OPENPI_{code}_FRONT_PROFILE") or FRONT_CALIBRATION_PROFILE
         spatial_version = "v1"
         object_version = "v1"
         for mode in modes:

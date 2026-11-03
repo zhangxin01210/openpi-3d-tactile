@@ -98,6 +98,10 @@ class HandScenePerceptionBridge:
         self.calibration_profile=Path(calibration_profile).expanduser() if calibration_profile else None
         self.generic_geometry = (self.geometry_config is not None and
                                  json.loads(self.geometry_config.read_text()).get("status") == "human_accepted")
+        self.task = (json.loads(self.geometry_config.read_text())["dataset_id"] if self.generic_geometry
+                     else self.policy.metadata.get("dataset", "1018_peg_all"))
+        if self.generic_geometry and self.policy.metadata.get("dataset", self.task) != self.task:
+            raise ValueError("Policy training task and approved geometry task differ")
         if self.geometry_config is not None and self.calibration_profile is None:
             raise ValueError("Task geometry requires the training front calibration profile")
         self.session_counter=0
@@ -105,9 +109,9 @@ class HandScenePerceptionBridge:
         self.prompt_file=prompt_file
         self.timeout_s=float(timeout_s)
         if self.timeout_s<=0:raise ValueError("timeout_s must be positive")
-        self.sam2_checkpoint=sam2_checkpoint or self.repo_root/"checkpoints/sam2/sam2.1_hiera_small.pt"
-        self.rgbtrack_weights=rgbtrack_weights or self.repo_root/"checkpoints/rgbtrack"
-        self.sam2_source=sam2_source or Path.home()/".cache/openpi_deploy/sam2"
+        self.sam2_checkpoint=Path(sam2_checkpoint or self.repo_root/"checkpoints/sam2/sam2.1_hiera_small.pt").expanduser().resolve()
+        self.rgbtrack_weights=Path(rgbtrack_weights or self.repo_root/"checkpoints/rgbtrack").expanduser().resolve()
+        self.sam2_source=Path(sam2_source or Path.home()/".cache/openpi_deploy/sam2").expanduser().resolve()
         self.scale_manifest=scale_manifest or self.repo_root/"data/pose_eval/hand_scene_metric_mesh_scales.json"
         self.next_index=0
         self.previous_timestamp=float("-inf")
@@ -130,9 +134,14 @@ class HandScenePerceptionBridge:
             "hand_scene_geometry_service":True,
             "hand_scene_history_required":True,
             "hand_scene_history_max_frames":64,
-            "hand_scene_positions":list((1,) if self.generic_geometry else SELECTABLE_SCENE_POSITIONS),
-            "hand_scene_selection_source":"client_scene_position_2d_seed_points_only",
-            "hand_scene_server_status":"blocking_validated_pipeline_not_safe_for_actuation",
+            # Retain 1 only as a wire-compatibility key for older clients.
+            "hand_scene_positions":[1] if self.generic_geometry else list(SELECTABLE_SCENE_POSITIONS),
+            "hand_scene_position_required":not self.generic_geometry,
+            "hand_scene_selection_source":"task_single_reference_e00000" if self.generic_geometry else "manual_peg_six_reference",
+            "hand_scene_task":self.task,
+            "hand_scene_actuation_allowed":True,
+            "hand_scene_server_status":"blocking_worker_starts_on_first_request",
+            "hand_scene_realtime_validated":False,
         }
 
     def _worker_command(self):
@@ -148,7 +157,7 @@ class HandScenePerceptionBridge:
             "--scale-manifest",str(self.scale_manifest),
             "--front-calibration-profile",
             str(self.calibration_profile or self.repo_root/"configs/ur7e_xhand/front_calibration_candidate.json"),
-            "--episode",str(SCENE_POSITION_TO_EPISODE[self.scene_position]),
+            "--episode",str(0 if self.generic_geometry else SCENE_POSITION_TO_EPISODE[self.scene_position]),
             "--register-missing-color-depth",
             "--follow",
         ]
@@ -171,6 +180,14 @@ class HandScenePerceptionBridge:
         return cmd
 
     def _launch(self):
+        # Validate the resources the subprocess will actually open. WebSocket
+        # startup alone is not evidence that this lazy worker has run.
+        required = [self.sam2_source/"sam2/build_sam.py", self.sam2_checkpoint,
+                    self.rgbtrack_weights/"2024-01-11-20-02-45/model_best.pth",
+                    self.rgbtrack_weights/"2023-10-28-18-33-37/model_best.pth"]
+        for path in required:
+            if not path.is_file():
+                raise FileNotFoundError(f"Perception worker resource missing: {path}")
         env=os.environ.copy()
         prefix=[
             str(self.perception_python.parent),
@@ -181,7 +198,10 @@ class HandScenePerceptionBridge:
         env["PATH"]=os.pathsep.join([str(self.perception_python.parent),env.get("PATH","")])
         env["PYTHONPATH"]=os.pathsep.join(prefix[1:]+[env.get("PYTHONPATH","")])
         # Do not let a JAX model in the server compete with the RGBTrack worker.
-        env.setdefault("JAX_PLATFORMS","cpu")
+        env["JAX_PLATFORMS"]="cpu"
+        print(f"[PERCEPTION] task={self.task} python={self.perception_python} "
+              f"sam2_source={self.sam2_source} sam2_checkpoint={self.sam2_checkpoint} "
+              f"rgbtrack_weights={self.rgbtrack_weights}; starting real worker",flush=True)
         logfile=(self.session_root/"perception.log").open("ab")
         try:
             self.worker=subprocess.Popen(
@@ -261,9 +281,13 @@ class HandScenePerceptionBridge:
         self.scene_position=position
         self.session_id=session
         self._reset_causal_policy()
-        print(f"[SCENE] selected={position} reference_episode={SCENE_POSITION_TO_EPISODE[position]} session={self.session_counter} "
-              "source=reviewed_2d_clicks applied_to_CURRENT_live_frame0 "
-              "flask_pose=RGBTrack_current_frame0_only",flush=True)
+        if self.generic_geometry:
+            print(f"[SCENE] task={self.task} reference=e00000 session={self.session_counter}; "
+                  "single-reference SAM2 initialization on CURRENT frame0",flush=True)
+        else:
+            print(f"[SCENE] selected={position} reference_episode={SCENE_POSITION_TO_EPISODE[position]} session={self.session_counter} "
+                  "source=manual_reviewed_2d_clicks applied_to_CURRENT_live_frame0 "
+                  "flask_pose=RGBTrack_current_frame0_only",flush=True)
 
     def infer(self,observation):
         obs=dict(observation)
@@ -273,6 +297,8 @@ class HandScenePerceptionBridge:
         if not isinstance(session,str) or not session:
             raise ValueError("hand_scene_session missing; old robot client cannot bypass object geometry")
         allowed = (1,) if self.generic_geometry else SELECTABLE_SCENE_POSITIONS
+        if self.generic_geometry and requested is None:
+            requested = 1  # Internal legacy session key, never an operator scene choice.
         if not isinstance(requested,(int,np.integer)) or int(requested) not in allowed:
             raise ValueError(f"hand_scene_position must be one of {allowed}, got {requested}")
         position=int(requested)
@@ -306,6 +332,7 @@ class HandScenePerceptionBridge:
         if not self._started:
             self._launch()
         output=self._await_output(int(last["frame_index"]))
+        print(f"[PERCEPTION] task={self.task} completed geometry frame={int(last['frame_index'])}",flush=True)
         with np.load(output,allow_pickle=False) as packet:
             obs["object_geometry"]=_geometry_from_npz(packet)
         # Advance only after validated complete geometry and inference.

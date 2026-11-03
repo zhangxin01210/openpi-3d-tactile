@@ -348,9 +348,12 @@ class XHandInputs(
         self,
         data: dict,
     ) -> dict:
-        images = data[
-            "images"
-        ]
+        images = data.get("images")
+        if images is None:
+            images = {
+                name: data[f"observation.images.{name}"]
+                for name in ("cam_front", "cam_left", "cam_right")
+            }
 
         front = _parse_image(
             images[
@@ -371,9 +374,7 @@ class XHandInputs(
         )
 
         state = extract_joint_state(
-            data[
-                "state"
-            ]
+            data["state"] if "state" in data else data["observation.state"]
         )
 
         inputs = {

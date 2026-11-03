@@ -140,7 +140,7 @@ def create_policy(args: Args) -> _policy.Policy:
                         raise ValueError("Task release, meshes, role or sampling disagree with training geometry manifest")
                 profile = train_config.data.spatial.front_calibration_profile
                 if not profile:
-                    raise ValueError("Training config requires an explicit front calibration profile for online geometry")
+                    raise ValueError("Online geometry requires the shared Front calibration profile")
                 profile = pathlib.Path(profile).expanduser()
                 if not profile.is_absolute():
                     profile = root / profile
@@ -155,8 +155,14 @@ def create_policy(args: Args) -> _policy.Policy:
                 scales = geometry.parent / "metric_scales_pilot.json" if legacy else None
                 if legacy and not scales.is_file():
                     raise FileNotFoundError(f"Legacy training mesh scales missing: {scales}")
+                sam2_source = os.environ.get("OPENPI_SAM2_SOURCE") or os.environ.get("OPENPI_SAM2_ROOT")
+                sam2_checkpoint = os.environ.get("OPENPI_SAM2_CHECKPOINT")
+                rgbtrack_weights = os.environ.get("OPENPI_RGBTRACK_WEIGHTS")
                 policy = HandScenePerceptionBridge(policy, repo_root=root, perception_python=pathlib.Path(python),
-                    workdir=spool, geometry_config=geometry, calibration_profile=profile, scale_manifest=scales)
+                    workdir=spool, geometry_config=geometry, calibration_profile=profile, scale_manifest=scales,
+                    sam2_source=pathlib.Path(sam2_source) if sam2_source else None,
+                    sam2_checkpoint=pathlib.Path(sam2_checkpoint) if sam2_checkpoint else None,
+                    rgbtrack_weights=pathlib.Path(rgbtrack_weights) if rgbtrack_weights else None)
             return policy
         case Default():
             return create_default_policy(args.env, default_prompt=args.default_prompt)

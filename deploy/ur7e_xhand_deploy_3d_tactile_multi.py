@@ -690,10 +690,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-root", type=Path, default=DEFAULT_DATASET_ROOT)
     parser.add_argument("--dataset-name", type=str, default=DEFAULT_DATASET_NAME)
     parser.add_argument("--scene-position", type=int, choices=(1,2,3,4,5,6), default=None,
-                        help="Choose scene 1..6 (1=E0 flask+E23 funnel, 2=E23, 3=E38, 4=E49, 5=E58, 6=E65). "
-                             "ONLY those clicks are reused; applies to CURRENT live first RGB frame. "
-                             "Select for each robot run; no server restart needed.")
-    parser.add_argument("--task", type=str, default=DEFAULT_TASK)
+                        help="Peg only: choose reviewed reference 1..6 (E0/E23/E38/E49/E58/E65). "
+                             "Button/Socket initialize from their task's single reference automatically.")
+    parser.add_argument("--task", type=str, default=None,
+                        help="Optional task override; default follows server/dataset training prompt.")
     parser.add_argument("--prompt", type=str, default=None, help="Override prompt sent to PI0 server.")
     parser.add_argument("--fps", type=int, default=15)
     parser.add_argument("--duration", type=float, default=60.0, help="Run duration in seconds")
@@ -888,6 +888,37 @@ def configure_input_mode_from_metadata(args: argparse.Namespace, metadata: dict 
 def read_json(path: Path) -> dict:
     with open(path) as f:
         return json.load(f)
+
+
+def resolve_task_prompt(args: argparse.Namespace, dataset_dir: Path, metadata: dict | None = None) -> str:
+    """Explicit operator override, then the selected model's actual training text."""
+    if args.prompt or args.task:
+        return args.prompt or args.task
+    metadata = metadata or {}
+    if metadata.get("default_prompt") or metadata.get("training_prompt"):
+        return metadata.get("default_prompt") or metadata["training_prompt"]
+    tasks = dataset_dir / "meta/tasks.jsonl"
+    if tasks.is_file():
+        prompts = {json.loads(line)["task"] for line in tasks.read_text().splitlines() if line.strip()}
+        if len(prompts) == 1:
+            return next(iter(prompts))
+    raise ValueError("No unambiguous training prompt; provide --task or --prompt")
+
+
+def validate_geometry_mode(args: argparse.Namespace, metadata: dict) -> None:
+    """Validate Full input wiring before robot preparation; dry-run is optional."""
+    if not metadata.get("hand_scene_history_required", False):
+        return
+    if metadata.get("hand_scene_position_required", True):
+        allowed = tuple(metadata.get("hand_scene_positions", ()))
+        if args.scene_position not in allowed:
+            raise ValueError(f"Peg needs manual --scene-position from {allowed}; automatic reference selection is not wired here")
+    elif args.scene_position not in (None, 1):
+        raise ValueError("Button/Socket use the model task's single reference; omit --scene-position")
+    if args.realsense_width != 640 or args.realsense_height != 480:
+        raise ValueError("Full geometry server expects recorded 640x480 RGB-D")
+    if "front" not in args.spatial_cameras:
+        raise ValueError("Full geometry server requires original front RGB-D")
 
 
 def resolve_dataset_dir(args: argparse.Namespace) -> Path:
@@ -1488,9 +1519,7 @@ def run_policy_once(
     geometry_ordinal=0
     geometry_session=f"{uuid.uuid4().hex}-{run_index}"
     if use_server_geometry:
-        available=getattr(args,"server_metadata",{}).get("hand_scene_positions",[])
-        if args.scene_position is None or args.scene_position not in available:
-            raise ValueError(f"Choose --scene-position from server reviewed 2D prompt sets {available}")
+        validate_geometry_mode(args, args.server_metadata)
     recorder = (
         DiagnosticRecorder(
             root_dir=args.record_dir,
@@ -1564,7 +1593,8 @@ def run_policy_once(
                         if not history:
                             raise ValueError("Empty current hand-scene history")
                         observation["hand_scene_session"]=geometry_session
-                        observation["hand_scene_position"]=int(args.scene_position)
+                        if args.scene_position is not None:
+                            observation["hand_scene_position"]=int(args.scene_position)
                         observation["hand_scene_history"]=list(history)
                         # Client's current state/camera/depth must equal the
                         # last geometry observation, even for event replanning.
@@ -1995,7 +2025,7 @@ def main() -> int:
         else ", ".join(args.spatial_cameras) if args.spatial_cameras else "none"
     )
     print(f"Requested spatial depth cameras: {requested_depth}")
-    print(f"Prompt: {args.prompt or args.task}")
+    print(f"Prompt: {args.prompt or args.task or 'automatic server/dataset training prompt'}")
     print(f"FPS: {args.fps}, duration: {args.duration}s")
     print(f"Run mode: {args.run_mode}, num_runs: {'until Ctrl+C' if args.num_runs == 0 else args.num_runs}")
     print(f"Dry run: {args.dry_run}")
@@ -2067,17 +2097,15 @@ def main() -> int:
             flush=True,
         )
     configure_input_mode_from_metadata(args, metadata)
+    args.task = resolve_task_prompt(args, dataset_dir, metadata)
+    print(f"Resolved training prompt: {args.task}")
     validate_state_schema(state_names, args)
+    validate_geometry_mode(args, metadata)
     if metadata.get("hand_scene_history_required",False):
-        if args.scene_position not in tuple(metadata.get("hand_scene_positions",())):
-            raise ValueError(f"This WebSocket geometry server requires --scene-position, "
-                             f"select from {metadata.get('hand_scene_positions')}")
-        print(f"[SCENE] using selected 2D human keypoints {args.scene_position} "
-              "on CURRENT camera frame 0; flask pose re-estimated via RGBTrack",flush=True)
-        if args.realsense_width!=640 or args.realsense_height!=480:
-            raise ValueError("Hand-scene server expects recorded 640x480 RGB-D")
-        if "front" not in args.spatial_cameras:
-            raise ValueError("Hand-scene server requires original front RGB-D")
+        if metadata.get("hand_scene_position_required", True):
+            print(f"[SCENE] Peg manual reference {args.scene_position} on CURRENT frame0", flush=True)
+        else:
+            print(f"[SCENE] task={metadata.get('hand_scene_task')} automatic single-reference e00000 initialization", flush=True)
 
     print(f"Policy input mode: {args.policy_input_mode}")
     print(f"Spatial depth cameras: {', '.join(args.spatial_cameras) if args.spatial_cameras else 'none'}")
