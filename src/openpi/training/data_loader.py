@@ -1,5 +1,6 @@
 from collections.abc import Iterator, Sequence
 import dataclasses
+import hashlib
 import logging
 import multiprocessing
 import os
@@ -29,12 +30,48 @@ _V2_LOCAL_DATASETS = frozenset({"data/1018_peg_all", "data/1028_press_button", "
 
 
 def resolve_local_lerobot_root(repo_id: str) -> pathlib.Path | None:
-    """Resolve V2 paths from the checkout and explicit local paths as given."""
-    if repo_id in _V2_LOCAL_DATASETS:
+    """Resolve checkout data/ paths and explicit local paths without Hub fallback."""
+    path = pathlib.Path(repo_id)
+    if path.parts and path.parts[0] == "data":
         return (pathlib.Path(__file__).resolve().parents[3] / repo_id).resolve()
-    if pathlib.Path(repo_id).is_absolute() or repo_id.startswith(("./", "../", "~/")):
-        return pathlib.Path(repo_id).expanduser().resolve()
+    if path.is_absolute() or repo_id.startswith(("./", "../", "~/")):
+        return path.expanduser().resolve()
     return None
+
+
+def validate_spatial_source_identity(spatial_dataset, dataset_root: pathlib.Path, dataset_meta) -> None:
+    """Reject stale or partial sidecars before joining a reindexed dataset."""
+    source = spatial_dataset.manifest.get("source_dataset")
+    provenance = source.get("source_meta_sha256") if isinstance(source, dict) else None
+    if not isinstance(provenance, dict):
+        raise ValueError(f"Spatial sidecar {spatial_dataset.root} lacks source metadata provenance")
+    for name in ("info.json", "episodes.jsonl"):
+        path = dataset_root / "meta" / name
+        if not path.is_file():
+            raise FileNotFoundError(f"Local LeRobot source metadata missing: {path}")
+        entry = provenance.get(name)
+        if not isinstance(entry, dict) or not entry.get("sha256"):
+            raise ValueError(f"Spatial sidecar {spatial_dataset.root} lacks source provenance for {name}")
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual != entry["sha256"]:
+            raise ValueError(f"Spatial sidecar {spatial_dataset.root} does not match current {path}")
+
+    for episode in range(dataset_meta.total_episodes):
+        try:
+            length = int(dataset_meta.episodes[episode]["length"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"Local LeRobot metadata lacks a valid length for episode {episode}") from exc
+        shards = spatial_dataset._episode_shards.get(episode, ())  # noqa: SLF001 - validate join coverage
+        next_frame = 0
+        for shard in shards:
+            if shard.first_frame != next_frame or shard.count != shard.last_frame - shard.first_frame + 1:
+                raise ValueError(f"Spatial sidecar {spatial_dataset.root} has a frame gap in episode {episode}")
+            next_frame = shard.last_frame + 1
+        if length <= 0 or next_frame != length:
+            raise ValueError(
+                f"Spatial sidecar {spatial_dataset.root} covers {next_frame} frames of episode {episode}; "
+                f"the LeRobot dataset has {length}"
+            )
 
 
 def validate_object_geometry_calibration(data_config, model_config, manifest) -> bool:
@@ -303,12 +340,14 @@ def create_torch_dataset(
                 break
         if missing:
             raise FileNotFoundError(f"Local LeRobot dataset {repo_id} is incomplete: {missing[0]}; no Hub lookup is attempted")
-        if repo_id in _V2_LOCAL_DATASETS and data_config.spatial is not None:
-            data_config = dataclasses.replace(data_config, spatial=dataclasses.replace(
-                data_config.spatial, dataset_root=str(local_root)))
-        if repo_id in _V2_LOCAL_DATASETS and data_config.object_geometry is not None:
-            data_config = dataclasses.replace(data_config, object_geometry=dataclasses.replace(
-                data_config.object_geometry, dataset_root=str(local_root)))
+        for field in ("spatial", "object_geometry"):
+            settings = getattr(data_config, field)
+            if settings is not None:
+                settings_root = resolve_local_lerobot_root(settings.dataset_root)
+                if settings_root is not None:
+                    data_config = dataclasses.replace(
+                        data_config, **{field: dataclasses.replace(settings, dataset_root=str(settings_root))}
+                    )
     else:
         dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
     # Some datasets can have tiny timestamp drift around frame decode boundaries.
@@ -380,6 +419,10 @@ def create_torch_dataset(
             data_config.spatial.dataset_root,
             version=data_config.spatial.version,
         )
+        if data_config.spatial.require_source_metadata_match:
+            if local_root is None:
+                raise ValueError("Spatial source verification requires a local LeRobot dataset")
+            validate_spatial_source_identity(spatial_dataset, local_root, dataset_meta)
         actual_roles = tuple(spatial_dataset.manifest["spatial_contract"]["camera_roles"])
         if actual_roles != data_config.spatial.camera_roles:
             raise ValueError(

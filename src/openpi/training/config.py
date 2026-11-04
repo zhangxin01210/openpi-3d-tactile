@@ -124,6 +124,9 @@ class SpatialDataConfig:
     copy_arrays: bool = True
     camera_roles: tuple[str, ...] = ("front", "left")
     front_calibration_profile: str | None = None
+    # Prevent a regenerated/reindexed LeRobot dataset from silently joining an
+    # older sidecar whose episode/frame IDs now refer to different samples.
+    require_source_metadata_match: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2491,6 +2494,64 @@ def _button_v1_ablation_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_button_v1_ablation_configs())
+
+
+def _pc_v2_task_configs() -> list[TrainConfig]:
+    """Task-bound scene-only and scene-plus-tactile V2 experiments."""
+    base = next(c for c in _CONFIGS if c.name == "pi0_xhand_1028_press_button_st_v2")
+    project_root = "/workspace/mnt/sqzhang26/openpi-3d-tactile"
+    tasks = (
+        ("peg_all", "1018_peg_all"),
+        ("press_the_button", "1028_press_button"),
+        ("yellow_socket", "1030_yellow_socket"),
+        ("eraser", "1102_eraser"),
+    )
+    configs = []
+    for task, dataset in tasks:
+        root = f"{project_root}/data/{dataset}"
+        for use_tactile in ((False, True) if task in {"press_the_button", "eraser"} else (False,)):
+            architecture = "pi0_xhand_pc_v2_tactile_v2" if use_tactile else "pi0_xhand_pc_v2"
+            encoder = base.model.encoder if use_tactile else dataclasses.replace(
+                base.model.encoder, enable_tactile=False, tactile_regions=None
+            )
+            model = dataclasses.replace(base.model, encoder=encoder, use_visual=True, use_tactile=use_tactile)
+            data = dataclasses.replace(
+                base.data,
+                repo_id=root,
+                assets=AssetsConfig(assets_dir=f"{project_root}/assets/xhand", asset_id=f"{dataset}_unified_v1"),
+                spatial=dataclasses.replace(
+                    base.data.spatial,
+                    dataset_root=root,
+                    version="v1",
+                    camera_roles=("front",),
+                    front_calibration_profile=FRONT_CALIBRATION_PROFILE,
+                    require_source_metadata_match=True,
+                ),
+                object_geometry=None,
+            )
+            configs.append(dataclasses.replace(
+                base,
+                name=f"{architecture}/{task}",
+                model=model,
+                data=data,
+                weight_loader=spatial_weight_loaders.SpatialCheckpointWeightLoader(
+                    "/workspace/mnt/sqzhang26/hf_weight/pi0_base/params"
+                ),
+                freeze_filter=model.get_freeze_filter(),
+                policy_metadata={
+                    "dataset": dataset,
+                    "spatial_version": "v1",
+                    "spatial_token_count": encoder.default_token_count,
+                    "spatial_camera_roles": ["front"],
+                    "spatial_use_visual": True,
+                    "spatial_use_tactile": use_tactile,
+                    "front_calibration_profile": FRONT_CALIBRATION_PROFILE,
+                },
+            ))
+    return configs
+
+
+_CONFIGS.extend(_pc_v2_task_configs())
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}
