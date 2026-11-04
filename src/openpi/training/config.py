@@ -127,6 +127,7 @@ class SpatialDataConfig:
     # Prevent a regenerated/reindexed LeRobot dataset from silently joining an
     # older sidecar whose episode/frame IDs now refer to different samples.
     require_source_metadata_match: bool = False
+    tactile_coordinate_frame: Literal["base", "finger_link2"] = "base"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2550,6 +2551,40 @@ def _pc_v2_task_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_pc_v2_task_configs())
+
+
+def _hand_tactile_task_configs() -> list[TrainConfig]:
+    """Hand-object and matched tactile-coordinate experiments."""
+    configs = []
+    t1b = next(c for c in _CONFIGS if c.name == "pi0_xhand_1028_press_button_st_t1b_v1")
+    for task in ("press_the_button", "yellow_socket"):
+        base = next(c for c in _CONFIGS if c.name == f"pi0_xhand_pc_v2/{task}")
+        for architecture, relations, visual, local in (
+            ("pi0_xhand_ho_v3", True, False, False),
+            ("pi0_xhand_tactile_t1b", False, False, False),
+            ("pi0_xhand_tactile_local_v1", False, False, True),
+            ("pi0_xhand_pc_v2_tactile_local_v1", False, True, True),
+        ):
+            if relations:
+                encoder = dataclasses.replace(base.model.encoder, enable_visual=False, enable_tactile=False,
+                    enable_object_relations=True, object_relation_mode="hand_object_v3")
+            else:
+                encoder = dataclasses.replace(t1b.model.encoder, enable_visual=visual,
+                    visual_hierarchy_v2=(base.model.encoder.visual_hierarchy_v2 if visual
+                                         else t1b.model.encoder.visual_hierarchy_v2))
+            model = dataclasses.replace(base.model, encoder=encoder, use_visual=visual, use_tactile=not relations)
+            spatial = dataclasses.replace(base.data.spatial, tactile_coordinate_frame="finger_link2" if local else "base")
+            data = dataclasses.replace(base.data, spatial=spatial, object_geometry=(
+                ObjectGeometryDataConfig(dataset_root=base.data.repo_id, version="v1") if relations else None))
+            metadata = dict(base.policy_metadata)
+            metadata.update(spatial_use_visual=visual, spatial_use_tactile=not relations,
+                            spatial_token_count=encoder.default_token_count)
+            configs.append(dataclasses.replace(base, name=f"{architecture}/{task}", model=model, data=data,
+                freeze_filter=model.get_freeze_filter(), policy_metadata=metadata))
+    return configs
+
+
+_CONFIGS.extend(_hand_tactile_task_configs())
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}

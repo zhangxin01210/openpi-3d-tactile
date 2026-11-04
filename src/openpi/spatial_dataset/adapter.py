@@ -418,6 +418,7 @@ class SpatialAugmentedDataset:
         copy_arrays: bool = True,
         use_visual: bool = True,
         use_tactile: bool = True,
+        tactile_coordinate_frame: str = "base",
         episode_key: str = "episode_index",
         frame_key: str = "frame_index",
         output_key: str = "spatial",
@@ -435,6 +436,15 @@ class SpatialAugmentedDataset:
         )
         self.use_visual = bool(use_visual)
         self.use_tactile = bool(use_tactile)
+        if tactile_coordinate_frame not in {"base", "finger_link2"}:
+            raise ValueError(f"Unsupported tactile coordinate frame: {tactile_coordinate_frame}")
+        self.tactile_adapter = None
+        if tactile_coordinate_frame == "finger_link2":
+            if not self.use_tactile:
+                raise ValueError("finger_link2 requires tactile input")
+            from pathlib import Path
+            from openpi.spatial.tactile_coordinates import FingerLink2TactileAdapter
+            self.tactile_adapter = FingerLink2TactileAdapter(Path(__file__).resolve().parents[3])
         if not (self.use_visual or self.use_tactile):
             raise ValueError("At least one spatial modality must be enabled")
 
@@ -544,6 +554,8 @@ class SpatialAugmentedDataset:
         spatial = self._to_dict(
             spatial_sample
         )
+        if self.tactile_adapter is not None:
+            spatial["tactile"] = self.tactile_adapter(base_item["observation.state"], spatial["tactile"])
         if not self.use_visual:
             spatial.pop("visual")
         if not self.use_tactile:

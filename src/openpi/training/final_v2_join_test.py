@@ -39,6 +39,18 @@ def test_keypoint_join_uses_episode_and_frame_and_validates_manifest(tmp_path, m
     joined = multimodal.XHandKeypointsSpatialJoin(base, tmp_path, object_version="v1", spatial_version="v1")
     np.testing.assert_array_equal(joined[0]["spatial"]["hand_keypoints"]["xyz_m"], xyz[1])
     np.testing.assert_array_equal(joined[1]["spatial"]["hand_keypoints"]["xyz_m"], xyz[0])
+    # Relation-only joins begin with no spatial modality packet at all.
+    from openpi.object_geometry_dataset.adapter import ObjectGeometryAugmentedDataset
+    class GeometrySample:
+        def as_dict(self):
+            return {"manipulated_xyz_m": np.full((512, 3), 17, np.float32)}
+    Objects.get = lambda self, *, episode_index, frame_index: GeometrySample()
+    raw = [{"episode_index": 3, "frame_index": 1}, {"episode_index": 3, "frame_index": 0}]
+    relation_only = ObjectGeometryAugmentedDataset(raw, Objects())
+    hand_join = multimodal.XHandKeypointsSpatialJoin(relation_only, tmp_path, object_version="v1", spatial_version="v1")
+    assert set(hand_join[0]["spatial"]) == {"object_geometry", "hand_keypoints"}
+    np.testing.assert_array_equal(hand_join[0]["spatial"]["hand_keypoints"]["xyz_m"], xyz[1])
+    np.testing.assert_array_equal(hand_join[0]["spatial"]["object_geometry"]["manipulated_xyz_m"], 17)
     base[0]["frame_index"] = 2
     with pytest.raises(KeyError, match="No hand keypoints"):
         joined[0]

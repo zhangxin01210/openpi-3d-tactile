@@ -107,11 +107,11 @@ TactileSpatialInput：
 
     xyz_m:
         [B, Nt, 3] float
-        taxel 位置，base_link，单位 m。
+        taxel 位置，单位 m。默认 base_link；可由输入配置指定 finger link2。
 
     force:
         [B, Nt, 3] float
-        当前仍为 dataset_native。
+        与 xyz 同一配置坐标系，单位仍为 dataset_native。
 
     force_norm:
         [B, Nt] float

@@ -169,6 +169,7 @@ class SpatialPi0Config(
             if not (
                 self.use_visual
                 or self.use_tactile
+                or getattr(getattr(self, "encoder", None), "enable_object_relations", False)
             ):
                 raise ValueError(
                     "Spatial conditioning is enabled, "
@@ -516,9 +517,9 @@ class StructuredSpatialPi0Config(
                 spatial=dataclasses.replace(
                     observation.spatial, object_geometry=object_geometry,
                     hand_keypoints_xyz_m=(jax.ShapeDtypeStruct((batch_size, 18, 3), jnp.float32)
-                                          if self.encoder.object_relation_mode == "final_v2" else None),
+                                          if self.encoder.object_relation_mode in {"final_v2", "hand_object_v3"} else None),
                     hand_keypoints_mask=(jax.ShapeDtypeStruct((batch_size, 18), jnp.bool_)
-                                        if self.encoder.object_relation_mode == "final_v2" else None),
+                                        if self.encoder.object_relation_mode in {"final_v2", "hand_object_v3"} else None),
                 ),
             )
         return observation, actions

@@ -39,6 +39,27 @@ def keypoint_membership(names: list[str], groups: list[str]) -> tuple[tuple[bool
     return tuple(tuple(group == finger for group in groups) for finger in fingers)
 
 
+def _hand_object(encoder, object_xyz, object_mask, h_xyz, h_mask, membership, role):
+    distances = jnp.sum((object_xyz[:, None, :, :] - h_xyz[:, :, None, :]) ** 2, axis=-1)
+    _, indices = jax.lax.top_k(-jnp.where(object_mask[:, None, :], distances, jnp.inf), 16)
+    neighbor_mask = _batched_take(object_mask, indices) & h_mask[..., None]
+    delta = _batched_take(object_xyz, indices) - h_xyz[:, :, None, :]
+    features = jnp.concatenate((delta, _distance(delta)), axis=-1)
+    embedded = encoder.ho(features)
+    point_features = encoder.ho_neighbor_pool(jnp.concatenate((
+        _masked_mean(embedded, neighbor_mask, axis=2), _masked_max(embedded, neighbor_mask, axis=2),
+    ), axis=-1))
+    point_mask = jnp.any(neighbor_mask, axis=-1)
+    finger_masks = point_mask[:, None, :] & membership[None, :, :].astype(jnp.bool_)
+    finger_features = jnp.broadcast_to(point_features[:, None, :, :], (*finger_masks.shape, point_features.shape[-1]))
+    ho = encoder.ho_finger_pool(jnp.concatenate((
+        _masked_mean(finger_features, finger_masks, axis=2), _masked_max(finger_features, finger_masks, axis=2),
+    ), axis=-1)) + encoder.ho_finger.value[None, :, :] + role
+    ho_mask = jnp.any(finger_masks, axis=-1)
+
+    return jnp.where(ho_mask[..., None], ho, 0.0), ho_mask
+
+
 class FinalV2RelationEncoder(nnx.Module):
     """Five hand/manipulated and five manipulated/target relation tokens."""
 
@@ -66,22 +87,7 @@ class FinalV2RelationEncoder(nnx.Module):
         t_xyz = jnp.where(t_mask[..., None], target_xyz, 0.0)
         h_xyz = jnp.where(h_mask[..., None], hand_xyz, 0.0)
 
-        distances = jnp.sum((m_xyz[:, None, :, :] - h_xyz[:, :, None, :]) ** 2, axis=-1)
-        _, indices = jax.lax.top_k(-jnp.where(m_mask[:, None, :], distances, jnp.inf), 16)
-        neighbor_mask = _batched_take(m_mask, indices) & h_mask[..., None]
-        delta = _batched_take(m_xyz, indices) - h_xyz[:, :, None, :]
-        features = jnp.concatenate((delta, _distance(delta)), axis=-1)
-        embedded = self.ho(features)
-        point_features = self.ho_neighbor_pool(jnp.concatenate((
-            _masked_mean(embedded, neighbor_mask, axis=2), _masked_max(embedded, neighbor_mask, axis=2),
-        ), axis=-1))
-        point_mask = jnp.any(neighbor_mask, axis=-1)
-        finger_masks = point_mask[:, None, :] & membership[None, :, :].astype(jnp.bool_)
-        finger_features = jnp.broadcast_to(point_features[:, None, :, :], (*finger_masks.shape, point_features.shape[-1]))
-        ho = self.ho_finger_pool(jnp.concatenate((
-            _masked_mean(finger_features, finger_masks, axis=2), _masked_max(finger_features, finger_masks, axis=2),
-        ), axis=-1)) + self.ho_finger.value[None, :, :] + self.ho_role.value
-        ho_mask = jnp.any(finger_masks, axis=-1)
+        ho, ho_mask = _hand_object(self, m_xyz, m_mask, h_xyz, h_mask, membership, self.ho_role.value)
 
         def anchors(xyz, mask):
             zeros = jnp.zeros(mask.shape, dtype=xyz.dtype)
@@ -100,3 +106,28 @@ class FinalV2RelationEncoder(nnx.Module):
         oo_mask = jnp.broadcast_to(jnp.any(pair_mask, axis=-1)[:, None], (m_xyz.shape[0], 5))
         return (jnp.where(ho_mask[..., None], ho, 0.0), ho_mask,
                 jnp.where(oo_mask[..., None], oo, 0.0), oo_mask)
+
+
+class HandObjectV3Encoder(nnx.Module):
+    """Shared Final V2 hand-object calculation for each object role."""
+
+    def __init__(self, *, rngs: nnx.Rngs, dim: int = 128):
+        self.ho = nnx.Linear(4, dim, rngs=rngs)
+        self.ho_neighbor_pool = nnx.Linear(2 * dim, dim, rngs=rngs)
+        self.ho_finger_pool = nnx.Linear(2 * dim, dim, rngs=rngs)
+        self.ho_finger = nnx.Param(jax.random.normal(rngs.params(), (5, dim)) * 0.02)
+        self.ho_role = nnx.Param(jax.random.normal(rngs.params(), (2, dim)) * 0.02)
+
+    def __call__(self, manipulated_xyz, manipulated_mask, target_xyz, target_mask, hand_xyz, hand_mask, membership):
+        if hand_xyz.shape[-2:] != (18, 3) or membership.shape != (5, 18):
+            raise ValueError("expected 18 hand keypoints and a validated (5,18) finger membership")
+        h_mask = hand_mask.astype(jnp.bool_) & jnp.isfinite(hand_xyz).all(axis=-1)
+        h_xyz = jnp.where(h_mask[..., None], hand_xyz, 0.0)
+        outputs = []
+        for role, (xyz, mask) in enumerate(((manipulated_xyz, manipulated_mask), (target_xyz, target_mask))):
+            if xyz.shape[-2:] != (512, 3):
+                raise ValueError("expected 512 points per object")
+            valid = mask.astype(jnp.bool_) & jnp.isfinite(xyz).all(axis=-1)
+            safe_xyz = jnp.where(valid[..., None], xyz, 0.0)
+            outputs.append(_hand_object(self, safe_xyz, valid, h_xyz, h_mask, membership, self.ho_role.value[role]))
+        return outputs[0][0], outputs[0][1], outputs[1][0], outputs[1][1]

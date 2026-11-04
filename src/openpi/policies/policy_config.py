@@ -22,7 +22,7 @@ def _policy_metadata(train_config: _config.TrainConfig, data_config: _config.Dat
         metadata.update(
             spatial_camera_roles=list(spatial.camera_roles) if visual else [],
             spatial_use_visual=visual, spatial_use_tactile=tactile,
-            rgb_only_baseline=not visual and not tactile,
+            rgb_only_baseline=not visual and not tactile and data_config.object_geometry is None,
         )
     return metadata
 
@@ -124,11 +124,12 @@ def create_trained_policy(
                 use_visual=getattr(train_config.model, "use_visual", True),
                 use_tactile=getattr(train_config.model, "use_tactile", True),
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
+                tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
                 require_object_geometry=data_config.object_geometry is not None,
                 require_hand_scene=(data_config.object_geometry is not None and
-                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) != "final_v2"),
+                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) not in {"final_v2", "hand_object_v3"}),
                 require_hand_keypoints=(data_config.object_geometry is not None and
-                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) == "final_v2"),
+                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3"}),
             ),
             transforms.PreserveKeysTransform(
                 transform=transforms.compose([

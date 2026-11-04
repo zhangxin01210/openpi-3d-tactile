@@ -458,13 +458,17 @@ def create_torch_dataset(
         if (bool(manifest_diagnostics.get("enable_front_extrinsic_correction")) != expected_extrinsic
                 or bool(manifest_diagnostics.get("enable_front_intrinsic_k1")) != expected_intrinsic):
             raise ValueError("Spatial sidecar diagnostic calibration flags do not match the train config")
-        dataset = SpatialAugmentedDataset(
-            dataset,
-            spatial_dataset,
-            copy_arrays=data_config.spatial.copy_arrays,
-            use_visual=getattr(model_config, "use_visual", True),
-            use_tactile=getattr(model_config, "use_tactile", True),
-        )
+        # Relation-only models still verify sidecar source and calibration metadata,
+        # but never join visual or tactile values into their input.
+        if getattr(model_config, "use_visual", True) or getattr(model_config, "use_tactile", True):
+            dataset = SpatialAugmentedDataset(
+                dataset,
+                spatial_dataset,
+                copy_arrays=data_config.spatial.copy_arrays,
+                use_visual=getattr(model_config, "use_visual", True),
+                use_tactile=getattr(model_config, "use_tactile", True),
+                tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
+            )
     if data_config.object_geometry is not None:
         from openpi.object_geometry_dataset.adapter import ObjectGeometryAugmentedDataset
         from openpi.object_geometry_dataset.derived import ObjectGeometryDerivedDataset
@@ -499,7 +503,7 @@ def create_torch_dataset(
             missing=settings.missing,
             m2_state_from_rgbtrack_v1=settings.m2_state_from_rgbtrack_v1,
         )
-        if getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) == "final_v2":
+        if getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3"}:
             from openpi.training.xhand_multimodal_dataset import XHandKeypointsSpatialJoin
 
             if data_config.spatial is None:
