@@ -178,6 +178,8 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     tactile_coordinate_frame: str = "base"
     tactile_ema_tau_s: float = 1.0
     require_object_geometry: bool = False
+    anchor_asset_root: str | None = None
+    anchor_dataset_root: str | None = None
     require_hand_scene: bool = False
     require_hand_keypoints: bool = False
 
@@ -196,11 +198,27 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             config = apply_front_calibration_profile(config, repo_root / self.front_calibration_profile)
         preprocessor = SpatialPreprocessor.from_repo_root(repo_root=repo_root, config=config)
         object.__setattr__(self, "_preprocessor", preprocessor)
+        if self.anchor_asset_root is not None:
+            if not self.require_object_geometry or not self.require_hand_keypoints or not self.anchor_dataset_root:
+                raise ValueError("fixed anchors require object geometry, hand keypoints and a dataset root")
+            from openpi.object_geometry.ho_v4_anchors import load_assets
+            dataset_root = Path(self.anchor_dataset_root).expanduser().resolve()
+            object.__setattr__(self, "_anchor_assets", load_assets(
+                dataset_root.parent.parent, dataset_root.name, self.anchor_asset_root))
         if self.tactile_coordinate_frame == "finger_link2":
             from openpi.spatial.tactile_coordinates import FingerLink2TactileAdapter
             object.__setattr__(self, "_tactile_adapter", FingerLink2TactileAdapter(repo_root))
         object.__setattr__(self, "_tactile_ema", None)
         object.__setattr__(self, "_ema_episode", None)
+
+    def _object_geometry(self, incoming):
+        geometry = _validate_object_geometry(incoming)
+        if self.anchor_asset_root is not None:
+            from openpi.object_geometry.ho_v4_anchors import validate_online_geometry
+            validate_online_geometry(incoming, self._anchor_assets)
+            for role, value in self._anchor_assets.items():
+                geometry[f"{role}_anchor_indices"] = value["indices"].copy()
+        return geometry
 
     def reset_tactile_ema(self) -> None:
         """Reset causal tactile state between episodes when no episode key is sent."""
@@ -227,7 +245,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             if incoming_hand is not None:
                 existing = {**existing, "hand_keypoints": _validate_hand_keypoints(incoming_hand)}
             if incoming_geometry is not None:
-                geom = _validate_object_geometry(incoming_geometry)
+                geom = self._object_geometry(incoming_geometry)
                 if self.require_hand_scene and geom.get("hand_scene") is None:
                     raise ValueError("Hand-scene model requires object_geometry.hand_scene")
                 result = dict(data)
@@ -329,7 +347,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
         if self.require_object_geometry and incoming_geometry is None:
             raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
         if incoming_geometry is not None:
-            geometry = _validate_object_geometry(incoming_geometry)
+            geometry = self._object_geometry(incoming_geometry)
             if self.require_hand_scene and geometry.get("hand_scene") is None:
                 raise ValueError("Hand-scene model requires object_geometry.hand_scene")
             spatial["object_geometry"] = geometry

@@ -143,6 +143,8 @@ class ObjectGeometryDataConfig:
     require_hand_scene: bool = False
     # Recover the four M2 gate inputs from the accepted RGBTrack v1 masks.
     m2_state_from_rgbtrack_v1: bool = False
+    anchor_asset_root: str | None = None
+    anchor_count: int = 16
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2585,6 +2587,27 @@ def _hand_tactile_task_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_hand_tactile_task_configs())
+
+
+def _hand_object_v4_configs() -> list[TrainConfig]:
+    configs = []
+    for task in ("press_the_button", "yellow_socket"):
+        ho = next(c for c in _CONFIGS if c.name == f"pi0_xhand_ho_v3/{task}")
+        tactile = next(c for c in _CONFIGS if c.name == f"pi0_xhand_tactile_t1b/{task}")
+        for architecture, base in (("pi0_xhand_ho_v4", ho), ("pi0_xhand_tactile_t1b_ho_v4", tactile)):
+            encoder = dataclasses.replace(base.model.encoder, enable_object_relations=True,
+                                          object_relation_mode="hand_object_v4")
+            model = dataclasses.replace(base.model, encoder=encoder)
+            geometry = dataclasses.replace(ho.data.object_geometry, anchor_asset_root="assets/ho_v4_anchors")
+            data = dataclasses.replace(base.data, object_geometry=geometry)
+            metadata = dict(base.policy_metadata)
+            metadata["spatial_token_count"] = encoder.default_token_count
+            configs.append(dataclasses.replace(base, name=f"{architecture}/{task}", model=model, data=data,
+                                               freeze_filter=model.get_freeze_filter(), policy_metadata=metadata))
+    return configs
+
+
+_CONFIGS.extend(_hand_object_v4_configs())
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}

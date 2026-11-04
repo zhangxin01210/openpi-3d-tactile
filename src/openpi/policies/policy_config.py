@@ -126,10 +126,14 @@ def create_trained_policy(
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
                 tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
                 require_object_geometry=data_config.object_geometry is not None,
+                anchor_asset_root=(data_config.object_geometry.anchor_asset_root
+                                   if data_config.object_geometry is not None else None),
+                anchor_dataset_root=(data_config.object_geometry.dataset_root
+                                     if data_config.object_geometry is not None else None),
                 require_hand_scene=(data_config.object_geometry is not None and
-                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) not in {"final_v2", "hand_object_v3"}),
+                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) not in {"final_v2", "hand_object_v3", "hand_object_v4"}),
                 require_hand_keypoints=(data_config.object_geometry is not None and
-                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3"}),
+                    getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3", "hand_object_v4"}),
             ),
             transforms.PreserveKeysTransform(
                 transform=transforms.compose([

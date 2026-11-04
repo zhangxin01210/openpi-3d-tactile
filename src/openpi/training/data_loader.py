@@ -496,14 +496,27 @@ def create_torch_dataset(
         # the train boundary, not merely an exporter convention, so a copied
         # legacy cloud directory cannot silently pair with v1_front_candidate.
         validate_object_geometry_calibration(data_config, model_config, object_geometry_dataset.manifest)
+        fixed_anchor_assets = None
+        if settings.anchor_asset_root is not None:
+            if (getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) != "hand_object_v4"
+                    or settings.anchor_count != 16 or settings.version != "v1" or settings.missing != "error"):
+                raise ValueError("HO V4 requires 16 fixed anchors and object_geometry/v1 with missing=error")
+            from openpi.object_geometry.ho_v4_anchors import load_assets
+
+            dataset_root = pathlib.Path(settings.dataset_root).resolve()
+            assets = load_assets(dataset_root.parent.parent, dataset_root.name, settings.anchor_asset_root)
+            fixed_anchor_assets = assets
+        elif getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) == "hand_object_v4":
+            raise ValueError("hand_object_v4 requires fixed anchor assets")
         dataset = ObjectGeometryAugmentedDataset(
             dataset,
             object_geometry_dataset,
             copy_arrays=settings.copy_arrays,
             missing=settings.missing,
             m2_state_from_rgbtrack_v1=settings.m2_state_from_rgbtrack_v1,
+            fixed_anchor_assets=fixed_anchor_assets,
         )
-        if getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3"}:
+        if getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3", "hand_object_v4"}:
             from openpi.training.xhand_multimodal_dataset import XHandKeypointsSpatialJoin
 
             if data_config.spatial is None:

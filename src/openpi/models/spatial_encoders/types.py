@@ -407,6 +407,8 @@ class ObjectGeometryInput(Generic[ArrayT]):
     target_age: ArrayT
     target_confidence: ArrayT
     hand_scene: HandSceneInput[ArrayT] | None = None
+    manipulated_anchor_indices: ArrayT | None = None
+    target_anchor_indices: ArrayT | None = None
 
 
 # =============================================================================

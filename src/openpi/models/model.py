@@ -238,6 +238,8 @@ class Observation(Generic[ArrayT]):
                     target_age=object_data["target_age"],
                     target_confidence=object_data["target_confidence"],
                     hand_scene=hand_scene,
+                    manipulated_anchor_indices=object_data.get("manipulated_anchor_indices"),
+                    target_anchor_indices=object_data.get("target_anchor_indices"),
                 )
 
             spatial = _spatial_types.SpatialEncoderInput(

@@ -138,6 +138,7 @@ class StructuredSpatialEncoderConfig:
             "dtcr_independent_v1",
             "final_v2",
             "hand_object_v3",
+            "hand_object_v4",
         }:
             raise ValueError(f"Unsupported object_relation_mode: {self.object_relation_mode!r}")
 
@@ -227,8 +228,15 @@ class StructuredSpatialEncoder(nnx.Module):
                         dtype=jnp.float32,
                     ) * 0.02
                 )
+        # V4 relation parameters must not change T1b physics initialization.
+        v4_physics_count = (rngs.params.count.value if config.object_relation_mode == "hand_object_v4"
+                            and config.tactile_physics_descriptor_enabled else None)
         if config.enable_object_relations:
-            if config.object_relation_mode in {"final_v2", "hand_object_v3"}:
+            if config.object_relation_mode == "hand_object_v4":
+                from openpi.models.spatial_encoders.hand_object_v4 import HandObjectV4Encoder
+
+                self.object_relation_encoder = HandObjectV4Encoder(dim=d, rngs=rngs)
+            elif config.object_relation_mode in {"final_v2", "hand_object_v3"}:
                 from openpi.models.spatial_encoders.final_v2_relations import FinalV2RelationEncoder
                 from openpi.models.spatial_encoders.final_v2_relations import HandObjectV3Encoder
 
@@ -251,7 +259,8 @@ class StructuredSpatialEncoder(nnx.Module):
         # does not change their random initialization for the same seed. Use
         # an independent stream so downstream Pi0 layers do not shift either.
         if config.tactile_physics_descriptor_enabled:
-            physics_key = jax.random.fold_in(rngs.params.key.value, rngs.params.count.value)
+            physics_count = rngs.params.count.value if v4_physics_count is None else v4_physics_count
+            physics_key = jax.random.fold_in(rngs.params.key.value, physics_count)
             physics_key = jax.random.fold_in(physics_key, 0x543142)
             self.tactile_physics_layers = _make_mlp(10, (128, config.token_dim), nnx.Rngs(params=physics_key))
 
@@ -310,17 +319,20 @@ class StructuredSpatialEncoder(nnx.Module):
         if self.config.enable_object_relations:
             if inputs.object_geometry is None:
                 raise ValueError("Object relations are enabled but object_geometry input is missing")
-            if self.config.object_relation_mode in {"final_v2", "hand_object_v3"}:
+            if self.config.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4"}:
                 if inputs.hand_keypoints_xyz_m is None or inputs.hand_keypoints_mask is None:
                     raise ValueError("Hand-object relations require validated hand keypoints and mask")
                 geometry = inputs.object_geometry
                 groups = jnp.array([-1, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
                 membership = jnp.arange(5)[:, None] == groups[None, :]
-                ho, ho_mask, oo, oo_mask = self.object_relation_encoder(
-                    geometry.manipulated_xyz_m, geometry.manipulated_mask,
-                    geometry.target_xyz_m, geometry.target_mask,
-                    inputs.hand_keypoints_xyz_m, inputs.hand_keypoints_mask, membership,
-                )
+                args = (geometry.manipulated_xyz_m, geometry.manipulated_mask,
+                        geometry.target_xyz_m, geometry.target_mask,
+                        inputs.hand_keypoints_xyz_m, inputs.hand_keypoints_mask, membership)
+                if self.config.object_relation_mode == "hand_object_v4":
+                    if geometry.manipulated_anchor_indices is None or geometry.target_anchor_indices is None:
+                        raise ValueError("hand_object_v4 requires validated fixed object anchor indices")
+                    args += (geometry.manipulated_anchor_indices, geometry.target_anchor_indices)
+                ho, ho_mask, oo, oo_mask = self.object_relation_encoder(*args)
                 relation_tokens = jnp.concatenate([ho, oo], axis=1)
                 relation_mask = jnp.concatenate([ho_mask, oo_mask], axis=1)
                 # Anchors are diagnostic only; the existing adapter consumes tokens and masks.

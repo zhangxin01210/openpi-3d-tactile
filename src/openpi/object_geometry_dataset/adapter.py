@@ -32,6 +32,7 @@ class ObjectGeometryAugmentedDataset:
         frame_key: str = "frame_index",
         output_key: str = "object_geometry",
         m2_state_from_rgbtrack_v1: bool = False,
+        fixed_anchor_assets: dict[str, dict] | None = None,
     ) -> None:
         if missing not in {"error", "skip"}:
             raise ValueError("missing must be 'error' or 'skip'")
@@ -43,6 +44,7 @@ class ObjectGeometryAugmentedDataset:
         self.frame_key = frame_key
         self.output_key = output_key
         self.m2_state_from_rgbtrack_v1 = m2_state_from_rgbtrack_v1
+        self.fixed_anchor_assets = fixed_anchor_assets
         if m2_state_from_rgbtrack_v1:
             manifest = object_geometry_dataset.manifest
             expected_roles = {
@@ -77,6 +79,11 @@ class ObjectGeometryAugmentedDataset:
                 return dict(base)
             raise
         geometry = sample.as_dict()
+        if self.fixed_anchor_assets is not None:
+            from openpi.object_geometry.ho_v4_anchors import validate_frame_geometry
+            validate_frame_geometry(geometry, self.fixed_anchor_assets)
+            for role in ("manipulated", "target"):
+                geometry[f"{role}_anchor_indices"] = self.fixed_anchor_assets[role]["indices"].copy()
         if self.m2_state_from_rgbtrack_v1:
             geometry["hand_scene"] = _m2_state_from_rgbtrack_v1(geometry)
         if self.copy_arrays:
