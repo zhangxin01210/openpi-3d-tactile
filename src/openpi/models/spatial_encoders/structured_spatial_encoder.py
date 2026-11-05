@@ -33,6 +33,7 @@ from openpi.models.spatial_encoders.types import SpatialEncoderOutput
 class StructuredSpatialEncoderConfig:
     token_dim: int = 128
 
+    enable_visual: bool = True
     visual_num_centers: int = 32
     visual_knn: int = 32
     # Opt-in so existing checkpoints and experiments keep their original tree.
@@ -136,6 +137,8 @@ class StructuredSpatialEncoderConfig:
             "dtcr_v1",
             "dtcr_independent_v1",
             "final_v2",
+            "hand_object_v3",
+            "hand_object_v4",
         }:
             raise ValueError(f"Unsupported object_relation_mode: {self.object_relation_mode!r}")
 
@@ -145,8 +148,7 @@ class StructuredSpatialEncoderConfig:
     @property
     def default_token_count(self) -> int:
         return (
-            self.visual_num_centers
-            + 1
+            (self.visual_num_centers + 1 if self.enable_visual else 0)
             + (self.num_fingers * (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
                if self.enable_tactile else 0)
             + (self.object_relation_token_count if self.enable_object_relations else 0)
@@ -168,17 +170,18 @@ class StructuredSpatialEncoder(nnx.Module):
         d = config.token_dim
         h = config.hidden_dim
 
-        self.visual_patch_layers = _make_mlp(self._VISUAL_PATCH_DIM, (h, d), rngs)
-        if config.visual_hierarchy_v2:
-            self.visual_stage1_pool = nnx.Linear(2 * d, d, rngs=rngs)
-            self.visual_stage2_layers = _make_mlp(3 + d, (h, d), rngs)
-            self.visual_stage2_pool = nnx.Linear(2 * d, d, rngs=rngs)
-        self.visual_global_layers = _make_mlp(self._VISUAL_PATCH_DIM, (h, d), rngs)
-        self.visual_pos_layers = _make_mlp(3, (h, d), rngs)
+        if config.enable_visual:
+            self.visual_patch_layers = _make_mlp(self._VISUAL_PATCH_DIM, (h, d), rngs)
+            if config.visual_hierarchy_v2:
+                self.visual_stage1_pool = nnx.Linear(2 * d, d, rngs=rngs)
+                self.visual_stage2_layers = _make_mlp(3 + d, (h, d), rngs)
+                self.visual_stage2_pool = nnx.Linear(2 * d, d, rngs=rngs)
+            self.visual_global_layers = _make_mlp(self._VISUAL_PATCH_DIM, (h, d), rngs)
+            self.visual_pos_layers = _make_mlp(3, (h, d), rngs)
 
-        self.visual_modality_embedding = nnx.Param(
-            jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
-        )
+            self.visual_modality_embedding = nnx.Param(
+                jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
+            )
         if config.visual_geometry_mode == "object_centric":
             # Object points use relative xyz [3], object one-hot [3], and a
             # clipped geometry confidence/validity scalar [1].  These are
@@ -225,11 +228,20 @@ class StructuredSpatialEncoder(nnx.Module):
                         dtype=jnp.float32,
                     ) * 0.02
                 )
+        # V4 relation parameters must not change T1b physics initialization.
+        v4_physics_count = (rngs.params.count.value if config.object_relation_mode == "hand_object_v4"
+                            and config.tactile_physics_descriptor_enabled else None)
         if config.enable_object_relations:
-            if config.object_relation_mode == "final_v2":
-                from openpi.models.spatial_encoders.final_v2_relations import FinalV2RelationEncoder
+            if config.object_relation_mode == "hand_object_v4":
+                from openpi.models.spatial_encoders.hand_object_v4 import HandObjectV4Encoder
 
-                self.object_relation_encoder = FinalV2RelationEncoder(dim=d, rngs=rngs)
+                self.object_relation_encoder = HandObjectV4Encoder(dim=d, rngs=rngs)
+            elif config.object_relation_mode in {"final_v2", "hand_object_v3"}:
+                from openpi.models.spatial_encoders.final_v2_relations import FinalV2RelationEncoder
+                from openpi.models.spatial_encoders.final_v2_relations import HandObjectV3Encoder
+
+                cls = FinalV2RelationEncoder if config.object_relation_mode == "final_v2" else HandObjectV3Encoder
+                self.object_relation_encoder = cls(dim=d, rngs=rngs)
             else:
                 self.object_relation_encoder = ObjectRelationEncoder(
                 token_dim=d,
@@ -247,7 +259,8 @@ class StructuredSpatialEncoder(nnx.Module):
         # does not change their random initialization for the same seed. Use
         # an independent stream so downstream Pi0 layers do not shift either.
         if config.tactile_physics_descriptor_enabled:
-            physics_key = jax.random.fold_in(rngs.params.key.value, rngs.params.count.value)
+            physics_count = rngs.params.count.value if v4_physics_count is None else v4_physics_count
+            physics_key = jax.random.fold_in(rngs.params.key.value, physics_count)
             physics_key = jax.random.fold_in(physics_key, 0x543142)
             self.tactile_physics_layers = _make_mlp(10, (128, config.token_dim), nnx.Rngs(params=physics_key))
 
@@ -282,6 +295,8 @@ class StructuredSpatialEncoder(nnx.Module):
             xyz_parts.append(xyz)
             aux.update(object_aux)
         elif inputs.visual is not None:
+            if not self.config.enable_visual:
+                raise ValueError("This structured encoder was configured without a visual branch")
             tokens, mask, xyz, visual_aux = self._encode_visual(inputs.visual)
             token_parts.append(tokens)
             mask_parts.append(mask)
@@ -304,17 +319,20 @@ class StructuredSpatialEncoder(nnx.Module):
         if self.config.enable_object_relations:
             if inputs.object_geometry is None:
                 raise ValueError("Object relations are enabled but object_geometry input is missing")
-            if self.config.object_relation_mode == "final_v2":
+            if self.config.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4"}:
                 if inputs.hand_keypoints_xyz_m is None or inputs.hand_keypoints_mask is None:
-                    raise ValueError("final_v2 relations require validated hand keypoints and mask")
+                    raise ValueError("Hand-object relations require validated hand keypoints and mask")
                 geometry = inputs.object_geometry
                 groups = jnp.array([-1, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
                 membership = jnp.arange(5)[:, None] == groups[None, :]
-                ho, ho_mask, oo, oo_mask = self.object_relation_encoder(
-                    geometry.manipulated_xyz_m, geometry.manipulated_mask,
-                    geometry.target_xyz_m, geometry.target_mask,
-                    inputs.hand_keypoints_xyz_m, inputs.hand_keypoints_mask, membership,
-                )
+                args = (geometry.manipulated_xyz_m, geometry.manipulated_mask,
+                        geometry.target_xyz_m, geometry.target_mask,
+                        inputs.hand_keypoints_xyz_m, inputs.hand_keypoints_mask, membership)
+                if self.config.object_relation_mode == "hand_object_v4":
+                    if geometry.manipulated_anchor_indices is None or geometry.target_anchor_indices is None:
+                        raise ValueError("hand_object_v4 requires validated fixed object anchor indices")
+                    args += (geometry.manipulated_anchor_indices, geometry.target_anchor_indices)
+                ho, ho_mask, oo, oo_mask = self.object_relation_encoder(*args)
                 relation_tokens = jnp.concatenate([ho, oo], axis=1)
                 relation_mask = jnp.concatenate([ho_mask, oo_mask], axis=1)
                 # Anchors are diagnostic only; the existing adapter consumes tokens and masks.
@@ -331,7 +349,7 @@ class StructuredSpatialEncoder(nnx.Module):
             aux.update(relation_aux)
 
         if not token_parts:
-            raise ValueError("SpatialEncoderInput must contain visual and/or tactile input")
+            raise ValueError("SpatialEncoderInput must contain an enabled modality")
 
         tokens = jnp.concatenate(token_parts, axis=1)
         token_mask = jnp.concatenate(mask_parts, axis=1)
@@ -844,7 +862,9 @@ def _batch_size(inputs: SpatialEncoderInput) -> int:
         return int(inputs.visual.xyz_m.shape[0])
     if inputs.tactile is not None:
         return int(inputs.tactile.xyz_m.shape[0])
-    raise ValueError("SpatialEncoderInput must contain visual and/or tactile input")
+    if inputs.object_geometry is not None:
+        return int(inputs.object_geometry.manipulated_xyz_m.shape[0])
+    raise ValueError("SpatialEncoderInput must contain an enabled modality")
 
 
 def _batched_take(values: jax.Array, indices: jax.Array) -> jax.Array:

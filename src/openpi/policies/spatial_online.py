@@ -175,15 +175,22 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     use_visual: bool = True
     use_tactile: bool = True
     front_calibration_profile: str | None = None
+    tactile_coordinate_frame: str = "base"
     tactile_ema_tau_s: float = 1.0
     require_object_geometry: bool = False
+    anchor_asset_root: str | None = None
+    anchor_dataset_root: str | None = None
     require_hand_scene: bool = False
     require_hand_keypoints: bool = False
     m2_state_from_rgbtrack_v1: bool = False
 
     def __post_init__(self) -> None:
-        if not (self.use_visual or self.use_tactile):
-            raise ValueError("At least one spatial modality must be enabled")
+        if not (self.use_visual or self.use_tactile or (self.require_object_geometry and self.require_hand_keypoints)):
+            raise ValueError("At least one spatial modality or hand-object relation must be enabled")
+        if self.tactile_coordinate_frame not in {"base", "finger_link2"}:
+            raise ValueError("Unsupported tactile coordinate frame")
+        if self.tactile_coordinate_frame == "finger_link2" and not self.use_tactile:
+            raise ValueError("finger_link2 requires tactile input")
         repo_root = Path(self.repo_root).expanduser().resolve() if self.repo_root is not None else _default_repo_root()
         config = make_baseline_config().with_camera_roles(*self.camera_roles)
         if self.front_calibration_profile is not None:
@@ -192,8 +199,27 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             config = apply_front_calibration_profile(config, repo_root / self.front_calibration_profile)
         preprocessor = SpatialPreprocessor.from_repo_root(repo_root=repo_root, config=config)
         object.__setattr__(self, "_preprocessor", preprocessor)
+        if self.anchor_asset_root is not None:
+            if not self.require_object_geometry or not self.require_hand_keypoints or not self.anchor_dataset_root:
+                raise ValueError("fixed anchors require object geometry, hand keypoints and a dataset root")
+            from openpi.object_geometry.ho_v4_anchors import load_assets
+            dataset_root = Path(self.anchor_dataset_root).expanduser().resolve()
+            object.__setattr__(self, "_anchor_assets", load_assets(
+                dataset_root.parent.parent, dataset_root.name, self.anchor_asset_root))
+        if self.tactile_coordinate_frame == "finger_link2":
+            from openpi.spatial.tactile_coordinates import FingerLink2TactileAdapter
+            object.__setattr__(self, "_tactile_adapter", FingerLink2TactileAdapter(repo_root))
         object.__setattr__(self, "_tactile_ema", None)
         object.__setattr__(self, "_ema_episode", None)
+
+    def _object_geometry(self, incoming):
+        geometry = _validate_object_geometry(incoming)
+        if self.anchor_asset_root is not None:
+            from openpi.object_geometry.ho_v4_anchors import validate_online_geometry
+            validate_online_geometry(incoming, self._anchor_assets)
+            for role, value in self._anchor_assets.items():
+                geometry[f"{role}_anchor_indices"] = value["indices"].copy()
+        return geometry
 
     def reset_tactile_ema(self) -> None:
         """Reset causal tactile state between episodes when no episode key is sent."""
@@ -203,7 +229,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
         object.__setattr__(self, "_ema_episode", None)
 
     def _geometry_for_model(self, value: Any) -> dict[str, Any]:
-        geometry = _validate_object_geometry(value)
+        geometry = self._object_geometry(value)
         if self.m2_state_from_rgbtrack_v1:
             # The training join derives M2 gates from the RGBTrack v1 mask,
             # including its checks on source and age. Do exactly the same for
@@ -284,7 +310,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
         episode_index = data.get("episode_index")
         if episode_index is not None:
             episode_index = _as_scalar(episode_index, dtype=int)
-            if self._ema_episode is not None and episode_index != self._ema_episode:
+            if self._ema_episode is not None and episode_index != self._ema_episode and self._tactile_ema is not None:
                 self._tactile_ema.reset()
             object.__setattr__(self, "_ema_episode", episode_index)
 
@@ -304,10 +330,14 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 depth_by_role=depth_by_role, rgb_by_role=rgb_by_role
             )
             spatial = {"visual": _visual_to_model_dict(visual)}
-        else:
+        elif self.use_tactile:
             tactile = self._preprocessor.preprocess_tactile(state)
             spatial = {"tactile": _tactile_to_model_dict(tactile)}
             ema_force_norm = tactile.force_norm
+        else:
+            spatial = {}
+        if self.use_tactile and self.tactile_coordinate_frame == "finger_link2":
+            spatial["tactile"] = self._tactile_adapter(state, spatial["tactile"])
         if self.use_tactile:
             if self._tactile_ema is None or self._tactile_ema.taxel_count != len(ema_force_norm):
                 object.__setattr__(

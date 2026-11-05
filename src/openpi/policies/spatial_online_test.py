@@ -94,3 +94,26 @@ def test_online_keypoints_reuse_training_fk(monkeypatch):
     expected = select_keypoints(kin, kin.compute(q, root='base_link'))[3]
     np.testing.assert_array_equal(result['spatial']['hand_keypoints']['xyz_m'], expected)
     assert result['spatial']['hand_keypoints']['point_mask'].all()
+
+
+def test_relation_only_requires_objects_and_computes_hand_fk():
+    import pytest
+
+    transform = spatial_online.XHandSpatialOnlinePreprocess(
+        camera_roles=("front",), use_visual=False, use_tactile=False,
+        require_object_geometry=True, require_hand_keypoints=True,
+    )
+    state = np.zeros(1972, np.float32)
+    with pytest.raises(ValueError, match="object_geometry"):
+        transform({"observation.state": state})
+    geometry = {}
+    for role in ("manipulated", "target"):
+        geometry[f"{role}_xyz_m"] = np.zeros((512, 3), np.float32)
+        geometry[f"{role}_mask"] = np.ones(512, bool)
+        geometry[f"{role}_source"] = np.zeros(512, np.int8)
+        geometry[f"{role}_age"] = np.zeros(512, np.int16)
+        geometry[f"{role}_confidence"] = np.ones(512, np.float32)
+    result = transform({"observation.state": state, "object_geometry": geometry})["spatial"]
+    assert set(result) == {"object_geometry", "hand_keypoints"}
+    assert result["hand_keypoints"]["xyz_m"].shape == (18, 3)
+    assert result["hand_keypoints"]["point_mask"].all()

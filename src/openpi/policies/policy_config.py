@@ -23,7 +23,7 @@ def _policy_metadata(train_config: _config.TrainConfig, data_config: _config.Dat
         metadata.update(
             spatial_camera_roles=list(spatial.camera_roles) if visual else [],
             spatial_use_visual=visual, spatial_use_tactile=tactile,
-            rgb_only_baseline=not visual and not tactile,
+            rgb_only_baseline=not visual and not tactile and data_config.object_geometry is None,
             training_config=train_config.name,
             object_geometry_required=data_config.object_geometry is not None,
         )
@@ -157,7 +157,8 @@ def create_trained_policy(
         object_settings = data_config.object_geometry
         relation_mode = getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None)
         scene_modes = {"hand_scene_v0", "hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"}
-        if object_settings is not None and relation_mode not in scene_modes | {"final_v2", "legacy_ho_oo"}:
+        keypoint_modes = {"final_v2", "hand_object_v3", "hand_object_v4"}
+        if object_settings is not None and relation_mode not in scene_modes | keypoint_modes | {"legacy_ho_oo"}:
             raise ValueError(f"Unsupported online object relation mode: {relation_mode!r}; "
                              "implement and validate its input contract before deployment")
         input_transforms = [
@@ -166,10 +167,13 @@ def create_trained_policy(
                 use_visual=getattr(train_config.model, "use_visual", True),
                 use_tactile=getattr(train_config.model, "use_tactile", True),
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
+                tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
                 require_object_geometry=data_config.object_geometry is not None,
+                anchor_asset_root=(object_settings.anchor_asset_root if object_settings is not None else None),
+                anchor_dataset_root=(object_settings.dataset_root if object_settings is not None else None),
                 require_hand_scene=(object_settings is not None and
                     (object_settings.require_hand_scene or relation_mode in scene_modes)),
-                require_hand_keypoints=(object_settings is not None and relation_mode == "final_v2"),
+                require_hand_keypoints=(object_settings is not None and relation_mode in keypoint_modes),
                 m2_state_from_rgbtrack_v1=(object_settings is not None and object_settings.m2_state_from_rgbtrack_v1),
             ),
             transforms.PreserveKeysTransform(
