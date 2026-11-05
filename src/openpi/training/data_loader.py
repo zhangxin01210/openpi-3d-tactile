@@ -313,6 +313,15 @@ class FakeDataset(Dataset):
         return self._num_samples
 
 
+def validate_object_geometry_roles(manifest, expected_roles):
+    """Accept current RGBTrack or migrated-v1 provenance and reject swapped roles."""
+    if expected_roles is None:
+        return
+    actual_roles = manifest.get("role_to_object") or manifest.get("source", {}).get("roles")
+    if actual_roles != dict(expected_roles):
+        raise ValueError(f"Object geometry roles differ: expected {dict(expected_roles)}, got {actual_roles}")
+
+
 def create_torch_dataset(
     data_config: _config.DataConfig, action_horizon: int, model_config: _model.BaseModelConfig
 ) -> Dataset:
@@ -460,7 +469,9 @@ def create_torch_dataset(
             raise ValueError("Spatial sidecar diagnostic calibration flags do not match the train config")
         # Relation-only models still verify sidecar source and calibration metadata,
         # but never join visual or tactile values into their input.
-        if getattr(model_config, "use_visual", True) or getattr(model_config, "use_tactile", True):
+        encoder = getattr(model_config, "encoder", None)
+        hand_mode = getattr(encoder, "hand_object_hand_point_mode", "fk_18")
+        if getattr(model_config, "use_visual", True) or getattr(model_config, "use_tactile", True) or hand_mode == "tactile_center_5":
             dataset = SpatialAugmentedDataset(
                 dataset,
                 spatial_dataset,
@@ -468,6 +479,8 @@ def create_torch_dataset(
                 use_visual=getattr(model_config, "use_visual", True),
                 use_tactile=getattr(model_config, "use_tactile", True),
                 tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
+                hand_point_mode=hand_mode,
+                validate_tactile_order=getattr(encoder, "tactile_encoder_type", "structured_v1") == "simple_mlp",
             )
     if data_config.object_geometry is not None:
         from openpi.object_geometry_dataset.adapter import ObjectGeometryAugmentedDataset
@@ -496,6 +509,7 @@ def create_torch_dataset(
         # the train boundary, not merely an exporter convention, so a copied
         # legacy cloud directory cannot silently pair with v1_front_candidate.
         validate_object_geometry_calibration(data_config, model_config, object_geometry_dataset.manifest)
+        validate_object_geometry_roles(object_geometry_dataset.manifest, settings.expected_roles)
         fixed_anchor_assets = None
         if settings.anchor_asset_root is not None:
             if (getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) != "hand_object_v4"
@@ -516,7 +530,8 @@ def create_torch_dataset(
             m2_state_from_rgbtrack_v1=settings.m2_state_from_rgbtrack_v1,
             fixed_anchor_assets=fixed_anchor_assets,
         )
-        if getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3", "hand_object_v4"}:
+        if (getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3", "hand_object_v4"}
+                and getattr(getattr(model_config, "encoder", None), "hand_object_hand_point_mode", "fk_18") == "fk_18"):
             from openpi.training.xhand_multimodal_dataset import XHandKeypointsSpatialJoin
 
             if data_config.spatial is None:

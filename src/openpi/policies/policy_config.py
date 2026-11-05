@@ -123,6 +123,8 @@ def create_trained_policy(
                 camera_roles=data_config.spatial.camera_roles,
                 use_visual=getattr(train_config.model, "use_visual", True),
                 use_tactile=getattr(train_config.model, "use_tactile", True),
+                hand_point_mode=getattr(getattr(train_config.model, "encoder", None), "hand_object_hand_point_mode", "fk_18"),
+                validate_tactile_order=getattr(getattr(train_config.model, "encoder", None), "tactile_encoder_type", "structured_v1") == "simple_mlp",
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
                 tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
                 require_object_geometry=data_config.object_geometry is not None,

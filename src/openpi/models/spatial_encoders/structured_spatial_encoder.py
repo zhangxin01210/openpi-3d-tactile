@@ -56,6 +56,8 @@ class StructuredSpatialEncoderConfig:
     # while supplying its own tactile encoder.  Avoid allocating an unused
     # PointNet-style tactile branch in that case.
     enable_tactile: bool = True
+    tactile_encoder_type: str = "structured_v1"
+    hand_object_hand_point_mode: str = "fk_18"
     enable_object_relations: bool = False
     # ``legacy_ho_oo`` is the reviewed 5 Hand-Object + 9 Object-Object
     # experiment.  ``hand_scene_v0`` keeps the base 58 tokens and appends
@@ -81,6 +83,14 @@ class StructuredSpatialEncoderConfig:
     transforms: SpatialFeatureTransforms = dataclasses.field(default_factory=SpatialFeatureTransforms)
 
     def __post_init__(self) -> None:
+        if self.tactile_encoder_type not in {"structured_v1", "simple_mlp"}:
+            raise ValueError("unsupported tactile encoder type")
+        if self.hand_object_hand_point_mode not in {"fk_18", "tactile_center_5"}:
+            raise ValueError("unsupported hand point mode")
+        if self.hand_object_hand_point_mode == "tactile_center_5" and (not self.enable_object_relations or self.object_relation_mode != "hand_object_v3"):
+            raise ValueError("tactile centers require hand_object_v3 relations")
+        if self.tactile_encoder_type == "simple_mlp" and (self.tactile_physics_descriptor_enabled or self.tactile_regions is not None or self.token_dim != 128):
+            raise ValueError("simple tactile MLP requires no structured tactile descriptors or regions")
         if self.tactile_physics_descriptor_enabled and (
             not self.enable_tactile or self.tactile_regions is not None
             or self.tactile_local_tokens_per_finger != 1 or self.tactile_summary_tokens_per_finger != 0
@@ -149,7 +159,8 @@ class StructuredSpatialEncoderConfig:
     def default_token_count(self) -> int:
         return (
             (self.visual_num_centers + 1 if self.enable_visual else 0)
-            + (self.num_fingers * (self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
+            + (self.num_fingers * (1 if self.tactile_encoder_type == "simple_mlp" else
+               self.tactile_local_tokens_per_finger + self.tactile_summary_tokens_per_finger)
                if self.enable_tactile else 0)
             + (self.object_relation_token_count if self.enable_object_relations else 0)
         )
@@ -193,7 +204,10 @@ class StructuredSpatialEncoder(nnx.Module):
             self.object_centric_modality_embedding = nnx.Param(
                 jax.random.normal(rngs.params(), (d,), dtype=jnp.float32) * 0.02
             )
-        if config.enable_tactile:
+        if config.enable_tactile and config.tactile_encoder_type == "simple_mlp":
+            from openpi.models.spatial_encoders.simple_tactile_mlp import SimplePerFingerTactileMLP
+            self.simple_tactile_mlp = SimplePerFingerTactileMLP(rngs=rngs)
+        elif config.enable_tactile:
             tactile_input_dim = self._TACTILE_TAXEL_DIM + d
             self.tactile_taxel_layers = _make_mlp(tactile_input_dim, (h, d), rngs)
             self.tactile_edge_layers = _make_mlp(d * 2 + 3, (h, d), rngs)
@@ -273,7 +287,7 @@ class StructuredSpatialEncoder(nnx.Module):
         # The single-query experiments preserve the original computations on
         # valid inputs. Mask non-finite taxels before either branch so masked
         # NaNs cannot contaminate attention or the uncompressed HO anchors.
-        if (inputs.tactile is not None and self.config.tactile_regions is None
+        if (inputs.tactile is not None and self.config.tactile_encoder_type == "structured_v1" and self.config.tactile_regions is None
                 and self.config.tactile_local_tokens_per_finger == 1
                 and self.config.tactile_summary_tokens_per_finger == 0):
             tactile = inputs.tactile
@@ -308,7 +322,10 @@ class StructuredSpatialEncoder(nnx.Module):
         if inputs.tactile is not None:
             if not self.config.enable_tactile:
                 raise ValueError("This structured encoder was configured without a tactile branch")
-            tokens, mask, xyz, tactile_aux = self._encode_tactile(inputs.tactile)
+            if self.config.tactile_encoder_type == "simple_mlp":
+                tokens, mask, xyz, tactile_aux = self.simple_tactile_mlp(inputs.tactile, self.config.transforms)
+            else:
+                tokens, mask, xyz, tactile_aux = self._encode_tactile(inputs.tactile)
             token_parts.append(tokens)
             mask_parts.append(mask)
             xyz_parts.append(xyz)
@@ -325,9 +342,17 @@ class StructuredSpatialEncoder(nnx.Module):
                 geometry = inputs.object_geometry
                 groups = jnp.array([-1, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4])
                 membership = jnp.arange(5)[:, None] == groups[None, :]
+                hand_xyz, hand_mask = inputs.hand_keypoints_xyz_m, inputs.hand_keypoints_mask
+                if self.config.hand_object_hand_point_mode == "tactile_center_5":
+                    if hand_xyz.shape[-2:] != (5, 3) or hand_mask.shape[-1] != 5:
+                        raise ValueError("expected five tactile geometry centers")
+                    # The original 18-point network expects its fixed finger memberships.
+                    # Place each center in one existing slot and mask all other slots.
+                    slots = jnp.array([1, 5, 9, 12, 15])
+                    hand_xyz = jnp.zeros((hand_xyz.shape[0], 18, 3), hand_xyz.dtype).at[:, slots, :].set(hand_xyz)
+                    hand_mask = jnp.zeros((hand_mask.shape[0], 18), bool).at[:, slots].set(hand_mask)
                 args = (geometry.manipulated_xyz_m, geometry.manipulated_mask,
-                        geometry.target_xyz_m, geometry.target_mask,
-                        inputs.hand_keypoints_xyz_m, inputs.hand_keypoints_mask, membership)
+                        geometry.target_xyz_m, geometry.target_mask, hand_xyz, hand_mask, membership)
                 if self.config.object_relation_mode == "hand_object_v4":
                     if geometry.manipulated_anchor_indices is None or geometry.target_anchor_indices is None:
                         raise ValueError("hand_object_v4 requires validated fixed object anchor indices")

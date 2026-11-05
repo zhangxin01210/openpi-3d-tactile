@@ -419,6 +419,8 @@ class SpatialAugmentedDataset:
         use_visual: bool = True,
         use_tactile: bool = True,
         tactile_coordinate_frame: str = "base",
+        hand_point_mode: str = "fk_18",
+        validate_tactile_order: bool = False,
         episode_key: str = "episode_index",
         frame_key: str = "frame_index",
         output_key: str = "spatial",
@@ -436,6 +438,8 @@ class SpatialAugmentedDataset:
         )
         self.use_visual = bool(use_visual)
         self.use_tactile = bool(use_tactile)
+        self.hand_point_mode = hand_point_mode
+        self.validate_tactile_order = validate_tactile_order
         if tactile_coordinate_frame not in {"base", "finger_link2"}:
             raise ValueError(f"Unsupported tactile coordinate frame: {tactile_coordinate_frame}")
         self.tactile_adapter = None
@@ -445,7 +449,7 @@ class SpatialAugmentedDataset:
             from pathlib import Path
             from openpi.spatial.tactile_coordinates import FingerLink2TactileAdapter
             self.tactile_adapter = FingerLink2TactileAdapter(Path(__file__).resolve().parents[3])
-        if not (self.use_visual or self.use_tactile):
+        if not (self.use_visual or self.use_tactile or self.hand_point_mode == "tactile_center_5"):
             raise ValueError("At least one spatial modality must be enabled")
 
         self.episode_key = str(
@@ -556,6 +560,11 @@ class SpatialAugmentedDataset:
         )
         if self.tactile_adapter is not None:
             spatial["tactile"] = self.tactile_adapter(base_item["observation.state"], spatial["tactile"])
+        if self.validate_tactile_order or self.hand_point_mode == "tactile_center_5":
+            from openpi.spatial.taxel_contract import finger_geometry_centers, validate_taxel_order
+            validate_taxel_order(spatial["tactile"])
+            if self.hand_point_mode == "tactile_center_5":
+                spatial["hand_keypoints"] = finger_geometry_centers(spatial["tactile"])
         if not self.use_visual:
             spatial.pop("visual")
         if not self.use_tactile:
