@@ -145,6 +145,7 @@ class ObjectGeometryDataConfig:
     m2_state_from_rgbtrack_v1: bool = False
     anchor_asset_root: str | None = None
     anchor_count: int = 16
+    expected_roles: tuple[tuple[str, str], ...] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2610,6 +2611,36 @@ def _hand_object_v4_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_hand_object_v4_configs())
+
+
+def _modular_nine_configs() -> list[TrainConfig]:
+    configs = []
+    roles = {"peg_all": (("manipulated", "funnel"), ("target", "target_flask")),
+             "press_the_button": (("manipulated", "button"), ("target", "box")),
+             "yellow_socket": (("manipulated", "red"), ("target", "yellow"))}
+    for task in ("peg_all", "press_the_button", "yellow_socket"):
+        base = next(c for c in _CONFIGS if c.name == f"pi0_xhand_pc_v2/{task}")
+        for arch, visual, tactile, relations, hand_mode in (
+            ("pi0_xhand_ho_v3_5p", False, False, True, "tactile_center_5"),
+            ("pi0_xhand_pc_v2_tactile_mlp", True, True, False, "fk_18"),
+            ("pi0_xhand_pc_v2_tactile_mlp_ho_v3", True, True, True, "fk_18"),
+        ):
+            encoder = dataclasses.replace(base.model.encoder, enable_visual=visual, enable_tactile=tactile,
+                tactile_encoder_type="simple_mlp" if tactile else "structured_v1",
+                enable_object_relations=relations, object_relation_mode="hand_object_v3",
+                hand_object_hand_point_mode=hand_mode)
+            model = dataclasses.replace(base.model, encoder=encoder, use_visual=visual, use_tactile=tactile)
+            geometry = ObjectGeometryDataConfig(dataset_root=base.data.repo_id, version="v1",
+                                                expected_roles=roles[task]) if relations else None
+            data = dataclasses.replace(base.data, object_geometry=geometry)
+            metadata = dict(base.policy_metadata)
+            metadata.update(spatial_use_visual=visual, spatial_use_tactile=tactile, spatial_token_count=encoder.default_token_count)
+            configs.append(dataclasses.replace(base, name=f"{arch}/{task}", model=model, data=data,
+                                               freeze_filter=model.get_freeze_filter(), policy_metadata=metadata))
+    return configs
+
+
+_CONFIGS.extend(_modular_nine_configs())
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}

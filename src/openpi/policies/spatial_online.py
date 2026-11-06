@@ -128,11 +128,11 @@ def _validate_object_geometry(value: Any) -> dict[str, Any]:
     return result
 
 
-def _validate_hand_keypoints(hand: Any) -> dict[str, np.ndarray]:
+def _validate_hand_keypoints(hand: Any, count: int = 18) -> dict[str, np.ndarray]:
     xyz = np.asarray(hand["xyz_m"], dtype=np.float32)
     mask = np.asarray(hand["point_mask"], dtype=np.bool_)
-    if xyz.shape != (18, 3) or mask.shape != (18,) or not np.isfinite(xyz[mask]).all():
-        raise ValueError("online hand_keypoints must contain finite base_link xyz_m (18,3) and point_mask (18,)")
+    if xyz.shape != (count, 3) or mask.shape != (count,) or not np.isfinite(xyz[mask]).all():
+        raise ValueError(f"online hand_keypoints must contain finite base_link xyz_m ({count},3) and point_mask ({count},)")
     return {"xyz_m": xyz, "point_mask": mask}
 
 
@@ -183,6 +183,8 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     require_hand_scene: bool = False
     require_hand_keypoints: bool = False
     m2_state_from_rgbtrack_v1: bool = False
+    hand_point_mode: str = "fk_18"
+    validate_tactile_order: bool = False
 
     def __post_init__(self) -> None:
         if not (self.use_visual or self.use_tactile or (self.require_object_geometry and self.require_hand_keypoints)):
@@ -248,16 +250,22 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             existing = data["spatial"]
             if not isinstance(existing, dict):
                 raise TypeError("spatial must be a mapping")
+            if self.validate_tactile_order:
+                from openpi.spatial.taxel_contract import validate_taxel_order
+                validate_taxel_order(existing["tactile"])
             if incoming_geometry is None:
                 incoming_geometry = existing.get("object_geometry")
             if incoming_hand is None:
                 incoming_hand = existing.get("hand_keypoints")
+            if self.require_hand_keypoints and incoming_hand is None and self.hand_point_mode == "tactile_center_5" and "tactile" in existing:
+                from openpi.spatial.taxel_contract import finger_geometry_centers
+                incoming_hand = finger_geometry_centers(existing["tactile"])
             if self.require_hand_keypoints and incoming_hand is None:
                 raise ValueError("Required online hand_keypoints missing; expected the validated 18-point FK definition")
             if self.require_object_geometry and incoming_geometry is None:
                 raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
             if incoming_hand is not None:
-                existing = {**existing, "hand_keypoints": _validate_hand_keypoints(incoming_hand)}
+                existing = {**existing, "hand_keypoints": _validate_hand_keypoints(incoming_hand, 5 if self.hand_point_mode == "tactile_center_5" else 18)}
             if incoming_geometry is not None:
                 geom = self._geometry_for_model(incoming_geometry)
                 result = dict(data)
@@ -336,6 +344,14 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             ema_force_norm = tactile.force_norm
         else:
             spatial = {}
+        if self.hand_point_mode == "tactile_center_5" and incoming_hand is None:
+            from openpi.spatial.taxel_contract import finger_geometry_centers, online_finger_geometry_centers
+            tactile_geometry = spatial.get("tactile")
+            incoming_hand = (finger_geometry_centers(tactile_geometry) if tactile_geometry is not None else
+                             online_finger_geometry_centers(self._preprocessor, state))
+        if self.validate_tactile_order and self.use_tactile:
+            from openpi.spatial.taxel_contract import validate_taxel_order
+            validate_taxel_order(spatial["tactile"])
         if self.use_tactile and self.tactile_coordinate_frame == "finger_link2":
             spatial["tactile"] = self._tactile_adapter(state, spatial["tactile"])
         if self.use_tactile:
@@ -371,6 +387,6 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             _, _, _, xyz, _ = select_keypoints(kin, kin.compute(q, root="base_link"))
             incoming_hand = {"xyz_m": xyz, "point_mask": np.ones(18, dtype=np.bool_)}
         if incoming_hand is not None:
-            spatial["hand_keypoints"] = _validate_hand_keypoints(incoming_hand)
+            spatial["hand_keypoints"] = _validate_hand_keypoints(incoming_hand, 5 if self.hand_point_mode == "tactile_center_5" else 18)
         output["spatial"] = spatial
         return output
