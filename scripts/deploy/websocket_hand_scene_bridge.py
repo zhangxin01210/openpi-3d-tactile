@@ -81,7 +81,8 @@ class HandScenePerceptionBridge:
                  timeout_s:float=180., sam2_checkpoint:Path|None=None,
                  rgbtrack_weights:Path|None=None, sam2_source:Path|None=None,
                  scale_manifest:Path|None=None, geometry_config:Path|None=None,
-                 calibration_profile:Path|None=None):
+                 calibration_profile:Path|None=None,
+                 surface_points_sha256:dict[str,str]|None=None):
         self.policy=policy
         self.repo_root=Path(repo_root).resolve()
         # Keep the venv's *entry-point path*, including its python symlink.
@@ -96,6 +97,7 @@ class HandScenePerceptionBridge:
         self.scene_position=None
         self.geometry_config=Path(geometry_config).resolve() if geometry_config else None
         self.calibration_profile=Path(calibration_profile).expanduser() if calibration_profile else None
+        self.surface_points_sha256=dict(surface_points_sha256) if surface_points_sha256 is not None else None
         self.generic_geometry = (self.geometry_config is not None and
                                  json.loads(self.geometry_config.read_text()).get("status") == "human_accepted")
         self.task = (json.loads(self.geometry_config.read_text())["dataset_id"] if self.generic_geometry
@@ -129,11 +131,24 @@ class HandScenePerceptionBridge:
 
     @property
     def metadata(self):
+        policy_metadata = dict(self.policy.metadata)
+        policy_camera_roles = list(policy_metadata.get("spatial_camera_roles", ()))
+        acquisition_camera_roles = list(dict.fromkeys((*policy_camera_roles, "front")))
         return {
-            **dict(self.policy.metadata),
+            **policy_metadata,
+            # Older robot clients use spatial_camera_roles for RGB-D sensor
+            # acquisition even when spatial_use_visual=False. Advertise the
+            # bridge's Front requirement there for wire compatibility, while
+            # retaining the model's actual token-input roles separately.
+            "policy_spatial_camera_roles":policy_camera_roles,
+            "spatial_camera_roles":acquisition_camera_roles,
             "hand_scene_geometry_service":True,
             "hand_scene_history_required":True,
             "hand_scene_history_max_frames":64,
+            # Sensor acquisition is independent of Pi0 spatial token inputs.
+            # ho_v3 has spatial_camera_roles=[] but its perception worker still
+            # consumes the original Front RGB-D stream.
+            "hand_scene_camera_roles":["front"],
             # Retain 1 only as a wire-compatibility key for older clients.
             "hand_scene_positions":[1] if self.generic_geometry else list(SELECTABLE_SCENE_POSITIONS),
             "hand_scene_position_required":not self.generic_geometry,
@@ -335,6 +350,11 @@ class HandScenePerceptionBridge:
         print(f"[PERCEPTION] task={self.task} completed geometry frame={int(last['frame_index'])}",flush=True)
         with np.load(output,allow_pickle=False) as packet:
             obs["object_geometry"]=_geometry_from_npz(packet)
+        if self.surface_points_sha256 is not None:
+            # The assets were verified against the same approved meshes,
+            # release and sidecar before model restoration. The policy's V4
+            # transform additionally verifies every frame's ordered geometry.
+            obs["object_geometry"]["surface_points_sha256"] = dict(self.surface_points_sha256)
         # Advance only after validated complete geometry and inference.
         result=self.policy.infer(obs)
         self.next_index+=len(entries)

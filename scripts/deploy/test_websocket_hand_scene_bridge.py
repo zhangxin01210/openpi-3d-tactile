@@ -58,7 +58,8 @@ def setup_bridge(tmp_path,monkeypatch):
     py=tmp_path/"python";py.write_text("stub executable")
     bridge=HandScenePerceptionBridge(
         pi0,repo_root=tmp_path,perception_python=py,
-        workdir=tmp_path/"websocket-sessions",anchor_json=None
+        workdir=tmp_path/"websocket-sessions",anchor_json=None,
+        surface_points_sha256={"manipulated": "m-hash", "target": "t-hash"},
     )
     def launch():
         bridge._started=True
@@ -83,6 +84,8 @@ def test_robot_can_switch_all_six_scenes_without_reloading_pi0(monkeypatch,tmp_p
         out=bridge.infer(observation(f"session-{scene}",scene,[raw]))
         assert out["actions"].shape==(50,18)
         assert policy.received[-1]["object_geometry"]["hand_scene"]["ok"]
+        assert policy.received[-1]["object_geometry"]["surface_points_sha256"] == {
+            "manipulated": "m-hash", "target": "t-hash"}
         assert bridge.scene_position==scene
         assert bridge.next_index==1
         assert bridge.session_counter==scene
@@ -98,6 +101,7 @@ def test_robot_can_switch_all_six_scenes_without_reloading_pi0(monkeypatch,tmp_p
     assert len(policy.received)==6
     assert bridge.policy is policy
     assert bridge.metadata["hand_scene_positions"]==[1,2,3,4,5,6]
+    assert bridge.metadata["hand_scene_camera_roles"] == ["front"]
 
 
 def test_rejects_scene_change_midrun_and_missing_selection(monkeypatch,tmp_path):
@@ -154,6 +158,9 @@ def test_perception_python_venv_entrypoint_symlink_is_not_resolved(monkeypatch,t
         policy,repo_root=tmp_path,perception_python=venv_executable,
         workdir=tmp_path/"session-root"
     )
+    assert bridge.metadata["policy_spatial_camera_roles"] == []
+    assert bridge.metadata["spatial_camera_roles"] == ["front"]
+    assert bridge.metadata["hand_scene_camera_roles"] == ["front"]
     assert bridge.perception_python == venv_executable
     assert bridge.perception_python != venv_executable.resolve()
     bridge.scene_position=1

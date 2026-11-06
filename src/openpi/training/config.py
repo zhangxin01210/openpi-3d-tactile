@@ -2503,7 +2503,10 @@ _CONFIGS.extend(_button_v1_ablation_configs())
 def _pc_v2_task_configs() -> list[TrainConfig]:
     """Task-bound scene-only and scene-plus-tactile V2 experiments."""
     base = next(c for c in _CONFIGS if c.name == "pi0_xhand_1028_press_button_st_v2")
-    project_root = "/workspace/mnt/sqzhang26/openpi-3d-tactile"
+    # Keep the original training checkout as the fallback, while allowing the
+    # exact same named configs to resolve datasets/assets in a deployment
+    # checkout.  serve_policy launchers already export OPENPI_REPO_ROOT.
+    project_root = os.environ.get("OPENPI_REPO_ROOT", "/workspace/mnt/sqzhang26/openpi-3d-tactile")
     tasks = (
         ("peg_all", "1018_peg_all"),
         ("press_the_button", "1028_press_button"),
@@ -2658,3 +2661,8 @@ def get_config(config_name: str) -> TrainConfig:
         raise ValueError(f"Config '{config_name}' not found.{closest_str}")
 
     return _CONFIGS_DICT[config_name]
+
+
+def get_configs_by_prefix(config_prefix: str) -> tuple[TrainConfig, ...]:
+    """Return registered configs whose names start with ``config_prefix``."""
+    return tuple(config for name, config in _CONFIGS_DICT.items() if name.startswith(config_prefix))

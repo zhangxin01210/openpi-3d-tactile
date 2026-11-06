@@ -1,5 +1,7 @@
 # OpenPI 3D + Tactile
 
+Final-v2 三任务部署以 [统一部署交接](docs/deploy/unified_deployment_handoff.md) 为准：共用现有 Front 标定、自动输入模态/训练 Prompt，Button/Socket 自动单参考初始化；Peg 仍人工六位置选择。Full 使用阻塞式感知，支持动作执行，`--dry-run` 可选。
+
 本仓库基于 [Physical Intelligence 的 OpenPI](https://github.com/Physical-Intelligence/openpi)，增加了 UR7e + XHand 的 RGB-D 三维视觉、五指触觉输入，以及 Structured Spatial Encoder。本文记录本项目常用的训练、远程推理、机器人部署和失败诊断命令；上游通用模型和其他机器人示例见 [`examples/`](examples/) 与 [`docs/`](docs/)。
 
 当前链路使用 LeRobot 数据集中的三路 RGB、1972 维原始状态和 18 维绝对关节目标动作。旧 `pi0_xhand_spatial_structured_suffix` 保持 front+left 点云不变；新的 front-only 消融组只用 front 深度生成 4096 个视觉点，触觉保持 600 个 taxel 点。三路 RGB 始终供 VLM 使用，left RGB 并没有被移除。训练读取派生 sidecar，在线推理时由**模型服务端**执行相同空间预处理。

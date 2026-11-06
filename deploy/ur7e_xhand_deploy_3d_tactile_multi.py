@@ -861,12 +861,22 @@ def configure_input_mode_from_metadata(args: argparse.Namespace, metadata: dict 
             # Legacy server: preserve the old client default.
             metadata_roles = ("front", "left")
 
+    geometry_roles = _normalize_spatial_camera_roles(metadata.get("hand_scene_camera_roles"))
+    if geometry_roles is None:
+        # Wire compatibility with geometry servers published before the
+        # sensor-role field was added. Their validated worker consumes Front
+        # RGB-D even when the policy itself has no visual point-cloud tokens.
+        geometry_roles = ("front",) if metadata.get("hand_scene_history_required", False) else ()
+    required_sensor_roles = tuple(dict.fromkeys((*metadata_roles, *geometry_roles)))
+
     if args.spatial_cameras is None:
-        args.spatial_cameras = metadata_roles
-    elif tuple(args.spatial_cameras) != metadata_roles:
+        args.spatial_cameras = required_sensor_roles
+    elif tuple(args.spatial_cameras) != required_sensor_roles:
         raise ValueError(
             f"Client --spatial-cameras={args.spatial_cameras} differs from server "
-            f"spatial_camera_roles={metadata_roles}. Use --spatial-cameras auto or match the server policy."
+            f"required RGB-D sensor roles={required_sensor_roles} "
+            f"(policy={metadata_roles}, geometry={geometry_roles}). "
+            "Use --spatial-cameras auto or match all server requirements."
         )
 
     legacy_server = not has_spatial_metadata
@@ -877,12 +887,19 @@ def configure_input_mode_from_metadata(args: argparse.Namespace, metadata: dict 
         metadata.get("spatial_use_tactile", True if legacy_server else bool(args.spatial_cameras))
     )
     args.rgb_only_baseline = bool(metadata.get("rgb_only_baseline", False))
-    args.policy_input_mode = "rgb" if not args.spatial_use_visual and not args.spatial_use_tactile else "spatial"
+    args.object_geometry_required = bool(metadata.get("object_geometry_required", False))
+    args.policy_input_mode = (
+        "rgb"
+        if args.rgb_only_baseline
+        else "spatial"
+        if args.spatial_use_visual or args.spatial_use_tactile or args.object_geometry_required
+        else "rgb"
+    )
     # Some older/native servers invoke XHandInputs directly and expect the
     # canonical {"images": ..., "state": ...} schema instead of running the
     # deployment repack transform first. Keep the normal raw schema, but add
     # these aliases when metadata is absent or the selected policy is RGB-only.
-    args.send_native_input_aliases = legacy_server or args.policy_input_mode == "rgb"
+    args.send_native_input_aliases = legacy_server or args.rgb_only_baseline
 
 
 def read_json(path: Path) -> dict:

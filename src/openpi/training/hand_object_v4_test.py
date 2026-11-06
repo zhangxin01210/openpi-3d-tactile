@@ -134,7 +134,7 @@ def test_policy_factory_with_provenance_checked_geometry(tactile, monkeypatch, t
                         "surface_distances_m": np.linalg.norm(points[:, None] - points[idx][None, :], axis=-1)}
     geom["surface_points_sha256"] = {role: item["surface_points_sha256"] for role, item in assets.items()}
     monkeypatch.setattr(ho_v4_anchors, "load_assets", lambda *args, **kwargs: assets)
-    monkeypatch.setattr(type(cfg.model), "load", lambda self, params: DummyModel())
+    monkeypatch.setattr(type(cfg.model), "load", lambda self, params, **kwargs: DummyModel())
     monkeypatch.setattr(policy_config._model, "restore_params", lambda *args, **kwargs: {})
     monkeypatch.setattr(policy_config.download, "maybe_download", lambda _: tmp_path)
     def to_model(_):

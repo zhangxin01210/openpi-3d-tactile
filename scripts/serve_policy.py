@@ -1,12 +1,12 @@
 import dataclasses
 import enum
-import json
 import hashlib
+import json
 import logging
 import os
 import pathlib
-import tempfile
 import socket
+import tempfile
 
 import tyro
 
@@ -90,19 +90,121 @@ def create_default_policy(env: EnvMode, *, default_prompt: str | None = None) ->
     raise ValueError(f"Unsupported environment mode: {env}")
 
 
+def _contains_path_parts(path_parts: tuple[str, ...], expected: tuple[str, ...]) -> bool:
+    """Return whether ``expected`` occurs contiguously in ``path_parts``."""
+    if not expected:
+        return False
+    width = len(expected)
+    return any(path_parts[index : index + width] == expected for index in range(len(path_parts) - width + 1))
+
+
+def resolve_checkpoint_config(config_name: str, checkpoint_dir: str | os.PathLike[str]) -> _config.TrainConfig:
+    """Resolve either an exact config name or a config family for a checkpoint.
+
+    Family names are accepted only when the task can be identified without
+    ambiguity from the checkpoint path and/or its copied normalization asset.
+    """
+    config_name = config_name.rstrip("/")
+    try:
+        return _config.get_config(config_name)
+    except ValueError as exact_error:
+        prefix = f"{config_name}/"
+        candidates = {config.name: config for config in _config.get_configs_by_prefix(prefix)}
+        if not candidates:
+            raise exact_error
+
+    checkpoint = pathlib.Path(checkpoint_dir).expanduser()
+    path_parts = checkpoint.parts
+    path_matches = {
+        name
+        for name in candidates
+        if _contains_path_parts(path_parts, tuple(name.removeprefix(prefix).split("/")))
+    }
+
+    norm_asset_ids = {
+        norm_stats.parent.name for norm_stats in checkpoint.glob("*/norm_stats.json")
+    }
+    expected_asset_ids = {
+        name: getattr(getattr(config.data, "assets", None), "asset_id", None)
+        for name, config in candidates.items()
+    }
+    asset_matches = {
+        name for name, asset_id in expected_asset_ids.items() if asset_id in norm_asset_ids
+    }
+
+    if path_matches and norm_asset_ids and not asset_matches:
+        raise ValueError(
+            f"Checkpoint task path matches {sorted(path_matches)}, but normalization assets "
+            f"{sorted(norm_asset_ids)} do not match any config in family '{config_name}'."
+        )
+    if path_matches and asset_matches:
+        matches = path_matches & asset_matches
+        if not matches:
+            raise ValueError(
+                f"Checkpoint path implies {sorted(path_matches)}, but normalization assets imply "
+                f"{sorted(asset_matches)}. Refusing to load a mismatched task config."
+            )
+    elif path_matches:
+        matches = path_matches
+    elif asset_matches:
+        matches = asset_matches
+    elif len(candidates) == 1 and not norm_asset_ids:
+        matches = set(candidates)
+    else:
+        matches = set()
+
+    if len(matches) != 1:
+        evidence = "no task evidence was found" if not matches else f"matches were {sorted(matches)}"
+        raise ValueError(
+            f"Config family '{config_name}' could not be resolved uniquely from checkpoint "
+            f"'{checkpoint}': {evidence}. Use one of these full config names: "
+            f"{', '.join(sorted(candidates))}."
+        )
+
+    resolved_name = matches.pop()
+    logging.info(
+        "Resolved config family %r to %r from checkpoint %s",
+        config_name,
+        resolved_name,
+        checkpoint,
+    )
+    return candidates[resolved_name]
+
+
 def create_policy(args: Args) -> _policy.Policy:
     """Create a policy from the given arguments."""
     match args.policy:
         case Checkpoint():
-            train_config = _config.get_config(args.policy.config)
+            train_config = resolve_checkpoint_config(args.policy.config, args.policy.dir)
+            anchor_surface_hashes = None
+            object_settings = getattr(train_config.data, "object_geometry", None)
+            anchor_asset_root = getattr(object_settings, "anchor_asset_root", None)
+            if anchor_asset_root is not None:
+                # Fail before restoring a multi-GB checkpoint when required HO
+                # V4 provenance assets are absent or stale.
+                from openpi.object_geometry.ho_v4_anchors import load_assets
+
+                root = pathlib.Path(
+                    os.environ.get("OPENPI_REPO_ROOT", pathlib.Path(__file__).resolve().parents[1])
+                ).resolve()
+                dataset_root = pathlib.Path(object_settings.dataset_root)
+                if not dataset_root.is_absolute():
+                    dataset_root = root / dataset_root
+                anchor_assets = load_assets(
+                    dataset_root.parent.parent,
+                    dataset_root.name,
+                    anchor_asset_root,
+                )
+                anchor_surface_hashes = {
+                    role: value["surface_points_sha256"] for role, value in anchor_assets.items()
+                }
             policy = _policy_config.create_trained_policy(
                 train_config, args.policy.dir, default_prompt=args.default_prompt
             )
-            if (getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None) == "final_v2"
-                    and getattr(train_config.data, "object_geometry", None) is not None):
+            if getattr(train_config.data, "object_geometry", None) is not None:
                 # Reuse the existing causal perception bridge and WebSocket server.
-                from scripts.deploy.websocket_hand_scene_bridge import HandScenePerceptionBridge
                 from scripts.deploy.run_online_perception import _task_geometry_inputs
+                from scripts.deploy.websocket_hand_scene_bridge import HandScenePerceptionBridge
 
                 root = pathlib.Path(os.environ.get("OPENPI_REPO_ROOT", pathlib.Path(__file__).resolve().parents[1])).resolve()
                 dataset_root = pathlib.Path(train_config.data.object_geometry.dataset_root)
@@ -138,6 +240,29 @@ def create_policy(args: Args) -> _policy.Policy:
                             or sidecar_manifest.get("approved_meshes_sha256") !=
                                {name: sha(path) for name, path in spec["meshes"].items()}):
                         raise ValueError("Task release, meshes, role or sampling disagree with training geometry manifest")
+                    settings = train_config.data.object_geometry
+                    relation_mode = getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None)
+                    if getattr(settings, "m2_state_from_rgbtrack_v1", False):
+                        expected_roles = {
+                            "1028_press_button": {"manipulated": "button", "target": "box"},
+                            "1030_yellow_socket": {"manipulated": "red", "target": "yellow"},
+                        }
+                        if (relation_mode != "hand_scene_oo_v1" or settings.version != "v1"
+                                or settings.missing != "error"
+                                or not getattr(train_config.model, "use_tactile", False)
+                                or getattr(train_config.model.encoder, "hand_scene_enable_funnel_mask_encoder", False)
+                                or sidecar_manifest.get("producer") != "scripts/preprocess/export_object_geometry_rgbtrack.py"
+                                or sidecar_manifest.get("dataset") != task
+                                or sidecar_manifest.get("hand_scene_contract") is not None
+                                or sidecar_manifest.get("length_unit") != "m"
+                                or sidecar_manifest.get("role_to_object") != expected_roles.get(task)
+                                or task not in expected_roles):
+                            raise ValueError("Online M2 state requires the accepted task RGBTrack v1 training contract")
+                    elif getattr(settings, "require_hand_scene", False) or relation_mode in {
+                        "hand_scene_v0", "hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"
+                    }:
+                        raise ValueError("This task's online geometry worker does not produce the HandScene state "
+                                         "required by the training configuration")
                 profile = train_config.data.spatial.front_calibration_profile
                 if not profile:
                     raise ValueError("Online geometry requires the shared Front calibration profile")
@@ -162,7 +287,8 @@ def create_policy(args: Args) -> _policy.Policy:
                     workdir=spool, geometry_config=geometry, calibration_profile=profile, scale_manifest=scales,
                     sam2_source=pathlib.Path(sam2_source) if sam2_source else None,
                     sam2_checkpoint=pathlib.Path(sam2_checkpoint) if sam2_checkpoint else None,
-                    rgbtrack_weights=pathlib.Path(rgbtrack_weights) if rgbtrack_weights else None)
+                    rgbtrack_weights=pathlib.Path(rgbtrack_weights) if rgbtrack_weights else None,
+                    surface_points_sha256=anchor_surface_hashes)
             return policy
         case Default():
             return create_default_policy(args.env, default_prompt=args.default_prompt)

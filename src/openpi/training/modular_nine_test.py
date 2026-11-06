@@ -184,7 +184,7 @@ def test_policy_factory_configuration(arch, monkeypatch, tmp_path):
     cfg = config.get_config(f"{arch}/press_the_button")
     data = config.DataConfig(spatial=cfg.data.spatial, object_geometry=cfg.data.object_geometry)
     monkeypatch.setattr(type(cfg.data), "create", lambda self, assets, model: data)
-    monkeypatch.setattr(type(cfg.model), "load", lambda self, params: object())
+    monkeypatch.setattr(type(cfg.model), "load", lambda self, params, **kwargs: object())
     monkeypatch.setattr(policy_config._model, "restore_params", lambda *args, **kwargs: {})
     monkeypatch.setattr(policy_config.download, "maybe_download", lambda _: tmp_path)
     monkeypatch.setattr(policy_config._policy, "Policy", lambda model, **kwargs: kwargs)

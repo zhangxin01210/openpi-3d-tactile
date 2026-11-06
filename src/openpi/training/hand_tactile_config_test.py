@@ -1,7 +1,8 @@
 # ruff: noqa: SLF001
 """Contracts for the eight hand-object and coordinate ablations."""
-from pathlib import Path
+import os
 import sys
+from pathlib import Path
 
 from flax import nnx
 import jax
@@ -17,7 +18,7 @@ ARCHITECTURES = {
     "pi0_xhand_pc_v2_tactile_local_v1": 38,
 }
 TASKS = {"press_the_button": "1028_press_button", "yellow_socket": "1030_yellow_socket"}
-ROOT = Path("/workspace/mnt/sqzhang26/openpi-3d-tactile")
+ROOT = Path(os.environ.get("OPENPI_REPO_ROOT", "/workspace/mnt/sqzhang26/openpi-3d-tactile"))
 NAMES = [f"{a}/{t}" for a in ARCHITECTURES for t in TASKS]
 
 
@@ -81,7 +82,7 @@ def test_policy_factory_selects_preprocessing(architecture, monkeypatch, tmp_pat
     selected = config.get_config(f"{architecture}/press_the_button")
     data = config.DataConfig(spatial=selected.data.spatial, object_geometry=selected.data.object_geometry)
     monkeypatch.setattr(type(selected.data), "create", lambda self, assets, model: data)
-    monkeypatch.setattr(type(selected.model), "load", lambda self, params: object())
+    monkeypatch.setattr(type(selected.model), "load", lambda self, params, **kwargs: object())
     monkeypatch.setattr(policy_config._model, "restore_params", lambda *args, **kwargs: {})
     monkeypatch.setattr(policy_config.download, "maybe_download", lambda _: tmp_path)
     monkeypatch.setattr(policy_config._policy, "Policy", lambda model, **kwargs: kwargs)
