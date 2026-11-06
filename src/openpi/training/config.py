@@ -238,9 +238,9 @@ class ModelTransformFactory(GroupFactory):
                         _transforms.InjectDefaultPrompt(self.default_prompt),
                         _transforms.ResizeImages(224, 224),
                         _transforms.TokenizePrompt(
-                            _tokenizer.PaligemmaTokenizer(model_config.max_token_len),
+                            _tokenizer.PaligemmaTokenizer(model_config.max_token_len, strict_state_prompt=getattr(model_config, "strict_state_prompt", False)),
                         ),
-                        _transforms.PadStatesAndActions(model_config.action_dim),
+                        _transforms.PadStatesAndActions(model_config.action_dim, model_state_dim=getattr(model_config, "state_input_dim", None)),
                     ],
                 )
             case _model.ModelType.PI05:
@@ -250,10 +250,10 @@ class ModelTransformFactory(GroupFactory):
                         _transforms.InjectDefaultPrompt(self.default_prompt),
                         _transforms.ResizeImages(224, 224),
                         _transforms.TokenizePrompt(
-                            _tokenizer.PaligemmaTokenizer(model_config.max_token_len),
+                            _tokenizer.PaligemmaTokenizer(model_config.max_token_len, strict_state_prompt=getattr(model_config, "strict_state_prompt", False)),
                             discrete_state_input=model_config.discrete_state_input,
                         ),
-                        _transforms.PadStatesAndActions(model_config.action_dim),
+                        _transforms.PadStatesAndActions(model_config.action_dim, model_state_dim=getattr(model_config, "state_input_dim", None)),
                     ],
                 )
             case _model.ModelType.PI0_FAST:
@@ -440,6 +440,7 @@ class LeRobotXHandDataConfig(DataConfigFactory):
 
     # FactileLDM / 当前数据均使用 LeRobot 的 task 文本作为 prompt。
     prompt_from_task: bool = True
+    raw_tactile_state: bool = False
 
     # Action representation 是训练假设，因此做成 config。
     #
@@ -505,7 +506,8 @@ class LeRobotXHandDataConfig(DataConfigFactory):
                 xhand_policy.XHandInputs(
                     model_type=(
                         model_config.model_type
-                    )
+                    ),
+                    raw_tactile_state=self.raw_tactile_state,
                 )
             ],
             outputs=[
@@ -2644,6 +2646,32 @@ def _modular_nine_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_modular_nine_configs())
+
+
+def _raw_tactile_state_configs() -> list[TrainConfig]:
+    configs = []
+    project = "/workspace/mnt/sqzhang26/openpi-3d-tactile"
+    for task, dataset in (("peg_all", "1018_peg_all"), ("press_the_button", "1028_press_button"),
+                          ("yellow_socket", "1030_yellow_socket"), ("eraser", "1102_eraser")):
+        for pi05 in (False, True):
+            base = next(c for c in _CONFIGS if c.name == ("pi05_xhand_rgb_baseline" if pi05 else "pi0_xhand_rgb_baseline"))
+            root = f"{project}/data/{dataset}"
+            data = dataclasses.replace(base.data, repo_id=root, spatial=None, object_geometry=None,
+                assets=AssetsConfig(assets_dir=f"{project}/assets/xhand", asset_id=f"{dataset}_unified_v1"))
+            if task == "eraser":
+                configs.append(dataclasses.replace(base, name=f"{'pi05' if pi05 else 'pi0'}_xhand_rgb_baseline/{task}", data=data))
+            model = dataclasses.replace(base.model, state_input_dim=1818, strict_state_prompt=pi05,
+                # Provisional capacity only: real-data tokenizer/context/memory preflight is mandatory.
+                max_token_len=int(os.environ.get("OPENPI_PI05_TACTILE_MAX_TOKEN_LEN", "8192")) if pi05 else base.model.max_token_len)
+            data = dataclasses.replace(data, raw_tactile_state=True,
+                assets=dataclasses.replace(data.assets, asset_id=f"{dataset}_raw_tactile_v1"))
+            loader = base.weight_loader if pi05 else weight_loaders.RawTactileStateWeightLoader(base.weight_loader.params_path)
+            configs.append(dataclasses.replace(base, name=f"{'pi05' if pi05 else 'pi0'}_xhand_rgb_tactile_state/{task}",
+                model=model, data=data, weight_loader=loader, freeze_filter=model.get_freeze_filter()))
+    return configs
+
+
+_CONFIGS.extend(_raw_tactile_state_configs())
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}

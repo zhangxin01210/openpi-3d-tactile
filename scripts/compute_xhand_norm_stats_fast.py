@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=Path, required=True)
     parser.add_argument("--asset-id", required=True)
+    parser.add_argument("--raw-tactile-state", action="store_true", help="compute independent 1818-D state stats")
     args = parser.parse_args()
 
     cfg = config_lib.get_config(CONFIG_NAME)
@@ -66,15 +67,11 @@ def main():
             assert raw_state.shape[1] == 1972, raw_state.shape
             assert raw_actions.shape[1] == 18, raw_actions.shape
 
-            # 与 XHandInputs.extract_joint_state 完全一致：
-            # UR7e 6 joints + XHand 12 joint positions
-            state18 = np.concatenate(
-                [
-                    raw_state[:, :6],
-                    raw_state[:, 28:52:2],
-                ],
-                axis=-1,
-            )
+            if args.raw_tactile_state:
+                from openpi.policies.xhand_raw_tactile import extract_raw_tactile_state
+                state18 = extract_raw_tactile_state(raw_state)
+            else:
+                state18 = np.concatenate([raw_state[:, :6], raw_state[:, 28:52:2]], axis=-1)
 
             episodes[int(ep)].append(
                 (frames, state18, raw_actions)
@@ -124,6 +121,9 @@ def main():
     print(f"Episodes: {len(episodes)}")
     print(f"Frames: {len(states)}")
     print(f"State shape: {states.shape}")
+    if args.raw_tactile_state:
+        print(f"Raw tactile zero-variance dimensions: {int(np.sum(np.std(states[:, 18:], axis=0) == 0))}")
+        print(f"Raw tactile finite range: [{np.min(states[:, 18:]):.6g}, {np.max(states[:, 18:]):.6g}]")
     print(f"Action shape: {actions.shape}")
 
     batch_size = cfg.batch_size
@@ -138,24 +138,37 @@ def main():
         "actions": normalize.RunningStats(),
     }
 
-    for i in tqdm(
-        range(0, used, batch_size),
-        desc="Computing stats",
-    ):
-        batch_indices = np.arange(i, i + batch_size)
-
-        action_indices = np.minimum(
-            batch_indices[:, None] + offsets,
-            episode_ends[batch_indices, None],
-        )
-
-        stats["state"].update(states[batch_indices])
-        stats["actions"].update(actions[action_indices])
-
-    result = {
-        key: value.get_statistics()
-        for key, value in stats.items()
-    }
+    if args.raw_tactile_state:
+        # Preserve the RGB baseline's exact proprio/action normalization. Only
+        # compute the 1,800 newly added tactile coordinates.
+        assets_dir = Path(cfg.data.assets.assets_dir or cfg.assets_dirs)
+        baseline_dir = assets_dir / f"{root.name}_unified_v1"
+        baseline = normalize.load(baseline_dir)
+        for key in ("state", "actions"):
+            item = baseline[key]
+            if np.asarray(item.mean).shape != (18,) or np.asarray(item.std).shape != (18,):
+                raise ValueError(f"{baseline_dir}: {key} must have 18-D RGB baseline stats")
+            if item.q01 is None or item.q99 is None:
+                raise ValueError(f"{baseline_dir}: {key} missing quantile stats required by pi05")
+            if any(not np.isfinite(x).all() for x in (item.mean, item.std, item.q01, item.q99)):
+                raise ValueError(f"{baseline_dir}: {key} has non-finite statistics")
+        tactile_stats = normalize.RunningStats()
+        tactile_stats.update(states[:used, 18:])
+        tactile = tactile_stats.get_statistics()
+        proprio = baseline["state"]
+        result = {
+            "state": normalize.NormStats(**{field: np.concatenate((getattr(proprio, field), getattr(tactile, field)))
+                                            for field in ("mean", "std", "q01", "q99")}),
+            "actions": baseline["actions"],
+        }
+        print(f"Reused exact proprio and action stats: {baseline_dir}")
+    else:
+        for i in tqdm(range(0, used, batch_size), desc="Computing stats"):
+            batch_indices = np.arange(i, i + batch_size)
+            action_indices = np.minimum(batch_indices[:, None] + offsets, episode_ends[batch_indices, None])
+            stats["state"].update(states[batch_indices])
+            stats["actions"].update(actions[action_indices])
+        result = {key: value.get_statistics() for key, value in stats.items()}
 
     assets_dir = Path(cfg.data.assets.assets_dir or cfg.assets_dirs)
     output_dir = assets_dir / args.asset_id

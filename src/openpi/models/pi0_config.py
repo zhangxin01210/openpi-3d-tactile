@@ -23,6 +23,8 @@ class Pi0Config(_model.BaseModelConfig):
 
     # Set the model specific defaults.
     action_dim: int = 32
+    state_input_dim: int | None = None
+    strict_state_prompt: bool = False
     action_horizon: int = 50
     max_token_len: int = None  # type: ignore
     # Pi05 has two differences from Pi0:
@@ -77,7 +79,7 @@ class Pi0Config(_model.BaseModelConfig):
                     "left_wrist_0_rgb": image_mask_spec,
                     "right_wrist_0_rgb": image_mask_spec,
                 },
-                state=jax.ShapeDtypeStruct([batch_size, self.action_dim], jnp.float32),
+                state=jax.ShapeDtypeStruct([batch_size, self.state_input_dim or self.action_dim], jnp.float32),
                 tokenized_prompt=jax.ShapeDtypeStruct([batch_size, self.max_token_len], jnp.int32),
                 tokenized_prompt_mask=jax.ShapeDtypeStruct([batch_size, self.max_token_len], bool),
             )

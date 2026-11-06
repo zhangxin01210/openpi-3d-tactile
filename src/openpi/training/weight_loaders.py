@@ -102,3 +102,28 @@ def _merge_params(loaded_params: at.Params, params: at.Params, *, missing_regex:
             result[k] = flat_ref[k]
 
     return flax.traverse_util.unflatten_dict(result, sep="/")
+
+
+@dataclasses.dataclass(frozen=True)
+class RawTactileStateWeightLoader(WeightLoader):
+    """Restore π0 and widen only the state projection, preserving proprio weights."""
+    params_path: str
+
+    def load(self, params: at.Params) -> at.Params:
+        from openpi.training.spatial_weight_loaders import _merge_spatial_checkpoint
+
+        loaded = _model.restore_params(download.maybe_download(self.params_path), restore_type=np.ndarray)
+        flat = flax.traverse_util.flatten_dict(loaded)
+        ref = flax.traverse_util.flatten_dict(params)
+        key = ("state_proj", "kernel")
+        if key not in flat or key not in ref:
+            raise ValueError("π0 base checkpoint or target is missing state_proj/kernel")
+        old = np.asarray(flat[key])
+        shape = tuple(ref[key].shape)
+        if old.ndim != 2 or old.shape[0] != 32 or shape != (1818, old.shape[1]):
+            raise ValueError(f"unexpected π0 state projection shapes: checkpoint={old.shape}, target={shape}")
+        widened = np.zeros(shape, dtype=ref[key].dtype)
+        widened[:18] = old[:18]
+        flat[key] = widened
+        return _merge_spatial_checkpoint(loaded_params=flax.traverse_util.unflatten_dict(flat),
+            reference_params=params, allowed_missing_regexes=(r".*lora.*",))

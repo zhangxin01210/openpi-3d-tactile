@@ -12,8 +12,9 @@ import openpi.shared.download as download
 
 
 class PaligemmaTokenizer:
-    def __init__(self, max_len: int = 48):
+    def __init__(self, max_len: int = 48, *, strict_state_prompt: bool = False):
         self._max_len = max_len
+        self._strict_state_prompt = strict_state_prompt
 
         path = download.maybe_download("gs://big_vision/paligemma_tokenizer.model", gs={"token": "anon"})
         with path.open("rb") as f:
@@ -32,6 +33,19 @@ class PaligemmaTokenizer:
             # tokenize "\n" separately as the "start of answer" token
             tokens = self._tokenizer.encode(cleaned_text, add_bos=True) + self._tokenizer.encode("\n")
         tokens_len = len(tokens)
+        if self._strict_state_prompt:
+            if state is None or np.asarray(state).shape != (1818,) or not np.isfinite(state).all():
+                raise ValueError("Pi0.5 tactile state prompt requires 1818 finite values")
+            if tokens_len > self._max_len:
+                raise ValueError(f"Pi0.5 tactile state prompt truncated: {tokens_len} > {self._max_len}")
+            decoded = self._tokenizer.decode(tokens)
+            suffix = ";\nAction: "
+            marker = ", State: "
+            if marker not in decoded or not decoded.endswith(suffix):
+                raise ValueError("Pi0.5 tactile state prompt does not preserve State/Action markers")
+            decoded_values = decoded.rsplit(marker, 1)[1][:-len(suffix)].split()
+            if decoded_values != list(map(str, discretized_state)):
+                raise ValueError("Pi0.5 tactile state prompt did not preserve all 1818 state values")
         if tokens_len < self._max_len:
             padding = [False] * (self._max_len - tokens_len)
             mask = [True] * tokens_len + padding

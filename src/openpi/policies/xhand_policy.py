@@ -343,6 +343,7 @@ class XHandInputs(
     """
 
     model_type: _model.ModelType
+    raw_tactile_state: bool = False
 
     def __call__(
         self,
@@ -373,9 +374,12 @@ class XHandInputs(
             ]
         )
 
-        state = extract_joint_state(
-            data["state"] if "state" in data else data["observation.state"]
-        )
+        raw_state = data["state"] if "state" in data else data["observation.state"]
+        if self.raw_tactile_state:
+            from openpi.policies.xhand_raw_tactile import extract_raw_tactile_state
+            state = extract_raw_tactile_state(raw_state)
+        else:
+            state = extract_joint_state(raw_state)
 
         inputs = {
             "state": state,
