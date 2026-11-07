@@ -73,6 +73,13 @@ def test_dual_adapter_and_online_set_validation():
     np.testing.assert_array_equal(objects.object_xyz_m[:, 0], geom.manipulated_xyz_m)
     np.testing.assert_array_equal(objects.object_xyz_m[:, 1], geom.target_xyz_m)
     assert not bool(objects.object_valid[:, 2:].any())
+    enc = config.get_config("pi0_xhand_pc_v2_tactile_mlp_relation_set_v1/press_the_button").model.encoder.create(rngs=nnx.Rngs(0))
+    ambiguous = _object_centric_input().replace(
+        object_geometry=geom, object_set=objects, hand_keypoints_xyz_m=jnp.zeros((1, 18, 3)),
+        hand_keypoints_mask=jnp.ones((1, 18), bool))
+    ambiguous = ambiguous.replace(visual=None, tactile=None)
+    with pytest.raises(ValueError, match="not both"):
+        enc(ambiguous)
     online = XHandSpatialOnlinePreprocess(camera_roles=("front",), use_visual=False, use_tactile=False,
         require_object_geometry=True, require_hand_keypoints=True, allow_object_set=True)
     packet = {"object_xyz_m": np.asarray(objects.object_xyz_m[0]),

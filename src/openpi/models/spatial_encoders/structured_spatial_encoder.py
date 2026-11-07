@@ -359,6 +359,8 @@ class StructuredSpatialEncoder(nnx.Module):
                 if self.config.object_relation_mode == "relation_set_v1":
                     from openpi.models.spatial_encoders.final_v2_relations import dual_geometry_to_object_set
 
+                    if inputs.object_set is not None and geometry is not None:
+                        raise ValueError("provide object_geometry or object_set, not both")
                     objects = inputs.object_set if inputs.object_set is not None else dual_geometry_to_object_set(geometry)
                     args = (objects, hand_xyz, hand_mask, membership)
                 else:
