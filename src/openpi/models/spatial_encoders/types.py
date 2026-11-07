@@ -411,6 +411,14 @@ class ObjectGeometryInput(Generic[ArrayT]):
     target_anchor_indices: ArrayT | None = None
 
 
+@struct.dataclass
+class ObjectSetInput(Generic[ArrayT]):
+    """Ordered object slots in base_link metres: [B,N,512,3], [B,N,512], [B,N]."""
+    object_xyz_m: ArrayT
+    object_mask: ArrayT
+    object_valid: ArrayT
+
+
 # =============================================================================
 # 5. Encoder input
 # =============================================================================
@@ -458,6 +466,8 @@ class SpatialEncoderInput(
     tactile_scene_relation: TactileSceneRelationInput[ArrayT] | None = None
 
     object_geometry: ObjectGeometryInput[ArrayT] | None = None
+
+    object_set: ObjectSetInput[ArrayT] | None = None
 
     # 18 FK anchors in base_link, with validity independent of object geometry.
     hand_keypoints_xyz_m: ArrayT | None = None

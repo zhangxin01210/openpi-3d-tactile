@@ -521,9 +521,9 @@ class StructuredSpatialPi0Config(
                 spatial=dataclasses.replace(
                     observation.spatial, object_geometry=object_geometry,
                     hand_keypoints_xyz_m=(jax.ShapeDtypeStruct((batch_size, 5 if self.encoder.hand_object_hand_point_mode == "tactile_center_5" else 18, 3), jnp.float32)
-                                          if self.encoder.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4"} else None),
+                                          if self.encoder.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4", "relation_set_v1"} else None),
                     hand_keypoints_mask=(jax.ShapeDtypeStruct((batch_size, 5 if self.encoder.hand_object_hand_point_mode == "tactile_center_5" else 18), jnp.bool_)
-                                        if self.encoder.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4"} else None),
+                                        if self.encoder.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4", "relation_set_v1"} else None),
                 ),
             )
         return observation, actions

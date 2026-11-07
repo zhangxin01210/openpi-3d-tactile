@@ -157,7 +157,7 @@ def create_trained_policy(
         object_settings = data_config.object_geometry
         relation_mode = getattr(getattr(train_config.model, "encoder", None), "object_relation_mode", None)
         scene_modes = {"hand_scene_v0", "hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"}
-        keypoint_modes = {"final_v2", "hand_object_v3", "hand_object_v4"}
+        keypoint_modes = {"final_v2", "hand_object_v3", "hand_object_v4", "relation_set_v1"}
         if object_settings is not None and relation_mode not in scene_modes | keypoint_modes | {"legacy_ho_oo"}:
             raise ValueError(f"Unsupported online object relation mode: {relation_mode!r}; "
                              "implement and validate its input contract before deployment")
@@ -171,6 +171,7 @@ def create_trained_policy(
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
                 tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
                 require_object_geometry=data_config.object_geometry is not None,
+                allow_object_set=relation_mode == "relation_set_v1",
                 anchor_asset_root=(object_settings.anchor_asset_root if object_settings is not None else None),
                 anchor_dataset_root=(object_settings.dataset_root if object_settings is not None else None),
                 require_hand_scene=(object_settings is not None and

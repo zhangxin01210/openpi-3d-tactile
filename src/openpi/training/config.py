@@ -2648,6 +2648,24 @@ def _modular_nine_configs() -> list[TrainConfig]:
 _CONFIGS.extend(_modular_nine_configs())
 
 
+def _relation_comparison_configs() -> list[TrainConfig]:
+    configs = []
+    for task in ("press_the_button", "yellow_socket"):
+        base = next(c for c in _CONFIGS if c.name == f"pi0_xhand_pc_v2_tactile_mlp_ho_v3/{task}")
+        for arch, mode in (("pi0_xhand_pc_v2_tactile_mlp_ho_v2", "final_v2"),
+                           ("pi0_xhand_pc_v2_tactile_mlp_relation_set_v1", "relation_set_v1")):
+            encoder = dataclasses.replace(base.model.encoder, object_relation_mode=mode)
+            model = dataclasses.replace(base.model, encoder=encoder)
+            metadata = dict(base.policy_metadata, spatial_token_count=encoder.default_token_count,
+                            object_relation_mode=mode)
+            configs.append(dataclasses.replace(base, name=f"{arch}/{task}", model=model,
+                                               freeze_filter=model.get_freeze_filter(), policy_metadata=metadata))
+    return configs
+
+
+_CONFIGS.extend(_relation_comparison_configs())
+
+
 def _raw_tactile_state_configs() -> list[TrainConfig]:
     configs = []
     project = "/workspace/mnt/sqzhang26/openpi-3d-tactile"

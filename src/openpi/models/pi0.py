@@ -430,6 +430,7 @@ class Pi0(_model.BaseModel):
                 else None
             ),
             object_geometry=obs.spatial.object_geometry,
+            object_set=obs.spatial.object_set,
             hand_keypoints_xyz_m=obs.spatial.hand_keypoints_xyz_m,
             hand_keypoints_mask=obs.spatial.hand_keypoints_mask,
         )

@@ -248,6 +248,8 @@ class Observation(Generic[ArrayT]):
                 contact_centered_tactile=contact_centered_tactile,
                 tactile_scene_relation=tactile_scene_relation,
                 object_geometry=object_geometry,
+                object_set=(_spatial_types.ObjectSetInput(**spatial_data["object_set"])
+                            if spatial_data.get("object_set") is not None else None),
                 hand_keypoints_xyz_m=(spatial_data["hand_keypoints"]["xyz_m"] if "hand_keypoints" in spatial_data else None),
                 hand_keypoints_mask=(spatial_data["hand_keypoints"]["point_mask"] if "hand_keypoints" in spatial_data else None),
             )

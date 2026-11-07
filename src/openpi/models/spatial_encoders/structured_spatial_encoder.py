@@ -149,6 +149,7 @@ class StructuredSpatialEncoderConfig:
             "final_v2",
             "hand_object_v3",
             "hand_object_v4",
+            "relation_set_v1",
         }:
             raise ValueError(f"Unsupported object_relation_mode: {self.object_relation_mode!r}")
 
@@ -250,6 +251,10 @@ class StructuredSpatialEncoder(nnx.Module):
                 from openpi.models.spatial_encoders.hand_object_v4 import HandObjectV4Encoder
 
                 self.object_relation_encoder = HandObjectV4Encoder(dim=d, rngs=rngs)
+            elif config.object_relation_mode == "relation_set_v1":
+                from openpi.models.spatial_encoders.final_v2_relations import RelationSetV1Encoder
+
+                self.object_relation_encoder = RelationSetV1Encoder(dim=d, rngs=rngs)
             elif config.object_relation_mode in {"final_v2", "hand_object_v3"}:
                 from openpi.models.spatial_encoders.final_v2_relations import FinalV2RelationEncoder
                 from openpi.models.spatial_encoders.final_v2_relations import HandObjectV3Encoder
@@ -334,9 +339,9 @@ class StructuredSpatialEncoder(nnx.Module):
             aux["tactile_token_count"] = jnp.zeros((batch_size,), dtype=jnp.int32)
 
         if self.config.enable_object_relations:
-            if inputs.object_geometry is None:
+            if inputs.object_geometry is None and not (self.config.object_relation_mode == "relation_set_v1" and inputs.object_set is not None):
                 raise ValueError("Object relations are enabled but object_geometry input is missing")
-            if self.config.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4"}:
+            if self.config.object_relation_mode in {"final_v2", "hand_object_v3", "hand_object_v4", "relation_set_v1"}:
                 if inputs.hand_keypoints_xyz_m is None or inputs.hand_keypoints_mask is None:
                     raise ValueError("Hand-object relations require validated hand keypoints and mask")
                 geometry = inputs.object_geometry
@@ -351,8 +356,14 @@ class StructuredSpatialEncoder(nnx.Module):
                     slots = jnp.array([1, 5, 9, 12, 15])
                     hand_xyz = jnp.zeros((hand_xyz.shape[0], 18, 3), hand_xyz.dtype).at[:, slots, :].set(hand_xyz)
                     hand_mask = jnp.zeros((hand_mask.shape[0], 18), bool).at[:, slots].set(hand_mask)
-                args = (geometry.manipulated_xyz_m, geometry.manipulated_mask,
-                        geometry.target_xyz_m, geometry.target_mask, hand_xyz, hand_mask, membership)
+                if self.config.object_relation_mode == "relation_set_v1":
+                    from openpi.models.spatial_encoders.final_v2_relations import dual_geometry_to_object_set
+
+                    objects = inputs.object_set if inputs.object_set is not None else dual_geometry_to_object_set(geometry)
+                    args = (objects, hand_xyz, hand_mask, membership)
+                else:
+                    args = (geometry.manipulated_xyz_m, geometry.manipulated_mask,
+                            geometry.target_xyz_m, geometry.target_mask, hand_xyz, hand_mask, membership)
                 if self.config.object_relation_mode == "hand_object_v4":
                     if geometry.manipulated_anchor_indices is None or geometry.target_anchor_indices is None:
                         raise ValueError("hand_object_v4 requires validated fixed object anchor indices")
@@ -889,6 +900,8 @@ def _batch_size(inputs: SpatialEncoderInput) -> int:
         return int(inputs.tactile.xyz_m.shape[0])
     if inputs.object_geometry is not None:
         return int(inputs.object_geometry.manipulated_xyz_m.shape[0])
+    if inputs.object_set is not None:
+        return int(inputs.object_set.object_xyz_m.shape[0])
     raise ValueError("SpatialEncoderInput must contain an enabled modality")
 
 

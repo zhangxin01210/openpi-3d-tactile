@@ -108,6 +108,66 @@ class FinalV2RelationEncoder(nnx.Module):
                 jnp.where(oo_mask[..., None], oo, 0.0), oo_mask)
 
 
+def dual_geometry_to_object_set(geometry, slots=8):
+    """Map the existing ordered two-object contract to padded generic slots."""
+    from openpi.models.spatial_encoders.types import ObjectSetInput
+
+    if slots < 2:
+        raise ValueError("dual-object adaptation needs at least two slots")
+    xyz = jnp.stack((geometry.manipulated_xyz_m, geometry.target_xyz_m), axis=1)
+    mask = jnp.stack((geometry.manipulated_mask, geometry.target_mask), axis=1).astype(jnp.bool_)
+    return ObjectSetInput(
+        object_xyz_m=jnp.pad(xyz, ((0, 0), (0, slots - 2), (0, 0), (0, 0))),
+        object_mask=jnp.pad(mask, ((0, 0), (0, slots - 2), (0, 0))),
+        object_valid=jnp.pad(jnp.any(mask, axis=-1), ((0, 0), (0, slots - 2))),
+    )
+
+
+class RelationSetV1Encoder(FinalV2RelationEncoder):
+    """V2 geometry layers with a role-free ordered set of object candidates."""
+
+    def __init__(self, *, rngs: nnx.Rngs, dim: int = 128):
+        super().__init__(rngs=rngs, dim=dim)
+        # V2's two role vectors are relation-type offsets, not object roles.
+
+    def __call__(self, objects, hand_xyz, hand_mask, membership):
+        xyz, mask, valid = objects.object_xyz_m, objects.object_mask, objects.object_valid
+        if xyz.ndim != 4 or xyz.shape[-2:] != (512, 3):
+            raise ValueError("object set must have shape [B,N,512,3]")
+        if mask.shape != xyz.shape[:-1] or valid.shape != xyz.shape[:2]:
+            raise ValueError("object set mask/valid shapes do not match object slots")
+        if hand_xyz.shape[-2:] != (18, 3) or membership.shape != (5, 18):
+            raise ValueError("expected 18 hand keypoints and (5,18) membership")
+        if xyz.shape[1] < 2:
+            padding = 2 - xyz.shape[1]
+            xyz = jnp.pad(xyz, ((0, 0), (0, padding), (0, 0), (0, 0)))
+            mask = jnp.pad(mask, ((0, 0), (0, padding), (0, 0)))
+            valid = jnp.pad(valid, ((0, 0), (0, padding)))
+        batch, slots = xyz.shape[:2]
+        mask = mask.astype(jnp.bool_) & valid[..., None].astype(jnp.bool_) & jnp.isfinite(xyz).all(axis=-1)
+        xyz = jnp.where(mask[..., None], xyz, 0.0)
+        h_mask = hand_mask.astype(jnp.bool_) & jnp.isfinite(hand_xyz).all(axis=-1)
+        h_xyz = jnp.where(h_mask[..., None], hand_xyz, 0.0)
+        ho, ho_mask = _hand_object(self, xyz.reshape(batch, slots * 512, 3),
+                                   mask.reshape(batch, slots * 512), h_xyz, h_mask, membership, self.ho_role.value)
+        flat_xyz, flat_mask = xyz.reshape(batch * slots, 512, 3), mask.reshape(batch * slots, 512)
+        zeros = jnp.zeros(flat_mask.shape, dtype=xyz.dtype)
+        centers, anchor_mask, *_ = _local_anchors((flat_xyz, flat_mask, zeros, zeros, zeros), 8)
+        centers, anchor_mask = centers.reshape(batch, slots, 8, 3), anchor_mask.reshape(batch, slots, 8)
+        # Stable slots define direction: every unordered pair is evaluated once.
+        left, right = jnp.triu_indices(slots, k=1)
+        delta = centers[:, right, None, :, :] - centers[:, left, :, None, :]
+        pair_mask = anchor_mask[:, left, :, None] & anchor_mask[:, right, None, :]
+        features = jnp.concatenate((delta, _distance(delta)), axis=-1)
+        embedded = self.oo_out(jax.nn.gelu(self.oo_in(features))).reshape(batch, -1, self.oo_queries.value.shape[-1])
+        pair_mask = pair_mask.reshape(batch, -1)
+        logits = jnp.einsum("bnd,qd->bqn", embedded, self.oo_queries.value)
+        weights = _masked_softmax(logits, pair_mask[:, None, :])
+        oo = jnp.einsum("bqn,bnd->bqd", weights, embedded) + self.oo_role.value
+        oo_mask = jnp.broadcast_to(jnp.any(pair_mask, axis=-1)[:, None], (batch, 5))
+        return ho, ho_mask, jnp.where(oo_mask[..., None], oo, 0.0), oo_mask
+
+
 class HandObjectV3Encoder(nnx.Module):
     """Shared Final V2 hand-object calculation for each object role."""
 

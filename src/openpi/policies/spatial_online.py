@@ -178,6 +178,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
     tactile_coordinate_frame: str = "base"
     tactile_ema_tau_s: float = 1.0
     require_object_geometry: bool = False
+    allow_object_set: bool = False
     anchor_asset_root: str | None = None
     anchor_dataset_root: str | None = None
     require_hand_scene: bool = False
@@ -245,6 +246,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
 
     def __call__(self, data: transforms.DataDict) -> transforms.DataDict:
         incoming_geometry = data.get("object_geometry")
+        incoming_set = data.get("object_set")
         incoming_hand = data.get("hand_keypoints")
         if "spatial" in data:
             existing = data["spatial"]
@@ -255,6 +257,12 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 validate_taxel_order(existing["tactile"])
             if incoming_geometry is None:
                 incoming_geometry = existing.get("object_geometry")
+            if incoming_set is None:
+                incoming_set = existing.get("object_set")
+            if incoming_geometry is not None and incoming_set is not None:
+                raise ValueError("provide object_geometry or object_set, not both")
+            if incoming_set is not None:
+                existing = {**existing, "object_set": self._validate_object_set(incoming_set)}
             if incoming_hand is None:
                 incoming_hand = existing.get("hand_keypoints")
             if self.require_hand_keypoints and incoming_hand is None and self.hand_point_mode == "tactile_center_5" and "tactile" in existing:
@@ -262,7 +270,7 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 incoming_hand = finger_geometry_centers(existing["tactile"])
             if self.require_hand_keypoints and incoming_hand is None:
                 raise ValueError("Required online hand_keypoints missing; expected the validated 18-point FK definition")
-            if self.require_object_geometry and incoming_geometry is None:
+            if self.require_object_geometry and incoming_geometry is None and incoming_set is None:
                 raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
             if incoming_hand is not None:
                 existing = {**existing, "hand_keypoints": _validate_hand_keypoints(incoming_hand, 5 if self.hand_point_mode == "tactile_center_5" else 18)}
@@ -372,10 +380,14 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
                 "sample_valid": ema.sample_valid,
                 "alpha": np.asarray(ema.alpha, dtype=np.float32),
             }
-        if self.require_object_geometry and incoming_geometry is None:
+        if incoming_geometry is not None and incoming_set is not None:
+            raise ValueError("provide object_geometry or object_set, not both")
+        if self.require_object_geometry and incoming_geometry is None and incoming_set is None:
             raise ValueError("Required online object_geometry missing; refusing geometry-free Pi0 inference")
         if incoming_geometry is not None:
             spatial["object_geometry"] = self._geometry_for_model(incoming_geometry)
+        if incoming_set is not None:
+            spatial["object_set"] = self._validate_object_set(incoming_set)
         if self.require_hand_keypoints and incoming_hand is None:
             # Identical FK, mapping and anchor ordering as export_xhand_18_keypoints.py.
             from openpi.spatial.hand_keypoints import select_keypoints
@@ -390,3 +402,17 @@ class XHandSpatialOnlinePreprocess(transforms.DataTransformFn):
             spatial["hand_keypoints"] = _validate_hand_keypoints(incoming_hand, 5 if self.hand_point_mode == "tactile_center_5" else 18)
         output["spatial"] = spatial
         return output
+
+    def _validate_object_set(self, value):
+        if not self.allow_object_set:
+            raise ValueError("This policy does not accept an object set")
+        if not isinstance(value, dict) or set(value) != {"object_xyz_m", "object_mask", "object_valid"}:
+            raise ValueError("object_set requires object_xyz_m, object_mask and object_valid")
+        xyz = np.asarray(value["object_xyz_m"], dtype=np.float32)
+        mask = np.asarray(value["object_mask"], dtype=np.bool_)
+        valid = np.asarray(value["object_valid"], dtype=np.bool_)
+        if xyz.shape != (8, 512, 3) or mask.shape != (8, 512) or valid.shape != (8,):
+            raise ValueError("online object_set must have shapes [8,512,3], [8,512], [8]")
+        if not np.isfinite(xyz[mask & valid[:, None]]).all():
+            raise ValueError("online object_set contains non-finite valid points")
+        return {"object_xyz_m": xyz, "object_mask": mask, "object_valid": valid}

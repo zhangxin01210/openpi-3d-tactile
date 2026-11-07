@@ -530,7 +530,7 @@ def create_torch_dataset(
             m2_state_from_rgbtrack_v1=settings.m2_state_from_rgbtrack_v1,
             fixed_anchor_assets=fixed_anchor_assets,
         )
-        if (getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3", "hand_object_v4"}
+        if (getattr(getattr(model_config, "encoder", None), "object_relation_mode", None) in {"final_v2", "hand_object_v3", "hand_object_v4", "relation_set_v1"}
                 and getattr(getattr(model_config, "encoder", None), "hand_object_hand_point_mode", "fk_18") == "fk_18"):
             from openpi.training.xhand_multimodal_dataset import XHandKeypointsSpatialJoin
 
