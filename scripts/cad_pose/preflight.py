@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Read-only four-task RGB-D / CAD / pose provenance audit; never runs tracking."""
+
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
+import subprocess
 import sys
 
 import numpy as np
@@ -33,16 +35,90 @@ def read_json(path):
     return value
 
 
+def compare_pose_geometry(rows, reader, episode, role, cad):
+    """Compare every ordered point and validity mask; never rewrite provenance."""
+    max_abs = 0.0
+    max_rmse = 0.0
+    mismatches = []
+    valid_frames = 0
+    for frame, row in enumerate(rows):
+        sample = reader.get(episode_index=episode, frame_index=frame)
+        mask = np.asarray(getattr(sample, f"{role}_mask"), dtype=bool)
+        if mask.shape != (len(cad),) or (bool(row["valid"]) and not mask.all()) or (not row["valid"] and mask.any()):
+            mismatches.append({"frame": frame, "reason": "validity_mask"})
+            continue
+        if row["valid"]:
+            valid_frames += 1
+            delta = np.asarray(getattr(sample, f"{role}_xyz_m"), dtype=np.float64) - cloud_from_pose(row, cad)
+            absolute = float(np.max(np.abs(delta)))
+            rmse = float(np.sqrt(np.mean(np.sum(delta**2, axis=-1))))
+            if not np.isfinite(absolute) or absolute > 1e-6:
+                mismatches.append({"frame": frame, "reason": "ordered_xyz", "max_abs_m": absolute})
+            max_abs = max(max_abs, absolute)
+            max_rmse = max(max_rmse, rmse)
+    return {
+        "status": "geometry_mismatch" if mismatches or not valid_frames else "numerically_equal_sha_mismatch",
+        "compared_frames": len(rows),
+        "valid_frames": valid_frames,
+        "mismatch_count": len(mismatches),
+        "first_mismatches": mismatches[:10],
+        "max_abs_m": max_abs,
+        "max_rmse_m": max_rmse,
+        "absolute_tolerance_m": 1e-6,
+    }
+
+
 def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
     """Fail closed if any task lacks provable pose/CAD/calibration/frame lineage."""
     root = data_root / dataset
     prep = repo / "output" / "preprocess" / dataset
+    legacy_manifest = root / "object_geometry/v1/manifest.json"
+    if dataset == "1018_peg_all" and legacy_manifest.is_file():
+        try:
+            if (
+                read_json(legacy_manifest).get("source", {}).get("mode")
+                == "geometry_only_drop_hand_scene_extras_keep_raw_q2"
+            ):
+                from openpi.cad_pose.legacy import inspect_legacy
+
+                return inspect_legacy(repo, data_root, profile)
+        except (OSError, ValueError, TypeError):
+            pass
     result = {"dataset": dataset, "roles": ROLES[dataset], "status": "blocked", "errors": [], "checks": {}}
     errors, checks = result["errors"], result["checks"]
-    info, manifest, release, approval = (root / "meta/info.json", root / "object_geometry/v1/manifest.json",
-        prep / "rgbtrack/release_v1.json", prep / "geometry/approved/manifest.json")
-    for label, path in (("raw dataset metadata", info), ("object geometry manifest", manifest),
-                        ("published pose release", release), ("approved CAD manifest", approval)):
+    manifest_git_path = root / "object_geometry/v1/manifest.json"
+    if manifest_git_path.is_file():
+        try:
+            relative = manifest_git_path.resolve().relative_to(repo.resolve())
+            tracked = subprocess.run(
+                ["git", "ls-files", "--error-unmatch", "--", str(relative)],
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            checks["manifest_git"] = {"tracked": tracked.returncode == 0, "path": str(relative)}
+            if tracked.returncode == 0:
+                for field, command in (
+                    ("last_commit", ["log", "-1", "--format=%H", "--", str(relative)]),
+                    ("working_tree_status", ["status", "--short", "--", str(relative)]),
+                ):
+                    proc = subprocess.run(["git", *command], cwd=repo, capture_output=True, text=True, check=False)
+                    checks["manifest_git"][field] = proc.stdout.strip() if proc.returncode == 0 else None
+        except (OSError, ValueError):
+            checks["manifest_git"] = {"tracked": None, "note": "outside repository or git unavailable"}
+    info, manifest, release, approval = (
+        root / "meta/info.json",
+        root / "object_geometry/v1/manifest.json",
+        prep / "rgbtrack/release_v1.json",
+        prep / "geometry/approved/manifest.json",
+    )
+    for label, path in (
+        ("raw dataset metadata", info),
+        ("object geometry manifest", manifest),
+        ("published pose release", release),
+        ("approved CAD manifest", approval),
+    ):
         if not path.is_file():
             errors.append(f"missing {label}: {path}")
     if manifest.is_file() and release.is_file() and approval.is_file():
@@ -51,22 +127,32 @@ def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
             rel = read_json(release)
             approved = read_json(approval)
             names = rel["objects"]
-            if (geometry.get("role_to_object") != ROLES[dataset] or len(names) != 2
-                    or set(names) != set(ROLES[dataset].values())
-                    or rel.get("dataset") != dataset or approved.get("status") != "human_accepted"
-                    or geometry.get("source_release_sha256") != sha256(release)
-                    or geometry.get("approved_geometry_sha256") != sha256(approval)
-                    or geometry.get("surface_sampling_seed") != SURFACE_SAMPLING_SEED):
+            if (
+                geometry.get("role_to_object") != ROLES[dataset]
+                or len(names) != 2
+                or set(names) != set(ROLES[dataset].values())
+                or rel.get("dataset") != dataset
+                or approved.get("status") != "human_accepted"
+                or geometry.get("source_release_sha256") != sha256(release)
+                or geometry.get("approved_geometry_sha256") != sha256(approval)
+                or geometry.get("surface_sampling_seed") != SURFACE_SAMPLING_SEED
+            ):
                 raise ValueError("role, release, sampling or approval provenance mismatch")
             for name in names:
                 mesh = prep / "geometry/approved" / f"{name}.glb"
                 entry = approved.get("assets", {}).get(name, {})
                 digest = sha256(mesh)
-                if (digest != entry.get("sha256") or digest != geometry.get("approved_meshes_sha256", {}).get(name)
-                        or float(entry.get("scale_m_per_unit", -1)) != 1):
+                if (
+                    digest != entry.get("sha256")
+                    or digest != geometry.get("approved_meshes_sha256", {}).get(name)
+                    or float(entry.get("scale_m_per_unit", -1)) != 1
+                ):
                     raise ValueError(f"{name}: CAD hash or metric scale mismatch")
-            checks["cad_hashes_and_release_order"] = {"status": "passed", "release_order": names,
-                                                       "sampling_seed": SURFACE_SAMPLING_SEED}
+            checks["cad_hashes_and_release_order"] = {
+                "status": "passed",
+                "release_order": names,
+                "sampling_seed": SURFACE_SAMPLING_SEED,
+            }
         except (OSError, ValueError, KeyError, TypeError) as exc:
             errors.append(f"CAD/release audit failed: {type(exc).__name__}: {exc}")
     if release.is_file():
@@ -81,8 +167,10 @@ def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
             errors.append(f"invalid published release: {exc}")
     if errors:
         if dataset == "1018_peg_all":
-            errors.append("legacy Peg pose/calibration requires independent keyframe RGB-D projection review; "
-                          "v1 migration preserves old geometry without recalibration")
+            errors.append(
+                "legacy Peg pose/calibration requires independent keyframe RGB-D projection review; "
+                "v1 migration preserves old geometry without recalibration"
+            )
         return result
     try:
         from openpi.object_geometry_dataset.derived import ObjectGeometryDerivedDataset
@@ -90,7 +178,11 @@ def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
         m, rel, approved = read_json(manifest), read_json(release), read_json(approval)
         if m.get("status") != "complete" or m.get("dataset") != dataset:
             raise ValueError("geometry is incomplete or belongs to another dataset")
-        if m.get("object_geometry_contract", {}).get("point_count") != 512 or m.get("coordinate_frame") != "base_link" or m.get("length_unit") != "m":
+        if (
+            m.get("object_geometry_contract", {}).get("point_count") != 512
+            or m.get("coordinate_frame") != "base_link"
+            or m.get("length_unit") != "m"
+        ):
             raise ValueError("geometry does not establish 512 metric base_link points")
         if m.get("role_to_object") != ROLES[dataset]:
             raise ValueError("geometry roles do not match the requested two objects")
@@ -107,8 +199,11 @@ def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
             mesh = prep / "geometry/approved" / f"{name}.glb"
             entry = approved.get("assets", {}).get(name, {})
             digest = sha256(mesh)
-            if (digest != entry.get("sha256") or digest != m.get("approved_meshes_sha256", {}).get(name)
-                    or float(entry.get("scale_m_per_unit", -1)) != 1.0):
+            if (
+                digest != entry.get("sha256")
+                or digest != m.get("approved_meshes_sha256", {}).get(name)
+                or float(entry.get("scale_m_per_unit", -1)) != 1.0
+            ):
                 raise ValueError(f"{name}: CAD hash or metric scale mismatch")
             cad[name] = load_surface_points(mesh, SURFACE_SAMPLING_SEED + index)
         checks["cad_and_release"] = "passed"
@@ -118,6 +213,8 @@ def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
             raise ValueError("raw and geometry episode IDs differ or are empty")
         expected_calibration = front_calibration_provenance(repo, profile)
         rmses, valid_counts = [], dict.fromkeys(ROLES[dataset], 0)
+        checks["resolved_pose_hashes"] = {}
+        checks["pose_hash_mismatches"] = []
         for episode in episodes:
             raw = RawSpatialDataset(root, episode=episode)
             if "front" not in raw.camera_roles or "front" not in raw.depth_roles:
@@ -134,17 +231,37 @@ def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
             if cal_error:
                 raise ValueError(f"episode {episode}: {cal_error}")
             rows = {}
+            checks["resolved_pose_hashes"][str(episode)] = {}
             for role, name in ROLES[dataset].items():
                 path = pose_dir / f"{name}_poses.jsonl"
-                if sha256(path) != m.get("pose_files_sha256_by_episode", {}).get(str(episode), {}).get(name):
-                    raise ValueError(f"episode {episode} {name}: pose file hash mismatch")
+                current_hash = sha256(path)
+                recorded_hash = m.get("pose_files_sha256_by_episode", {}).get(str(episode), {}).get(name)
+                if not recorded_hash:
+                    raise ValueError(f"episode {episode} {name}: missing recorded pose hash")
                 rows[role] = source_rows(path, object_name=name)
                 if len(rows[role]) != len(frames):
                     raise ValueError(f"episode {episode} {name}: pose/geometry frame counts differ")
+                if current_hash != recorded_hash:
+                    comparison = compare_pose_geometry(rows[role], dataset_reader, episode, role, cad[name])
+                    comparison.update(
+                        episode=episode,
+                        role=role,
+                        object=name,
+                        current_sha256=current_hash,
+                        recorded_sha256=recorded_hash,
+                    )
+                    checks["pose_hash_mismatches"].append(comparison)
+                    if comparison["status"] != "numerically_equal_sha_mismatch":
+                        raise ValueError(f"episode {episode} {name}: pose hash and ordered geometry differ")
+                    errors.append(
+                        f"episode {episode} {name}: source SHA differs but every stored frame matches; "
+                        "retain both hashes and investigate provenance; do not overwrite manifest"
+                    )
+                checks["resolved_pose_hashes"][str(episode)][name] = current_hash
             states = raw.states()
             if list(map(int, states["frame_index"])) != frames:
                 raise ValueError(f"episode {episode}: raw/pose/geometry frame mismatch")
-            selected = sorted({0, len(frames)//2, len(frames)-1})
+            selected = sorted({0, len(frames) // 2, len(frames) - 1})
             for frame in selected:
                 sample = dataset_reader.get(episode_index=episode, frame_index=frame)
                 for role, name in ROLES[dataset].items():
@@ -162,10 +279,15 @@ def audit_task(repo: Path, data_root: Path, dataset: str, profile: str) -> dict:
                         valid_counts[role] += 1
         if min(valid_counts.values()) == 0:
             raise ValueError("no valid sampled frames for one or both roles")
-        checks.update(pose_hash_and_alignment="passed", episodes=len(episodes),
-                      valid_sampled_frames=valid_counts, max_correspondence_rmse_m=max(rmses),
-                      geometry_manifest_sha256=sha256(manifest), release_sha256=sha256(release),
-                      profile_sha256=expected_calibration["profile"]["sha256"])
+        checks.update(
+            pose_hash_and_alignment="passed",
+            episodes=len(episodes),
+            valid_sampled_frames=valid_counts,
+            max_correspondence_rmse_m=max(rmses),
+            geometry_manifest_sha256=sha256(manifest),
+            release_sha256=sha256(release),
+            profile_sha256=expected_calibration["profile"]["sha256"],
+        )
         checks["geometric_accuracy"] = "not_verified: alignment with raw RGB-D requires visual review"
         result["status"] = "requires_visual_review"
         errors.append("Pose source and ordered cloud agree, but visual/geometric accuracy is not yet reviewed")
@@ -179,12 +301,16 @@ def main():
     parser.add_argument("--repo", type=Path, default=Path.cwd())
     parser.add_argument("--data-root", type=Path)
     parser.add_argument("--profile", default="configs/ur7e_xhand/front_calibration_candidate.json")
+    parser.add_argument("--tasks", nargs="+", choices=tuple(ROLES), default=list(ROLES))
     parser.add_argument("--output", type=Path, default=Path("output/cad_pose_transformer_v1/reports/preflight.json"))
     args = parser.parse_args()
     repo = args.repo.expanduser().resolve()
     data = (args.data_root or repo / "data").expanduser().resolve()
-    report = {"status": "blocked", "datasets": [audit_task(repo, data, name, args.profile) for name in ROLES],
-              "note": "Provenance checks cannot by themselves establish pose geometric accuracy."}
+    report = {
+        "status": "blocked",
+        "datasets": [audit_task(repo, data, name, args.profile) for name in args.tasks],
+        "note": "Provenance checks cannot by themselves establish pose geometric accuracy.",
+    }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))

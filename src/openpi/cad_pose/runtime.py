@@ -50,6 +50,7 @@ class PoseRuntime:
         hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in files.items()}
         saved = torch.load(checkpoint, map_location="cpu", weights_only=True)
         if (not isinstance(saved, dict) or saved.get("model_version") != "xhand_cad_pose_transformer_v1"
+                or saved.get("synthetic") is not False
                 or not isinstance(saved.get("ordered_cad_sha256_by_dataset"), dict)
                 or saved["ordered_cad_sha256_by_dataset"].get(dataset) != points_sha256(cad)
                 or saved.get("camera_hashes") != hashes):
@@ -61,6 +62,10 @@ class PoseRuntime:
     @torch.inference_mode()
     def infer(self, rgb: np.ndarray, raw_depth: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         scene, mask = self.preprocess(rgb, raw_depth)
+        return self.infer_preprocessed(scene, mask)
+
+    @torch.inference_mode()
+    def infer_preprocessed(self, scene: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, dict[str, np.ndarray]]:
         output = self.model(torch.as_tensor(scene[None], device=self.device),
                             torch.as_tensor(mask[None], device=self.device), self._cad_tensor)
         rotation = output["rotation"][0].cpu().numpy()

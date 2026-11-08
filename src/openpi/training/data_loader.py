@@ -491,6 +491,27 @@ def create_torch_dataset(
             settings.dataset_root,
             version=settings.version,
         )
+        if settings.require_pose_prediction:
+            import hashlib
+            import torch
+            checkpoint = pathlib.Path(settings.pose_checkpoint_path or "")
+            if not settings.pose_checkpoint_path or not checkpoint.is_file():
+                raise FileNotFoundError("Set OPENPI_CAD_POSE_CHECKPOINT to the accepted pose checkpoint")
+            manifest = object_geometry_dataset.manifest
+            digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+            state = torch.load(checkpoint, map_location="cpu", weights_only=True)
+            acceptance = manifest.get("acceptance") or {}
+            if (manifest.get("producer") != "openpi.cad_pose.sidecar"
+                    or manifest.get("pose_checkpoint_sha256") != digest
+                    or manifest.get("model_version") != "xhand_cad_pose_transformer_v1"
+                    or manifest.get("preprocess_version") != "front_rgbd_spatial_v1"
+                    or state.get("synthetic") is not False
+                    or state.get("camera_hashes") != manifest.get("camera_hashes")
+                    or state.get("ordered_cad_sha256_by_dataset", {}).get(pathlib.Path(settings.dataset_root).name)
+                       != manifest.get("ordered_cad_sha256")
+                    or acceptance.get("status") != "accepted" or not acceptance.get("reviewer")
+                    or acceptance.get("checkpoint_sha256") != digest):
+                raise ValueError("predicted geometry sidecar and pose checkpoint provenance mismatch")
         if settings.m2_state_from_rgbtrack_v1:
             encoder = getattr(model_config, "encoder", None)
             if (getattr(encoder, "object_relation_mode", None) != "hand_scene_oo_v1"
@@ -537,7 +558,7 @@ def create_torch_dataset(
             if data_config.spatial is None:
                 raise ValueError("final_v2 relations require a spatial sidecar")
             dataset = XHandKeypointsSpatialJoin(
-                dataset, settings.dataset_root, object_version=settings.version,
+                dataset, settings.dataset_root, object_version=settings.hand_keypoint_object_version or settings.version,
                 spatial_version=data_config.spatial.version,
             )
     return dataset

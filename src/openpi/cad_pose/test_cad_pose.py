@@ -238,7 +238,7 @@ def test_checkpoint_runtime_rejects_camera_and_cad_changes(tmp_path, monkeypatch
     hashes = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in paths.items()}
     cad = np.zeros((2, 512, 3), np.float32)
     ckpt = tmp_path / "pose.pt"
-    torch.save({"model_version": "xhand_cad_pose_transformer_v1",
+    torch.save({"model_version": "xhand_cad_pose_transformer_v1", "synthetic": False,
                 "ordered_cad_sha256_by_dataset": {"test": runtime.points_sha256(cad)}, "camera_hashes": hashes,
                 "model_state_dict": XHandCADPoseTransformerV1().state_dict()}, ckpt)
     monkeypatch.setattr(runtime, "FrontRGBDPreprocessor", lambda *args: object())

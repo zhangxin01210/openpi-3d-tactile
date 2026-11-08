@@ -22,7 +22,8 @@ def _policy_metadata(train_config: _config.TrainConfig, data_config: _config.Dat
         tactile = spatial is not None and bool(getattr(train_config.model, "use_tactile", True))
         metadata.update(
             spatial_camera_roles=list(spatial.camera_roles) if visual else [],
-            spatial_use_visual=visual, spatial_use_tactile=tactile,
+            spatial_use_visual=visual,
+            spatial_use_tactile=tactile,
             rgb_only_baseline=not visual and not tactile and data_config.object_geometry is None,
             training_config=train_config.name,
             object_geometry_required=data_config.object_geometry is not None,
@@ -33,7 +34,10 @@ def _policy_metadata(train_config: _config.TrainConfig, data_config: _config.Dat
         # client's historical Peg default. Do not guess for multi-task data.
         dataset_root = pathlib.Path(data_config.repo_id or "").expanduser()
         if not dataset_root.is_absolute():
-            dataset_root = pathlib.Path(os.environ.get("OPENPI_REPO_ROOT", pathlib.Path(__file__).resolve().parents[3])) / dataset_root
+            dataset_root = (
+                pathlib.Path(os.environ.get("OPENPI_REPO_ROOT", pathlib.Path(__file__).resolve().parents[3]))
+                / dataset_root
+            )
         tasks_path = dataset_root / "meta/tasks.jsonl"
         if tasks_path.is_file():
             prompts = {json.loads(line)["task"] for line in tasks_path.read_text().splitlines() if line.strip()}
@@ -77,8 +81,12 @@ def create_trained_policy(
 
     # Support ordinary OpenPI layouts and explicitly identified Orbax manager exports.
     data_config = train_config.data.create(train_config.assets_dirs, train_config.model)
-    if (isinstance(train_config.data, _config.LeRobotXHandDataConfig)
-            and data_config.object_geometry is not None and data_config.spatial is None):
+    pose_runtime = None
+    if (
+        isinstance(train_config.data, _config.LeRobotXHandDataConfig)
+        and data_config.object_geometry is not None
+        and data_config.spatial is None
+    ):
         raise ValueError("XHand online object geometry requires a spatial preprocessing configuration")
     metadata = _policy_metadata(train_config, data_config)
     if default_prompt is None:
@@ -90,6 +98,7 @@ def create_trained_policy(
     if not params_dir.is_dir() and (checkpoint_dir / "_METADATA").is_file():
         try:
             import orbax.checkpoint as ocp
+
             manager_metadata = ocp.PyTreeCheckpointer().metadata(checkpoint_dir)
             if "params" in manager_metadata:
                 params_dir = checkpoint_dir
@@ -101,6 +110,22 @@ def create_trained_policy(
         and (checkpoint_dir / data_config.asset_id / "norm_stats.json").is_file()
     ):
         assets_dir = checkpoint_dir
+
+    if data_config.object_geometry is not None and getattr(
+        data_config.object_geometry, "require_pose_prediction", False
+    ):
+        from openpi.cad_pose.policy import make_pose_runtime
+
+        if not data_config.asset_id:
+            raise ValueError("pose prediction policy requires a checkpoint asset id")
+        root = pathlib.Path(os.environ.get("OPENPI_REPO_ROOT", pathlib.Path(__file__).resolve().parents[3]))
+        pose_runtime = make_pose_runtime(
+            data_config.object_geometry,
+            data_config.spatial.front_calibration_profile,
+            repo=root,
+            provenance_path=assets_dir / data_config.asset_id / "pose_provenance.json",
+            device=os.environ.get("OPENPI_CAD_POSE_DEVICE", "cpu"),
+        )
 
     # Check if this is a PyTorch model by looking for model.safetensors
     weight_path = os.path.join(checkpoint_dir, "model.safetensors")
@@ -159,33 +184,43 @@ def create_trained_policy(
         scene_modes = {"hand_scene_v0", "hand_scene_oo_v1", "dtcr_v1", "dtcr_independent_v1"}
         keypoint_modes = {"final_v2", "hand_object_v3", "hand_object_v4", "relation_set_v1"}
         if object_settings is not None and relation_mode not in scene_modes | keypoint_modes | {"legacy_ho_oo"}:
-            raise ValueError(f"Unsupported online object relation mode: {relation_mode!r}; "
-                             "implement and validate its input contract before deployment")
+            raise ValueError(
+                f"Unsupported online object relation mode: {relation_mode!r}; "
+                "implement and validate its input contract before deployment"
+            )
         input_transforms = [
             spatial_online.XHandSpatialOnlinePreprocess(
                 camera_roles=data_config.spatial.camera_roles,
                 use_visual=getattr(train_config.model, "use_visual", True),
                 use_tactile=getattr(train_config.model, "use_tactile", True),
-                hand_point_mode=getattr(getattr(train_config.model, "encoder", None), "hand_object_hand_point_mode", "fk_18"),
-                validate_tactile_order=getattr(getattr(train_config.model, "encoder", None), "tactile_encoder_type", "structured_v1") == "simple_mlp",
+                hand_point_mode=getattr(
+                    getattr(train_config.model, "encoder", None), "hand_object_hand_point_mode", "fk_18"
+                ),
+                validate_tactile_order=getattr(
+                    getattr(train_config.model, "encoder", None), "tactile_encoder_type", "structured_v1"
+                )
+                == "simple_mlp",
                 front_calibration_profile=data_config.spatial.front_calibration_profile,
                 tactile_coordinate_frame=data_config.spatial.tactile_coordinate_frame,
                 require_object_geometry=data_config.object_geometry is not None,
                 allow_object_set=relation_mode == "relation_set_v1",
                 anchor_asset_root=(object_settings.anchor_asset_root if object_settings is not None else None),
                 anchor_dataset_root=(object_settings.dataset_root if object_settings is not None else None),
-                require_hand_scene=(object_settings is not None and
-                    (object_settings.require_hand_scene or relation_mode in scene_modes)),
+                require_hand_scene=(
+                    object_settings is not None and (object_settings.require_hand_scene or relation_mode in scene_modes)
+                ),
                 require_hand_keypoints=(object_settings is not None and relation_mode in keypoint_modes),
                 m2_state_from_rgbtrack_v1=(object_settings is not None and object_settings.m2_state_from_rgbtrack_v1),
             ),
             transforms.PreserveKeysTransform(
-                transform=transforms.compose([
-                    spatial_online.XHandSpatialOnlineRepack(),
-                    *input_transforms,
-                ]),
+                transform=transforms.compose(
+                    [
+                        spatial_online.XHandSpatialOnlineRepack(),
+                        *input_transforms,
+                    ]
+                ),
                 keys=("spatial",),
-            )
+            ),
         ]
     elif data_config.univtac_pointcloud is not None:
         # The live UniVTAC client supplies the same world visual point schema as
@@ -197,9 +232,7 @@ def create_trained_policy(
                 keys=("spatial",),
             )
         ]
-    elif data_config.contactworld is not None and (
-        data_config.contactworld.visual or data_config.contactworld.force
-    ):
+    elif data_config.contactworld is not None and (data_config.contactworld.visual or data_config.contactworld.force):
         # The ContactWorld simulator client supplies the same spatial schema as
         # the converted LeRobot sidecar; ordinary transforms repack image/state.
         input_transforms = [
@@ -209,7 +242,7 @@ def create_trained_policy(
             )
         ]
 
-    return _policy.Policy(
+    policy = _policy.Policy(
         model,
         transforms=input_transforms,
         output_transforms=[
@@ -223,3 +256,8 @@ def create_trained_policy(
         is_pytorch=is_pytorch,
         pytorch_device=pytorch_device if is_pytorch else None,
     )
+    if pose_runtime is not None:
+        from openpi.cad_pose.policy import PoseConditionedPolicy
+
+        return PoseConditionedPolicy(policy, pose_runtime)
+    return policy

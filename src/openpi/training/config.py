@@ -146,6 +146,9 @@ class ObjectGeometryDataConfig:
     anchor_asset_root: str | None = None
     anchor_count: int = 16
     expected_roles: tuple[tuple[str, str], ...] | None = None
+    require_pose_prediction: bool = False
+    pose_checkpoint_path: str | None = None
+    hand_keypoint_object_version: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2664,6 +2667,37 @@ def _relation_comparison_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_relation_comparison_configs())
+
+
+def _cad_pose_policy_configs() -> list[TrainConfig]:
+    result = []
+    roles = {"peg_all": (("manipulated", "funnel"), ("target", "target_flask")),
+             "press_the_button": (("manipulated", "button"), ("target", "box")),
+             "yellow_socket": (("manipulated", "red"), ("target", "yellow")),
+             "eraser": (("manipulated", "eraser"), ("target", "whiteboard"))}
+    for task in roles:
+        if task in {"press_the_button", "yellow_socket"}:
+            base = next(c for c in _CONFIGS if c.name == f"pi0_xhand_pc_v2_tactile_mlp_ho_v2/{task}")
+        elif task == "peg_all":
+            base = next(c for c in _CONFIGS if c.name == f"pi0_xhand_pc_v2_tactile_mlp_ho_v3/{task}")
+        else:
+            base = next(c for c in _CONFIGS if c.name == "pi0_xhand_pc_v2_tactile_mlp_ho_v2/press_the_button")
+            task_base = next(c for c in _CONFIGS if c.name == "pi0_xhand_pc_v2/eraser")
+            base = dataclasses.replace(base, data=task_base.data)
+        encoder = dataclasses.replace(base.model.encoder, object_relation_mode="final_v2")
+        model = dataclasses.replace(base.model, encoder=encoder)
+        geometry = ObjectGeometryDataConfig(dataset_root=base.data.repo_id, version="pretrained_pose_v1",
+            expected_roles=roles[task], require_pose_prediction=True,
+            pose_checkpoint_path=os.environ.get("OPENPI_CAD_POSE_CHECKPOINT"), hand_keypoint_object_version="v1")
+        data = dataclasses.replace(base.data, object_geometry=geometry)
+        metadata = dict(base.policy_metadata, object_relation_mode="final_v2", spatial_token_count=48,
+                        object_geometry_source="pretrained_pose_v1")
+        result.append(dataclasses.replace(base, name=f"pi0_xhand_pc_v2_tactile_mlp_ho_v2_pretrain/{task}",
+            model=model, data=data, freeze_filter=model.get_freeze_filter(), policy_metadata=metadata))
+    return result
+
+
+_CONFIGS.extend(_cad_pose_policy_configs())
 
 
 def _raw_tactile_state_configs() -> list[TrainConfig]:

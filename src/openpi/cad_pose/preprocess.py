@@ -32,3 +32,9 @@ class FrontRGBDPreprocessor:
             raise ValueError("no scene points have valid RGB projection")
         scene = np.concatenate((visual.xyz_m, visual.rgb.astype(np.float32) / 255.0), axis=-1)
         return scene.astype(np.float32), mask
+
+    def color_camera(self):
+        """Return the same profile-adjusted camera used by RGB projection."""
+        from openpi.spatial.geometry import apply_diagnostic_overrides
+        processor = self._preprocessor
+        return apply_diagnostic_overrides(processor.calibration_bundle.cameras, processor.config.diagnostics)["front"]

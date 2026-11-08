@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures as futures
 import dataclasses
+import hashlib
+import json
 import logging
 from typing import Protocol
 
@@ -74,6 +76,38 @@ def save_state(
         norm_stats = data_config.norm_stats
         if norm_stats is not None and data_config.asset_id is not None:
             _normalize.save(directory / data_config.asset_id, norm_stats)
+        geometry = data_config.object_geometry
+        if geometry is not None and getattr(geometry, "require_pose_prediction", False):
+            if not data_config.asset_id or not geometry.pose_checkpoint_path:
+                raise ValueError("pose prediction checkpoint and asset id required")
+            manifest = json.loads(
+                (epath.Path(geometry.dataset_root) / "object_geometry" / geometry.version / "manifest.json").read_text()
+            )
+            digest = hashlib.sha256(epath.Path(geometry.pose_checkpoint_path).read_bytes()).hexdigest()
+            acceptance = manifest.get("acceptance") or {}
+            if (
+                manifest.get("producer") != "openpi.cad_pose.sidecar"
+                or manifest.get("pose_checkpoint_sha256") != digest
+                or acceptance.get("status") != "accepted"
+                or acceptance.get("checkpoint_sha256") != digest
+                or not acceptance.get("reviewer")
+            ):
+                raise ValueError("cannot save policy with mismatched prediction sidecar provenance")
+            fields = (
+                "dataset",
+                "producer",
+                "pose_checkpoint_sha256",
+                "ordered_cad_sha256",
+                "camera_hashes",
+                "acceptance",
+                "model_version",
+                "preprocess_version",
+            )
+            destination = directory / data_config.asset_id
+            destination.mkdir(parents=True, exist_ok=True)
+            (destination / "pose_provenance.json").write_text(
+                json.dumps({k: manifest.get(k) for k in fields}, indent=2)
+            )
 
     # Split params that can be used for inference into a separate item.
     with at.disable_typechecking():

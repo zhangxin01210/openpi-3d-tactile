@@ -201,7 +201,8 @@ def create_policy(args: Args) -> _policy.Policy:
             policy = _policy_config.create_trained_policy(
                 train_config, args.policy.dir, default_prompt=args.default_prompt
             )
-            if getattr(train_config.data, "object_geometry", None) is not None:
+            if (getattr(train_config.data, "object_geometry", None) is not None
+                    and not getattr(train_config.data.object_geometry, "require_pose_prediction", False)):
                 # Reuse the existing causal perception bridge and WebSocket server.
                 from scripts.deploy.run_online_perception import _task_geometry_inputs
                 from scripts.deploy.websocket_hand_scene_bridge import HandScenePerceptionBridge

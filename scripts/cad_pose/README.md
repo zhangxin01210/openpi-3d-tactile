@@ -1,38 +1,71 @@
-# CAD pose prototype: current scope
+# CAD Pose Transformer V1
 
-This directory is **not a ready-to-train pipeline**. It does not yet include a
-four-task trainer, evaluation CLI, dataset-wide visualizer, predicted sidecar
-exporter, Pi0 configurations, or a serving integration. No existing model is
-switched to predicted geometry. Do not use these components to claim a trained
-or validated pose model.
+The existing 648,457-parameter model is unchanged. Training, evaluation,
+prediction visualization and sidecar export are implemented. Real data and
+model accuracy have **not** been validated on this machine. Source hash checks,
+ordered point agreement and synthetic tests do not establish geometric accuracy.
 
-`preflight.py` is read-only with respect to source datasets. It writes a report
-under `output/cad_pose_transformer_v1/reports/` and exits nonzero even when
-provenance checks pass, because the report cannot establish that RGB-D/CAD
-alignment is geometrically correct. It lists missing raw data, release files and
-pose streams; for supported published releases it checks hashes, calibration,
-frame IDs, and sampled ordered-geometry residuals. Peg's legacy geometry has
-no demonstrated correspondence or compatible pose stream in this checkout and
-requires a separate adapter and keyframe review. Eraser's actual format is not
-available locally and must be inspected, not guessed.
+All commands below run from the repository root. For environments lacking
+`trimesh`, prefix Python commands with:
 
 ```bash
-.venv/bin/python scripts/cad_pose/preflight.py --repo .
-OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 .venv/bin/pytest -q src/openpi/cad_pose/test_cad_pose.py
+uv run --no-sync --with 'numpy==1.26.4' --with 'trimesh==4.12.2' python
 ```
 
-The existing GLB exporter uses `trimesh`, which is not installed in all OpenPI
-environments. For an isolated invocation with package access, an example is:
+`preflight.py` is read-only and reports each task separately. It deliberately
+exits nonzero until geometric review is performed. When a PoseRecord hash
+mismatches, it compares **all** ordered geometry points and validity masks;
+no provenance is rewritten. Legacy Peg needs provable sampler/mesh/calibration
+provenance and rigid-fit residuals. Unordered ICP is never used.
 
 ```bash
-uv run --no-sync --with 'numpy==1.26.4' --with 'trimesh==4.12.2' \
-  python scripts/cad_pose/preflight.py --repo .
+python scripts/cad_pose/preflight.py --repo . --output output/cad_pose_audit/preflight.json
+python scripts/cad_pose/visualize_gt.py --repo . --output-dir output/cad_pose_audit/gt \
+  --episodes 1018_peg_all=23,65
+python scripts/cad_pose/smoke.py --repo . --device cpu --output output/cad_pose_audit/smoke.json
 ```
 
-The model and one-batch optimizer tests are synthetic. The reusable components
-include a PyTorch cross-attention model, canonical front RGB-D preprocessing,
-explicit-symmetry loss/metrics, ordered rigid-fit validation, read-only
-published-pose streaming, and a tracker-free runtime. The runtime requires a
-checkpoint with explicitly matching model version, per-dataset ordered CAD hash,
-and camera/profile hashes. A finite output does not establish detection
-confidence or geometric accuracy.
+GT visualization draws the existing Geometry v1 in RGB and RGB-D; it is a
+candidate label, **not a prediction or automatic acceptance**. Other tasks
+continue even if one dataset is unavailable. Override any episode selection
+with e.g. `--episodes 1028_press_button=0,1`. Images include source and
+calibration provenance in the HTML report. Missing geometry/calibration must
+be investigated rather than replaced with invented pose labels.
+
+Only after inspecting the Peg RGB-D projections and verifying the legacy
+adapter, create a review JSON with `status`, `reviewer`, `reviewed_frames`,
+`geometry_manifest_sha256` and `profile_sha256` from the audit; status must be
+`accepted`, and at least three actual frame identifiers must be reviewed. The
+review must reflect a real human decision, not a fabricated approval. If Peg
+cannot prove ordered correspondence, four-task training fails closed; use
+`--tasks` to independently smoke-test other tasks.
+
+```bash
+python scripts/cad_pose/train.py --repo . --device cuda:0 --batch-size 32 \
+  --steps-per-epoch 1000 --epochs 100 --peg-review /path/to/peg_review.json \
+  --output-dir output/cad_pose_runs/run1
+# Resume with --resume output/cad_pose_runs/run1/checkpoints/epoch_....pt and the same arguments.
+python scripts/cad_pose/evaluate.py --repo . --device cuda:0 \
+  --checkpoint /path/to/best_epoch.pt --output-dir output/cad_pose_runs/eval1
+python scripts/cad_pose/visualize.py --repo . --device cuda:0 \
+  --checkpoint /path/to/best_epoch.pt --evaluation-dir output/cad_pose_runs/eval1 \
+  --output-dir output/cad_pose_runs/predictions1
+```
+
+Synthetic execution requires `--synthetic` on train/evaluation/visualization;
+synthetic checkpoints cannot be deployed as real checkpoints. Splits are by
+episode, task sampling is balanced, `best.json` records the best checkpoint,
+and epoch checkpoints are never overwritten. Loss and metrics use identity
+symmetry unless verified per-object rotation symmetries are explicitly
+provided via `--config`; ADD-S is diagnostic and does not certify symmetry.
+Latency separates preprocessing and forward from disk/video decoding.
+
+The optional `export_sidecar.py` consumes only raw RGB-D and a real, accepted
+pose checkpoint. Its `--acceptance` JSON must contain `status: accepted`,
+`reviewer` and `checkpoint_sha256`, matching actual review of this checkpoint.
+It writes a new version and refuses to overwrite existing geometry. The new
+Pi0 configurations require the same accepted pose checkpoint; the policy
+checkpoint stores sidecar provenance and the online bridge verifies it.
+The existing deployment client does not yet provide all required input; no
+physical deployment has been validated. A finite prediction is not a detection
+confidence or proof of accuracy.

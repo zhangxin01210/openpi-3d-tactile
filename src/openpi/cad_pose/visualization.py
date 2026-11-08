@@ -32,7 +32,7 @@ def render_comparison(*, rgb: np.ndarray, intrinsic: np.ndarray, t_base_color: n
         raise FileExistsError(f"refusing to overwrite {output}")
     color_base = np.linalg.inv(base_color)
     h, w = rgb.shape[:2]
-    original, pred, compare = (cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR) for _ in range(3))
+    original, pred, gt_panel, compare = (cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR) for _ in range(4))
 
     def draw(image, pose, color):
         pose = np.asarray(pose, dtype=np.float64)
@@ -52,13 +52,14 @@ def render_comparison(*, rgb: np.ndarray, intrinsic: np.ndarray, t_base_color: n
     metrics = None
     if target_pose is not None:
         metrics = pose_errors(predicted_pose, target_pose, cad, symmetry_rotations)
+        draw(gt_panel, target_pose, (0, 255, 0))
         draw(compare, target_pose, (0, 255, 0))
         line = f't={metrics["translation_mm"]:.1f}mm r={metrics["rotation_deg"]:.1f}deg CAD={metrics["cad_error_mm"]:.1f}mm'
     else:
         line = "GT unavailable/unverified"
-    for image, title in ((original, "RGB"), (pred, "Prediction"), (compare, "GT green / prediction magenta")):
+    for image, title in ((original, "RGB"), (pred, "Prediction"), (gt_panel, "GT"), (compare, "GT green / prediction magenta")):
         cv2.putText(image, title, (8, 20), cv2.FONT_HERSHEY_SIMPLEX, .45, (255, 255, 255), 1, cv2.LINE_AA)
-    panel = np.concatenate((original, pred, compare), axis=1)
+    panel = np.concatenate((original, pred, gt_panel, compare), axis=1)
     cv2.putText(panel, str(label), (8, h - 28), cv2.FONT_HERSHEY_SIMPLEX, .45, (255, 255, 255), 1, cv2.LINE_AA)
     cv2.putText(panel, line, (8, h - 9), cv2.FONT_HERSHEY_SIMPLEX, .45, (255, 255, 255), 1, cv2.LINE_AA)
     output.parent.mkdir(parents=True, exist_ok=True)

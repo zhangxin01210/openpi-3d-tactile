@@ -4,10 +4,12 @@ Only published, audited RGBTrack releases are accepted here. Legacy Peg and
 any task without the same proven contract require a separate audited adapter;
 this reader never invokes a tracker, ICP, or accesses GT geometry as input.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
+import time
 
 import numpy as np
 
@@ -25,11 +27,12 @@ from scripts.preprocess.export_object_geometry_rgbtrack import source_rows
 class PublishedPoseTask:
     """Streaming reader for one audited task; frames remain inside their episode."""
 
-    def __init__(self, repo: Path, data_root: Path, dataset: str, *, profile: str,
-                 audit_entry: dict):
-        if (audit_entry.get("dataset") != dataset
-                or audit_entry.get("checks", {}).get("pose_hash_and_alignment") != "passed"
-                or audit_entry.get("status") not in {"requires_visual_review", "ready"}):
+    def __init__(self, repo: Path, data_root: Path, dataset: str, *, profile: str, audit_entry: dict):
+        if (
+            audit_entry.get("dataset") != dataset
+            or audit_entry.get("checks", {}).get("pose_hash_and_alignment") != "passed"
+            or audit_entry.get("status") not in {"requires_visual_review", "ready"}
+        ):
             raise ValueError("task requires a passing current pose/CAD provenance audit")
         self.repo = Path(repo).resolve()
         self.root = Path(data_root).resolve() / dataset
@@ -42,13 +45,18 @@ class PublishedPoseTask:
         self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         approval = json.loads(approval_path.read_text(encoding="utf-8"))
         checks = audit_entry["checks"]
-        if (checks.get("geometry_manifest_sha256") != sha256(manifest_path)
-                or checks.get("release_sha256") != sha256(release_path)):
+        self.resolved_pose_hashes = checks.get("resolved_pose_hashes", {})
+        if checks.get("geometry_manifest_sha256") != sha256(manifest_path) or checks.get("release_sha256") != sha256(
+            release_path
+        ):
             raise ValueError("pose audit does not match current geometry manifest or release")
-        if (self.release.get("dataset") != dataset or self.manifest.get("dataset") != dataset
-                or self.manifest.get("source_release_sha256") != sha256(release_path)
-                or self.manifest.get("approved_geometry_sha256") != sha256(approval_path)
-                or approval.get("status") != "human_accepted"):
+        if (
+            self.release.get("dataset") != dataset
+            or self.manifest.get("dataset") != dataset
+            or self.manifest.get("source_release_sha256") != sha256(release_path)
+            or self.manifest.get("approved_geometry_sha256") != sha256(approval_path)
+            or approval.get("status") != "human_accepted"
+        ):
             raise ValueError("release, approved CAD and geometry provenance differ")
         self.roles = self.manifest["role_to_object"]
         names = self.release["objects"]
@@ -61,8 +69,11 @@ class PublishedPoseTask:
             mesh = self.prep / "geometry/approved" / f"{name}.glb"
             entry = approval.get("assets", {}).get(name, {})
             digest = sha256(mesh)
-            if (digest != entry.get("sha256") or digest != self.manifest["approved_meshes_sha256"].get(name)
-                    or float(entry.get("scale_m_per_unit", -1)) != 1):
+            if (
+                digest != entry.get("sha256")
+                or digest != self.manifest["approved_meshes_sha256"].get(name)
+                or float(entry.get("scale_m_per_unit", -1)) != 1
+            ):
                 raise ValueError(f"{name}: CAD hash/scale mismatch")
             self.cad[name] = load_surface_points(mesh, SURFACE_SAMPLING_SEED + i)
         self.ordered_cad = np.stack([self.cad[self.roles[role]] for role in ("manipulated", "target")])
@@ -74,7 +85,7 @@ class PublishedPoseTask:
             raise ValueError("pose audit does not match current calibration profile")
         self.preprocess = FrontRGBDPreprocessor(self.repo, profile)
 
-    def iter_episode(self, episode: int):
+    def iter_episode(self, episode: int, *, include_rgb: bool = False):
         if episode not in self.episodes:
             raise ValueError("episode is not in the audited task")
         root = self.prep / "rgbtrack/episodes" / f"e{episode:05d}"
@@ -89,7 +100,9 @@ class PublishedPoseTask:
         for role in ("manipulated", "target"):
             name = self.roles[role]
             path = root / f"{name}_poses.jsonl"
-            if sha256(path) != self.manifest.get("pose_files_sha256_by_episode", {}).get(str(episode), {}).get(name):
+            if sha256(path) != self.resolved_pose_hashes.get(str(episode), {}).get(
+                name, self.manifest.get("pose_files_sha256_by_episode", {}).get(str(episode), {}).get(name)
+            ):
                 raise ValueError(f"pose file changed after audit: {path}")
             rows.append(source_rows(path, object_name=name))
         if len(rows[0]) != len(rows[1]):
@@ -111,9 +124,23 @@ class PublishedPoseTask:
                     entry = rows[i][frame]
                     cloud_from_pose(entry, self.ordered_cad[i])  # validate finite SE(3)
                     target[i] = np.asarray(entry["T_base_link_object"], dtype=np.float32)
+            started = time.perf_counter()
             scene, scene_mask = self.preprocess(video.rgb, row["observation.depths.cam_front"])
-            yield {"scene": scene, "scene_mask": scene_mask, "cad": self.ordered_cad,
-                   "target_transform": target, "valid": valid, "episode": episode,
-                   "frame": frame, "timestamp": float(row["timestamp"]), "dataset": self.dataset}
+            preprocessing_seconds = time.perf_counter() - started
+            sample = {
+                "scene": scene,
+                "scene_mask": scene_mask,
+                "cad": self.ordered_cad,
+                "target_transform": target,
+                "valid": valid,
+                "episode": episode,
+                "frame": frame,
+                "timestamp": float(row["timestamp"]),
+                "dataset": self.dataset,
+                "preprocessing_seconds": preprocessing_seconds,
+            }
+            if include_rgb:
+                sample["rgb"] = video.rgb
+            yield sample
         if count != len(rows[0]):
             raise ValueError(f"episode {episode}: raw frame count differs from pose files")
