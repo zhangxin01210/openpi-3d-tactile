@@ -124,6 +124,7 @@ def load_mesh_surface_points(
     scale_m_per_unit: float,
     count: int = POINT_COUNT,
     seed: int = 0,
+    include_source_sha256: bool = True,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Load GLB/mesh using the existing computer-4 ``trimesh`` dependency."""
 
@@ -149,7 +150,7 @@ def load_mesh_surface_points(
     points = deterministic_surface_points(vertices, faces, count=count, seed=seed)
     return points, {
         "source_mesh": str(source),
-        "source_sha256": sha256_file(source),
+        "source_sha256": sha256_file(source) if include_source_sha256 else None,
         "scale_m_per_unit": scale,
         "sampler": "deterministic_surface_points.v1",
         "seed": int(seed),

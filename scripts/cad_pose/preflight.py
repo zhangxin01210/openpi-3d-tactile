@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Read-only four-task RGB-D / CAD / pose provenance audit; never runs tracking."""
 
 from __future__ import annotations
@@ -8,6 +9,11 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
+
+_IMPORT_START = time.perf_counter()
+if __name__ == "__main__":
+    print("Initializing preflight dependencies...", flush=True)
 
 import numpy as np
 
@@ -302,19 +308,48 @@ def main():
     parser.add_argument("--data-root", type=Path)
     parser.add_argument("--profile", default="configs/ur7e_xhand/front_calibration_candidate.json")
     parser.add_argument("--tasks", nargs="+", choices=tuple(ROLES), default=list(ROLES))
+    parser.add_argument("--quick", action="store_true", help="sample one episode and three frames per task")
+    parser.add_argument(
+        "--peg-legacy-intrinsics",
+        action="store_true",
+        help="explicitly accept historical Peg color intrinsic metadata for review",
+    )
+    parser.add_argument(
+        "--timeout-seconds", type=float, default=None, help="per-task timeout (default: quick 120s, full 3600s)"
+    )
     parser.add_argument("--output", type=Path, default=Path("output/cad_pose_transformer_v1/reports/preflight.json"))
     args = parser.parse_args()
     repo = args.repo.expanduser().resolve()
     data = (args.data_root or repo / "data").expanduser().resolve()
+    print(f"dependency initialization: {time.perf_counter() - _IMPORT_START:.2f}s", flush=True)
+    datasets = []
+    for index, name in enumerate(args.tasks, 1):
+        print(f"[{index}/{len(args.tasks)}] {name}: starting {'quick' if args.quick else 'full'} audit", flush=True)
+        from openpi.cad_pose.quick import run_timed_task
+
+        entry = run_timed_task(
+            repo,
+            data,
+            name,
+            args.profile,
+            timeout=args.timeout_seconds if args.timeout_seconds is not None else (120 if args.quick else 3600),
+            quick=args.quick,
+            allow_legacy_intrinsics=args.peg_legacy_intrinsics,
+        )
+        datasets.append(entry)
+        print(f"[{index}/{len(args.tasks)}] {name}: {entry['status']} {entry.get('errors', [])}", flush=True)
     report = {
-        "status": "blocked",
-        "datasets": [audit_task(repo, data, name, args.profile) for name in args.tasks],
+        "status": "requires_visual_review"
+        if all(x["status"] == "requires_visual_review" for x in datasets)
+        else "blocked",
+        "mode": "quick" if args.quick else "full",
+        "datasets": datasets,
         "note": "Provenance checks cannot by themselves establish pose geometric accuracy.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    return 1
+    return int(report["status"] == "blocked") if args.quick else 1
 
 
 if __name__ == "__main__":

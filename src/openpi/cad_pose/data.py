@@ -24,13 +24,29 @@ from scripts.preprocess.export_object_geometry_rgbtrack import sha256
 from scripts.preprocess.export_object_geometry_rgbtrack import source_rows
 
 
+def validate_sampled_pose_frame(geometry, rows, ordered_cad, episode, frame):
+    """Reject each consumed label that differs from its saved ordered geometry."""
+    for i, role in enumerate(("manipulated", "target")):
+        mask = np.asarray(getattr(geometry, f"{role}_mask"), dtype=bool)
+        valid_row = rows[i]["valid"]
+        if mask.shape != (512,) or bool(mask.any()) != valid_row or (valid_row and not mask.all()):
+            raise ValueError(f"pose/geometry mask mismatch episode={episode} frame={frame} role={role}")
+        if valid_row:
+            actual = np.asarray(getattr(geometry, f"{role}_xyz_m"))
+            expected = cloud_from_pose(rows[i], ordered_cad[i])
+            if actual.shape != (512, 3) or not np.isfinite(actual).all() or np.max(np.abs(actual - expected)) > 1e-4:
+                raise ValueError(f"pose/geometry mismatch episode={episode} frame={frame} role={role}")
+
+
 class PublishedPoseTask:
     """Streaming reader for one audited task; frames remain inside their episode."""
 
     def __init__(self, repo: Path, data_root: Path, dataset: str, *, profile: str, audit_entry: dict):
+        self.quick = audit_entry.get("mode") == "quick"
         if (
             audit_entry.get("dataset") != dataset
-            or audit_entry.get("checks", {}).get("pose_hash_and_alignment") != "passed"
+            or audit_entry.get("checks", {}).get("pose_hash_and_alignment")
+            != ("sampled_pass" if self.quick else "passed")
             or audit_entry.get("status") not in {"requires_visual_review", "ready"}
         ):
             raise ValueError("task requires a passing current pose/CAD provenance audit")
@@ -46,15 +62,16 @@ class PublishedPoseTask:
         approval = json.loads(approval_path.read_text(encoding="utf-8"))
         checks = audit_entry["checks"]
         self.resolved_pose_hashes = checks.get("resolved_pose_hashes", {})
-        if checks.get("geometry_manifest_sha256") != sha256(manifest_path) or checks.get("release_sha256") != sha256(
-            release_path
+        if not self.quick and (
+            checks.get("geometry_manifest_sha256") != sha256(manifest_path)
+            or checks.get("release_sha256") != sha256(release_path)
         ):
             raise ValueError("pose audit does not match current geometry manifest or release")
         if (
             self.release.get("dataset") != dataset
             or self.manifest.get("dataset") != dataset
-            or self.manifest.get("source_release_sha256") != sha256(release_path)
-            or self.manifest.get("approved_geometry_sha256") != sha256(approval_path)
+            or (not self.quick and self.manifest.get("source_release_sha256") != sha256(release_path))
+            or (not self.quick and self.manifest.get("approved_geometry_sha256") != sha256(approval_path))
             or approval.get("status") != "human_accepted"
         ):
             raise ValueError("release, approved CAD and geometry provenance differ")
@@ -68,7 +85,7 @@ class PublishedPoseTask:
         for i, name in enumerate(names):
             mesh = self.prep / "geometry/approved" / f"{name}.glb"
             entry = approval.get("assets", {}).get(name, {})
-            digest = sha256(mesh)
+            digest = entry.get("sha256") if self.quick else sha256(mesh)
             if (
                 digest != entry.get("sha256")
                 or digest != self.manifest["approved_meshes_sha256"].get(name)
@@ -84,6 +101,10 @@ class PublishedPoseTask:
         if checks.get("profile_sha256") != self.calibration["profile"]["sha256"]:
             raise ValueError("pose audit does not match current calibration profile")
         self.preprocess = FrontRGBDPreprocessor(self.repo, profile)
+        if self.quick:
+            from openpi.object_geometry_dataset.derived import ObjectGeometryDerivedDataset
+
+            self.geometry_reader = ObjectGeometryDerivedDataset(self.root, version="v1")
 
     def iter_episode(self, episode: int, *, include_rgb: bool = False):
         if episode not in self.episodes:
@@ -100,7 +121,7 @@ class PublishedPoseTask:
         for role in ("manipulated", "target"):
             name = self.roles[role]
             path = root / f"{name}_poses.jsonl"
-            if sha256(path) != self.resolved_pose_hashes.get(str(episode), {}).get(
+            if not self.quick and sha256(path) != self.resolved_pose_hashes.get(str(episode), {}).get(
                 name, self.manifest.get("pose_files_sha256_by_episode", {}).get(str(episode), {}).get(name)
             ):
                 raise ValueError(f"pose file changed after audit: {path}")
@@ -114,6 +135,13 @@ class PublishedPoseTask:
             if frame != count or video.frame_index != frame or frame >= len(rows[0]):
                 raise ValueError(f"RGB/depth/pose frame mismatch in episode {episode}, frame {frame}")
             count += 1
+            # Quick mode checks every consumed label against the saved ordered geometry;
+            # a three-frame preflight is not proof for the remaining episode.
+            if self.quick:
+                geometry = self.geometry_reader.get(episode_index=episode, frame_index=frame)
+                validate_sampled_pose_frame(
+                    geometry, [rows[i][frame] for i in range(2)], self.ordered_cad, episode, frame
+                )
             # Invalid frames are never used as zero-pose supervision.
             valid = np.array([rows[i][frame]["valid"] for i in range(2)], dtype=bool)
             if not valid.any():

@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from openpi.cad_pose.pipeline import PROFILE
+from openpi.cad_pose.pipeline import checkpoint_open_options
 from openpi.cad_pose.pipeline import load_checkpoint
 from openpi.cad_pose.pipeline import open_tasks
 from openpi.cad_pose.pipeline import predict
@@ -49,7 +50,12 @@ def main():
     model, ckpt = load_checkpoint(a.checkpoint, a.device)
     repo = a.repo.resolve()
     tasks, audits = open_tasks(
-        repo, (a.data_root or repo / "data").resolve(), list(ckpt["splits"]), a.profile, synthetic=a.synthetic
+        repo,
+        (a.data_root or repo / "data").resolve(),
+        list(ckpt["splits"]),
+        a.profile,
+        synthetic=a.synthetic,
+        **checkpoint_open_options(ckpt),
     )
     if set(tasks) != set(ckpt["splits"]):
         raise ValueError(f"pose source audit failed: {audits}")

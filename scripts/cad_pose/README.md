@@ -12,17 +12,33 @@ All commands below run from the repository root. For environments lacking
 uv run --no-sync --with 'numpy==1.26.4' --with 'trimesh==4.12.2' python
 ```
 
-`preflight.py` is read-only and reports each task separately. It deliberately
-exits nonzero until geometric review is performed. When a PoseRecord hash
-mismatches, it compares **all** ordered geometry points and validity masks;
-no provenance is rewritten. Legacy Peg needs provable sampler/mesh/calibration
-provenance and rigid-fit residuals. Unordered ICP is never used.
+Button uses ordered CAD-to-current-Geometry rigid fits for every consumed frame;
+it never truncates the old PoseRecord. Peg's differing historical color
+intrinsics require the explicit `--peg-legacy-intrinsics` option; the historical
+metadata is retained and the difference requires human projection review.
+
+`preflight.py --quick` inspects the first episode's index and three selected
+frames per task. It loads the three RGB-D samples into the model, and shows
+phase timings and progress. The default per-task timeout is 120 seconds
+(`--timeout-seconds` adjusts it). It does not recompute full source SHA256:
+recorded hashes and unsampled frames are unverified, including Button's known
+historical mismatch. Sample agreement is not proof of source identity or
+geometric accuracy. Peg is blocked unless ordered CAD provenance and sampled
+fixed-point fits pass. During training every consumed published pose is
+compared against saved ordered geometry; mismatches stop the run.
+
+The original full audit is available without `--quick` (default per-task
+timeout 3600 seconds), and compares every frame for each mismatched pose SHA.
+It is not automatically run at training startup. Full audit is expensive:
+it hashes CAD and pose files, reads all episode indices, and scans the complete
+geometry of a hash-mismatched episode. Quick stage times separate manifest/index,
+CAD/calibration, three-frame correspondence and RGB-D/model initialization;
+worker wall time also includes dependency startup. No source is modified.
 
 ```bash
-python scripts/cad_pose/preflight.py --repo . --output output/cad_pose_audit/preflight.json
+python scripts/cad_pose/preflight.py --quick --peg-legacy-intrinsics --repo . --output output/cad_pose_audit/quick.json
 python scripts/cad_pose/visualize_gt.py --repo . --output-dir output/cad_pose_audit/gt \
   --episodes 1018_peg_all=23,65
-python scripts/cad_pose/smoke.py --repo . --device cpu --output output/cad_pose_audit/smoke.json
 ```
 
 GT visualization draws the existing Geometry v1 in RGB and RGB-D; it is a
@@ -34,14 +50,16 @@ be investigated rather than replaced with invented pose labels.
 
 Only after inspecting the Peg RGB-D projections and verifying the legacy
 adapter, create a review JSON with `status`, `reviewer`, `reviewed_frames`,
-`geometry_manifest_sha256` and `profile_sha256` from the audit; status must be
+`geometry_manifest_sha256` (compute with `sha256sum` on Peg geometry manifest) and
+`profile_sha256` from the quick report; status must be
 `accepted`, and at least three actual frame identifiers must be reviewed. The
 review must reflect a real human decision, not a fabricated approval. If Peg
 cannot prove ordered correspondence, four-task training fails closed; use
 `--tasks` to independently smoke-test other tasks.
 
 ```bash
-python scripts/cad_pose/train.py --repo . --device cuda:0 --batch-size 32 \
+# Training repeats the per-task quick check; add --full-audit for the full scan.
+python scripts/cad_pose/train.py --repo . --peg-legacy-intrinsics --device cuda:0 --batch-size 32 \
   --steps-per-epoch 1000 --epochs 100 --peg-review /path/to/peg_review.json \
   --output-dir output/cad_pose_runs/run1
 # Resume with --resume output/cad_pose_runs/run1/checkpoints/epoch_....pt and the same arguments.

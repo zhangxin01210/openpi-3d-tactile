@@ -13,6 +13,7 @@ import torch
 
 from openpi.cad_pose.geometry import predicted_geometry_packet
 from openpi.cad_pose.pipeline import PROFILE
+from openpi.cad_pose.pipeline import checkpoint_open_options
 from openpi.cad_pose.pipeline import load_checkpoint
 from openpi.cad_pose.pipeline import make_metric_rows
 from openpi.cad_pose.pipeline import open_tasks
@@ -38,7 +39,12 @@ def main():
     if bool(ckpt["synthetic"]) != a.synthetic:
         raise ValueError("synthetic flag differs from checkpoint")
     tasks, audits = open_tasks(
-        repo, (a.data_root or repo / "data").resolve(), list(ckpt["splits"]), a.profile, synthetic=a.synthetic
+        repo,
+        (a.data_root or repo / "data").resolve(),
+        list(ckpt["splits"]),
+        a.profile,
+        synthetic=a.synthetic,
+        **checkpoint_open_options(ckpt),
     )
     if set(tasks) != set(ckpt["splits"]):
         raise ValueError(f"some task pose sources failed audit: {audits}")

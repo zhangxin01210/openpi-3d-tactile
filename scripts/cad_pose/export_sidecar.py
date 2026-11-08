@@ -8,6 +8,7 @@ from pathlib import Path
 
 from openpi.cad_pose.pipeline import DEFAULT_TASKS
 from openpi.cad_pose.pipeline import PROFILE
+from openpi.cad_pose.pipeline import checkpoint_open_options
 from openpi.cad_pose.pipeline import open_tasks
 from openpi.cad_pose.runtime import PoseRuntime
 from openpi.cad_pose.sidecar import export_sidecar
@@ -38,7 +39,9 @@ def main():
     if saved.get("synthetic"):
         raise ValueError("synthetic checkpoints cannot generate real geometry")
     repo = a.repo.resolve()
-    tasks, reports = open_tasks(repo, (a.data_root or repo / "data").resolve(), [a.dataset], a.profile)
+    tasks, reports = open_tasks(
+        repo, (a.data_root or repo / "data").resolve(), [a.dataset], a.profile, **checkpoint_open_options(saved)
+    )
     if a.dataset not in tasks:
         raise ValueError(f"task asset/provenance audit failed: {reports}")
     task = tasks[a.dataset]

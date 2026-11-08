@@ -56,30 +56,80 @@ class SyntheticTask:
             yield sample
 
 
-def open_tasks(repo, data_root, names, profile=PROFILE, *, synthetic=False):
+def open_tasks(
+    repo, data_root, names, profile=PROFILE, *, synthetic=False, quick=False, timeout=120, peg_legacy_intrinsics=False
+):
     tasks, reports = {}, {}
-    for name in names:
+    for index, name in enumerate(names, 1):
         if name not in ROLES or name in tasks:
             raise ValueError(f"unknown or repeated dataset {name}")
         if synthetic:
             tasks[name], reports[name] = SyntheticTask(name), {"status": "synthetic"}
         else:
-            entry = audit_task(Path(repo), Path(data_root), name, profile)
+            if quick:
+                from openpi.cad_pose.quick import run_quick_task
+
+                print(f"[{index}/{len(names)}] {name}: quick audit", flush=True)
+                entry = run_quick_task(
+                    Path(repo),
+                    Path(data_root),
+                    name,
+                    profile,
+                    timeout=timeout,
+                    allow_legacy_intrinsics=peg_legacy_intrinsics,
+                )
+                print(f"[{index}/{len(names)}] {name}: {entry['status']} {entry.get('errors', [])}", flush=True)
+            else:
+                entry = audit_task(Path(repo), Path(data_root), name, profile)
             reports[name] = entry
-            if entry["checks"].get("pose_hash_and_alignment") != "passed":
+            if entry["checks"].get("pose_hash_and_alignment") != ("sampled_pass" if quick else "passed"):
                 continue
             try:
                 if entry["checks"].get("adapter") == "legacy_ordered_fit":
                     from openpi.cad_pose.legacy import LegacyGeometryPoseTask
 
                     tasks[name] = LegacyGeometryPoseTask(Path(repo), Path(data_root), profile, entry)
+                elif entry["checks"].get("adapter") == "button_ordered_fit":
+                    from openpi.cad_pose.legacy import ButtonGeometryPoseTask
+
+                    tasks[name] = ButtonGeometryPoseTask(Path(repo), Path(data_root), profile, entry)
                 else:
                     tasks[name] = PublishedPoseTask(
                         Path(repo), Path(data_root), name, profile=profile, audit_entry=entry
                     )
+                tasks[name].audit_adapter = entry["checks"].get("adapter", "published_full")
+                tasks[name].audit_mode = "quick" if quick else "full"
+                tasks[name].peg_legacy_intrinsics = peg_legacy_intrinsics and name == "1018_peg_all"
             except (OSError, ValueError, KeyError, ImportError, RuntimeError) as exc:
                 reports[name] = {**entry, "status": "blocked", "errors": [*entry["errors"], str(exc)]}
     return tasks, reports
+
+
+def task_adapters(tasks):
+    return {
+        name: {
+            "adapter": getattr(t, "audit_adapter", "synthetic"),
+            "mode": getattr(t, "audit_mode", "synthetic"),
+            "peg_legacy_intrinsics": getattr(t, "peg_legacy_intrinsics", False),
+        }
+        for name, t in tasks.items()
+    }
+
+
+def checkpoint_open_options(ckpt):
+    """Recreate the same label adapter and explicit calibration exception."""
+    adapters = ckpt.get("data_adapters", {})
+    if not adapters:
+        return {"quick": False, "peg_legacy_intrinsics": False}
+    quick = any(
+        x.get("mode") == "quick"
+        or ("mode" not in x and x.get("adapter") in {"button_ordered_fit", "published_sampled"})
+        for x in adapters.values()
+    )
+    return {
+        "quick": quick,
+        "peg_legacy_intrinsics": adapters.get("1018_peg_all", {}).get("peg_legacy_intrinsics", False),
+    }
 
 
 def splits_for(tasks, seed=42):
@@ -265,6 +315,7 @@ def train(
             or saved["camera_hashes"] != cameras
             or saved["splits"] != split_json
             or saved.get("provenance") != provenance
+            or ("data_adapters" in saved and saved["data_adapters"] != task_adapters(tasks))
             or saved["seed"] != seed
             or saved["batch_size"] != batch_size
             or saved["steps"] != steps
@@ -331,6 +382,7 @@ def train(
         }
         saved = {
             "model_version": "xhand_cad_pose_transformer_v1",
+            "data_adapters": task_adapters(tasks),
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": opt.state_dict(),
             "scaler_state_dict": scaler.state_dict(),
@@ -374,15 +426,21 @@ def load_checkpoint(path, device="cpu"):
 def verify_checkpoint_sources(ckpt, tasks, repo, profile, *, synthetic):
     if bool(ckpt.get("synthetic")) != synthetic or set(ckpt["splits"]) != set(tasks):
         raise ValueError("checkpoint task set or synthetic mode differs")
+    if "data_adapters" in ckpt and ckpt["data_adapters"] != task_adapters(tasks):
+        raise ValueError("pose data adapter or legacy calibration option differs from checkpoint")
     if not synthetic and ckpt["camera_hashes"] != camera_hashes(repo, profile):
         raise ValueError("camera calibration differs from checkpoint")
     for name, task in tasks.items():
         if ckpt["ordered_cad_sha256_by_dataset"][name] != points_sha256(task.ordered_cad):
             raise ValueError(f"{name}: CAD differs from checkpoint")
-        expected = {"synthetic": "true"} if synthetic else {
-            "manifest": hashlib.sha256((task.root / "object_geometry/v1/manifest.json").read_bytes()).hexdigest(),
-            "raw_metadata": hashlib.sha256((task.root / "meta/info.json").read_bytes()).hexdigest(),
-        }
+        expected = (
+            {"synthetic": "true"}
+            if synthetic
+            else {
+                "manifest": hashlib.sha256((task.root / "object_geometry/v1/manifest.json").read_bytes()).hexdigest(),
+                "raw_metadata": hashlib.sha256((task.root / "meta/info.json").read_bytes()).hexdigest(),
+            }
+        )
         if ckpt.get("provenance", {}).get(name) != expected:
             raise ValueError(f"{name}: dataset provenance differs from checkpoint")
         groups = ckpt["splits"][name]

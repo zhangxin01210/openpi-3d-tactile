@@ -29,6 +29,11 @@ def main():
         "--peg-review", type=Path, help="accepted Peg keyframe review JSON bound to geometry and calibration hashes"
     )
     parser.add_argument("--synthetic", action="store_true")
+    parser.add_argument(
+        "--peg-legacy-intrinsics", action="store_true", help="explicitly allow historical Peg color intrinsics"
+    )
+    parser.add_argument("--full-audit", action="store_true", help="run the expensive full audit before training")
+    parser.add_argument("--timeout-seconds", type=float, default=120, help="per-task quick timeout")
     args = parser.parse_args()
     settings = json.loads(args.config.read_text()) if args.config else {}
     unknown = set(settings) - {"seed", "lr", "patience", "validation_batches", "symmetry"}
@@ -36,7 +41,14 @@ def main():
         raise ValueError(f"unknown config settings: {unknown}")
     repo = args.repo.resolve()
     tasks, reports = open_tasks(
-        repo, (args.data_root or repo / "data").resolve(), args.tasks, args.profile, synthetic=args.synthetic
+        repo,
+        (args.data_root or repo / "data").resolve(),
+        args.tasks,
+        args.profile,
+        synthetic=args.synthetic,
+        quick=not args.full_audit,
+        timeout=args.timeout_seconds,
+        peg_legacy_intrinsics=args.peg_legacy_intrinsics,
     )
     for name, report in reports.items():
         print(name, report["status"], report.get("errors", []), flush=True)
@@ -48,6 +60,10 @@ def main():
             raise ValueError("legacy Peg requires --peg-review with accepted keyframe geometry review")
         review = json.loads(args.peg_review.read_text())
         checks = peg["checks"]
+        if peg.get("mode") == "quick":
+            from scripts.preprocess.export_object_geometry_rgbtrack import sha256
+
+            checks["geometry_manifest_sha256"] = sha256(tasks["1018_peg_all"].root / "object_geometry/v1/manifest.json")
         if (
             review.get("status") != "accepted"
             or not review.get("reviewer")
