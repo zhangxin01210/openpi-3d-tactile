@@ -77,13 +77,21 @@ def validate_spatial_source_identity(spatial_dataset, dataset_root: pathlib.Path
 def validate_object_geometry_calibration(data_config, model_config, manifest) -> bool:
     """Validate recorded calibration; report the approved historical omission.
 
-    Returns True only for the three accepted v1 datasets whose manifest does
-    not contain a calibration field. This does not establish calibration parity.
+    Returns True for explicit unverified legacy/V2 provenance exceptions.
+    This does not establish calibration parity.
     """
     from openpi.object_geometry.calibration import calibration_provenance_error
     from openpi.object_geometry.calibration import front_calibration_provenance
 
     settings = data_config.object_geometry
+    if settings.require_pose_prediction and getattr(settings, "pose_prediction_schema", "v1") == "v2":
+        # The V2 model consumes unaligned raw RGB-D and predicts base_link; its
+        # original camera calibration is not recorded. Spatial v1's own profile
+        # is validated separately. Never manufacture a V2 calibration record.
+        if manifest.get("calibration_source") != "V2 predicts base_link from unaligned raw RGB-D; model camera calibration provenance not recorded":
+            raise ValueError("V2 prediction calibration provenance is missing or changed")
+        logging.warning("V2 model camera calibration provenance is unrecorded; base_link compatibility requires review")
+        return True
     repo_root = pathlib.Path(__file__).resolve().parents[3]
     dataset_root = pathlib.Path(settings.dataset_root).expanduser()
     if not dataset_root.is_absolute():
@@ -487,11 +495,24 @@ def create_torch_dataset(
         from openpi.object_geometry_dataset.derived import ObjectGeometryDerivedDataset
 
         settings = data_config.object_geometry
+        if settings.version == "pretrained_pose_v2" and (
+            not settings.require_pose_prediction or getattr(settings, "pose_prediction_schema", "v1") != "v2"
+        ):
+            raise ValueError("pretrained_pose_v2 requires the V2 provenance validation")
         object_geometry_dataset = ObjectGeometryDerivedDataset(
             settings.dataset_root,
             version=settings.version,
         )
-        if settings.require_pose_prediction:
+        if settings.require_pose_prediction and getattr(settings, "pose_prediction_schema", "v1") == "v2":
+            from openpi.cad_pose.v2_native import validate_native_manifest
+            if not settings.pose_checkpoint_path or not settings.pose_v2_cache_root:
+                raise ValueError("V2 requires an explicit pose checkpoint and RGB-D cache")
+            if local_root is None or pathlib.Path(settings.dataset_root).resolve() != pathlib.Path(local_root).resolve():
+                raise ValueError("V2 geometry must belong to the same local LeRobot dataset")
+            validate_native_manifest(object_geometry_dataset.manifest, settings.dataset_root,
+                                     settings.pose_checkpoint_path, settings.pose_v2_cache_root,
+                                     reader=object_geometry_dataset)
+        elif settings.require_pose_prediction and getattr(settings, "pose_prediction_schema", "v1") == "v1":
             import hashlib
             import torch
             checkpoint = pathlib.Path(settings.pose_checkpoint_path or "")
@@ -512,6 +533,8 @@ def create_torch_dataset(
                     or acceptance.get("status") != "accepted" or not acceptance.get("reviewer")
                     or acceptance.get("checkpoint_sha256") != digest):
                 raise ValueError("predicted geometry sidecar and pose checkpoint provenance mismatch")
+        elif settings.require_pose_prediction:
+            raise ValueError(f"unknown pose prediction schema: {settings.pose_prediction_schema}")
         if settings.m2_state_from_rgbtrack_v1:
             encoder = getattr(model_config, "encoder", None)
             if (getattr(encoder, "object_relation_mode", None) != "hand_scene_oo_v1"

@@ -77,7 +77,25 @@ def save_state(
         if norm_stats is not None and data_config.asset_id is not None:
             _normalize.save(directory / data_config.asset_id, norm_stats)
         geometry = data_config.object_geometry
-        if geometry is not None and getattr(geometry, "require_pose_prediction", False):
+        if (
+            geometry is not None
+            and getattr(geometry, "require_pose_prediction", False)
+            and getattr(geometry, "pose_prediction_schema", "v1") == "v2"
+        ):
+            from openpi.cad_pose.v2_native import validate_native_manifest
+
+            if not data_config.asset_id or not geometry.pose_checkpoint_path or not geometry.pose_v2_cache_root:
+                raise ValueError("V2 prediction provenance requires asset id, checkpoint and cache")
+            manifest = json.loads(
+                (epath.Path(geometry.dataset_root) / "object_geometry" / geometry.version / "manifest.json").read_text()
+            )
+            provenance = validate_native_manifest(
+                manifest, geometry.dataset_root, geometry.pose_checkpoint_path, geometry.pose_v2_cache_root
+            )
+            destination = directory / data_config.asset_id
+            destination.mkdir(parents=True, exist_ok=True)
+            (destination / "pose_provenance.json").write_text(json.dumps(provenance, indent=2))
+        elif geometry is not None and getattr(geometry, "require_pose_prediction", False):
             if not data_config.asset_id or not geometry.pose_checkpoint_path:
                 raise ValueError("pose prediction checkpoint and asset id required")
             manifest = json.loads(

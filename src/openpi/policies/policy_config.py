@@ -114,6 +114,10 @@ def create_trained_policy(
     if data_config.object_geometry is not None and getattr(
         data_config.object_geometry, "require_pose_prediction", False
     ):
+        if getattr(data_config.object_geometry, "pose_prediction_schema", "v1") == "v2":
+            raise ValueError(
+                "V2 pose policy online inference is not implemented; use the V2 native sidecar for training"
+            )
         from openpi.cad_pose.policy import make_pose_runtime
 
         if not data_config.asset_id:

@@ -149,6 +149,8 @@ class ObjectGeometryDataConfig:
     require_pose_prediction: bool = False
     pose_checkpoint_path: str | None = None
     hand_keypoint_object_version: str | None = None
+    pose_prediction_schema: str = "v1"
+    pose_v2_cache_root: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2698,6 +2700,26 @@ def _cad_pose_policy_configs() -> list[TrainConfig]:
 
 
 _CONFIGS.extend(_cad_pose_policy_configs())
+
+
+def _cad_pose_v2_policy_configs() -> list[TrainConfig]:
+    repo = pathlib.Path(__file__).resolve().parents[3]
+    checkpoint = os.environ.get("OPENPI_CAD_POSE_V2_CHECKPOINT", str(repo / "output/cad_pose_rgbd_v2/train_20261109_162628/best.pt"))
+    cache = os.environ.get("OPENPI_CAD_POSE_V2_CACHE", str(repo / "output/cad_pose_rgbd_v2/cache"))
+    configs = []
+    for base in _cad_pose_policy_configs():
+        task = base.name.rsplit("/", 1)[1]
+        geometry = dataclasses.replace(base.data.object_geometry, version="pretrained_pose_v2",
+                                       pose_checkpoint_path=checkpoint, pose_prediction_schema="v2",
+                                       pose_v2_cache_root=cache)
+        metadata = dict(base.policy_metadata, object_geometry_source="pretrained_pose_v2")
+        configs.append(dataclasses.replace(base, name=f"pi0_xhand_pc_v2_tactile_mlp_ho_v2_pretrain_v2/{task}",
+                                           data=dataclasses.replace(base.data, object_geometry=geometry),
+                                           policy_metadata=metadata))
+    return configs
+
+
+_CONFIGS.extend(_cad_pose_v2_policy_configs())
 
 
 def _raw_tactile_state_configs() -> list[TrainConfig]:
